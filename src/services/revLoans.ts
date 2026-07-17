@@ -350,23 +350,41 @@ interface LoansResponse {
 const LOANS_PAGE_SIZE = 100
 const LOANS_MAX_ROWS = 500
 
-/** Every active indexed loan for a project across its chains (V6 only), newest first. */
-export async function fetchProjectLoans(projectId: number, chainIds: number[]): Promise<IndexedLoan[]> {
-  if (!Number.isSafeInteger(projectId) || projectId < 1) throw new Error('Invalid project ID')
-  if (!chainIds.length) return []
+/** A chain the project lives on, with the project's id ON THAT CHAIN (V6 ids differ per chain). */
+export interface LoanChainProject {
+  chainId: number
+  projectId: number | string
+}
 
-  const rows: IndexedLoan[] = []
-  for (let offset = 0; offset < LOANS_MAX_ROWS; offset += LOANS_PAGE_SIZE) {
-    const data = await safeRequest<LoansResponse>(LOANS_QUERY, {
-      projectId,
-      version: 6,
-      chainIds,
-      limit: LOANS_PAGE_SIZE,
-      offset,
-    }, getNetworkOption(chainIds[0]))
-    const page = data.loans?.items || []
-    rows.push(...page)
-    if (rows.length >= (data.loans?.totalCount ?? 0) || page.length < LOANS_PAGE_SIZE) break
-  }
-  return rows
+/**
+ * Every active indexed loan for a project across its chains (V6 only), newest
+ * first. Each chain is queried with ITS OWN project id — a single projectId +
+ * chainId_in filter would read the WRONG project on any chain whose id diverges
+ * from the home id.
+ */
+export async function fetchProjectLoans(chainProjects: ReadonlyArray<LoanChainProject>): Promise<IndexedLoan[]> {
+  if (!chainProjects.length) return []
+
+  const perChain = await Promise.all(
+    chainProjects.map(async ({ chainId, projectId }) => {
+      const pid = Number(projectId)
+      if (!Number.isSafeInteger(pid) || pid < 1) throw new Error('Invalid project ID')
+      const rows: IndexedLoan[] = []
+      for (let offset = 0; offset < LOANS_MAX_ROWS; offset += LOANS_PAGE_SIZE) {
+        const data = await safeRequest<LoansResponse>(LOANS_QUERY, {
+          projectId: pid,
+          version: 6,
+          chainIds: [chainId],
+          limit: LOANS_PAGE_SIZE,
+          offset,
+        }, getNetworkOption(chainId))
+        const page = data.loans?.items || []
+        rows.push(...page)
+        if (rows.length >= (data.loans?.totalCount ?? 0) || page.length < LOANS_PAGE_SIZE) break
+      }
+      return rows
+    }),
+  )
+  // Per-chain pages were independent, so re-sort the merged rows newest-first.
+  return perChain.flat().sort((a, b) => Number(b.createdAt) - Number(a.createdAt))
 }

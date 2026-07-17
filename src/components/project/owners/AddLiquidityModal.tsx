@@ -17,12 +17,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { erc20Abi, formatUnits, parseUnits, type Address } from 'viem'
+import { erc20Abi, formatUnits, parseUnits } from 'viem'
 import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import { publicClientFor, type GuardedTxPhase } from '../../../services/projectTx'
 import type { Project } from '../../../services/bendystraw'
+import { makeProjectIdResolver } from '../../../utils/projectChains'
 import {
   ammChainAvailable,
   buildModifyLiquiditiesTx,
@@ -47,6 +48,8 @@ export interface AddLiquidityModalProps {
   project: Project
   /** The sucker-group chains the project lives on (home chain first). */
   chainIds: number[]
+  /** Per-chain project ids (V6 ids differ per chain); reads/txs target the id ON that chain. */
+  chainProjects?: Array<{ chainId: number; projectId: number | string }>
 }
 
 interface MarketContext {
@@ -80,7 +83,7 @@ function formatPairAmount(value: bigint, decimals: number, symbol: string): stri
   return `${amount.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${symbol}`
 }
 
-export function AddLiquidityModal({ isOpen, onClose, project, chainIds }: AddLiquidityModalProps) {
+export function AddLiquidityModal({ isOpen, onClose, project, chainIds, chainProjects }: AddLiquidityModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { activeAddress, run } = useGuardedTx()
@@ -98,7 +101,12 @@ export function AddLiquidityModal({ isOpen, onClose, project, chainIds }: AddLiq
   const [reloadNonce, setReloadNonce] = useState(0)
 
   const symbol = project.tokenSymbol || 'tokens'
-  const projectId = useMemo(() => BigInt(project.projectId), [project.projectId])
+  const pidFor = useMemo(
+    () => makeProjectIdResolver(chainProjects, { chainId: project.chainId, projectId: project.projectId }),
+    [chainProjects, project.chainId, project.projectId],
+  )
+  // The selected chain's own project id (V6 ids differ per chain); null = not this project on that chain.
+  const projectId = pidFor(chainId)
 
   useEffect(() => {
     if (isOpen) {
@@ -110,7 +118,7 @@ export function AddLiquidityModal({ isOpen, onClose, project, chainIds }: AddLiq
 
   // Load pool state + floor/ceiling + wallet balances for the selected chain.
   useEffect(() => {
-    if (!isOpen || !chainId) return
+    if (!isOpen || !chainId || projectId == null) return
     let cancelled = false
     setLoading(true)
     setLoadError(null)
@@ -247,6 +255,10 @@ export function AddLiquidityModal({ isOpen, onClose, project, chainIds }: AddLiq
     }
     if (!(range.pa > 0) || !(range.pb > range.pa)) {
       setStatus({ kind: 'error', message: 'Set a valid price range.' })
+      return
+    }
+    if (projectId == null) {
+      setStatus({ kind: 'error', message: 'This project is not on the selected chain.' })
       return
     }
     setStatus({ kind: 'preparing' })

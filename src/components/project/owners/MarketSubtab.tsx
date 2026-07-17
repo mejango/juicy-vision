@@ -39,6 +39,7 @@ import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import type { GuardedTxPhase } from '../../../services/projectTx'
 import type { Project } from '../../../services/bendystraw'
 import { truncateAddress } from '../../../utils/ens'
+import { makeProjectIdResolver } from '../../../utils/projectChains'
 import { CHART_COLORS, PIE_COLORS } from '../../dynamic/charts/utils'
 import { RemoveLiquidityModal } from './RemoveLiquidityModal'
 import {
@@ -62,6 +63,8 @@ export interface MarketSubtabProps {
   project: Project
   /** The sucker-group chains the project lives on (home chain first). */
   chainIds: number[]
+  /** Per-chain project ids (V6 ids differ per chain); reads/txs target the id ON that chain. */
+  chainProjects?: Array<{ chainId: number; projectId: number | string }>
 }
 
 const PHASE_LABELS: Record<GuardedTxPhase, string> = {
@@ -398,6 +401,8 @@ type ActionStatus =
 
 interface SplitHookRow {
   chainId: number
+  /** The project's id ON this chain (V6 ids differ per chain). */
+  projectId: bigint
   /** null = the reads failed on this chain — render a note, never zeros. */
   state: SplitHookChainState | null
   weight: bigint
@@ -419,7 +424,7 @@ function SplitHookChainBlock({
 
   const symbol = project.tokenSymbol || 'tokens'
   const chainName = CHAINS[row.chainId]?.name ?? `Chain ${row.chainId}`
-  const projectId = useMemo(() => BigInt(project.projectId), [project.projectId])
+  const projectId = row.projectId // this chain's own project id
   const mutedText = isDark ? 'text-gray-500' : 'text-gray-400'
 
   if (!row.state) {
@@ -589,14 +594,17 @@ function SplitHookChainBlock({
   )
 }
 
-function SplitHookCard({ project, chainIds }: MarketSubtabProps) {
+function SplitHookCard({ project, chainIds, chainProjects }: MarketSubtabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const [rows, setRows] = useState<SplitHookRow[] | null>(null)
   const [nonce, setNonce] = useState(0)
 
   const symbol = project.tokenSymbol || 'tokens'
-  const projectId = useMemo(() => BigInt(project.projectId), [project.projectId])
+  const pidFor = useMemo(
+    () => makeProjectIdResolver(chainProjects, { chainId: project.chainId, projectId: project.projectId }),
+    [chainProjects, project.chainId, project.projectId],
+  )
   const chainKey = chainIds.join(',')
 
   useEffect(() => {
@@ -606,12 +614,15 @@ function SplitHookCard({ project, chainIds }: MarketSubtabProps) {
       chains
         .filter(chainId => splitHookAddressFor(chainId))
         .map(async (chainId): Promise<SplitHookRow | null> => {
+          // Each chain reads with ITS OWN project id; a chain with no id is skipped.
+          const projectId = pidFor(chainId)
+          if (projectId == null) return null
           // Only chains whose CURRENT reserved splits actually route here.
           if (!(await projectUsesLpSplitHook(chainId, projectId))) return null
           const facts = await readMarketRulesetFacts(chainId, projectId)
           const weight = facts?.weight ?? 0n
           const state = await readSplitHookState(chainId, projectId, weight).catch(() => null)
-          return { chainId, state, weight }
+          return { chainId, projectId, state, weight }
         }),
     )
       .then(loaded => {
@@ -623,7 +634,7 @@ function SplitHookCard({ project, chainIds }: MarketSubtabProps) {
     return () => {
       cancelled = true
     }
-  }, [projectId, chainKey, nonce])
+  }, [pidFor, chainKey, nonce])
 
   if (!rows?.length) return null
 
@@ -659,7 +670,7 @@ type ChainLoad =
   | { kind: 'none' }
   | { kind: 'ready'; snapshot: LpPositionsSnapshot; floor: number; ceiling: number }
 
-export function MarketSubtab({ project, chainIds }: MarketSubtabProps) {
+export function MarketSubtab({ project, chainIds, chainProjects }: MarketSubtabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -669,12 +680,21 @@ export function MarketSubtab({ project, chainIds }: MarketSubtabProps) {
   const [removeOpen, setRemoveOpen] = useState(false)
 
   const symbol = project.tokenSymbol || 'token'
-  const projectId = useMemo(() => BigInt(project.projectId), [project.projectId])
+  const pidFor = useMemo(
+    () => makeProjectIdResolver(chainProjects, { chainId: project.chainId, projectId: project.projectId }),
+    [chainProjects, project.chainId, project.projectId],
+  )
   const load = loads[chainId]
 
   // Read the selected chain once and keep it — switching back is free.
   useEffect(() => {
     if (!chainId || !ammChainAvailable(chainId) || loads[chainId]) return
+    // This chain's own project id (V6 ids differ per chain); no id → no pool here.
+    const projectId = pidFor(chainId)
+    if (projectId == null) {
+      setLoads(previous => ({ ...previous, [chainId]: { kind: 'none' } }))
+      return
+    }
     let cancelled = false
     setLoads(previous => ({ ...previous, [chainId]: { kind: 'loading' } }))
     ;(async () => {
@@ -699,7 +719,7 @@ export function MarketSubtab({ project, chainIds }: MarketSubtabProps) {
     return () => {
       cancelled = true
     }
-  }, [chainId, projectId, loads])
+  }, [chainId, pidFor, loads])
 
   const ready = load?.kind === 'ready' ? load : null
   const bands = useMemo(
@@ -868,13 +888,14 @@ export function MarketSubtab({ project, chainIds }: MarketSubtabProps) {
         )}
       </div>
 
-      <SplitHookCard project={project} chainIds={chainIds} />
+      <SplitHookCard project={project} chainIds={chainIds} chainProjects={chainProjects} />
 
       <RemoveLiquidityModal
         isOpen={removeOpen}
         onClose={() => setRemoveOpen(false)}
         project={project}
         chainIds={chainIds}
+        chainProjects={chainProjects}
       />
     </div>
   )

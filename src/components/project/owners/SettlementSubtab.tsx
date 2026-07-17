@@ -47,6 +47,8 @@ export interface SettlementSubtabProps {
   project: Project
   /** The sucker-group chains the project lives on (home chain first). */
   chainIds: number[]
+  /** Per-chain project ids (V6 ids differ per chain); every per-chain read targets the id ON that chain. */
+  chainProjects?: Array<{ chainId: number; projectId: number | string }>
 }
 
 const PHASE_LABELS: Record<GuardedTxPhase, string> = {
@@ -93,13 +95,21 @@ function bridgeEtaHint(tx: QueuedMovement): string | null {
   return 'a few min'
 }
 
-export function SettlementSubtab({ project, chainIds }: SettlementSubtabProps) {
+export function SettlementSubtab({ project, chainIds, chainProjects }: SettlementSubtabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { activeAddress, run } = useGuardedTx()
 
   const symbol = project.tokenSymbol || 'tokens'
-  const chainKey = chainIds.join(',')
+  // Per-chain project ids (V6 ids differ per chain), restricted to the chains shown.
+  const settlementChains = useMemo(
+    () =>
+      (chainProjects && chainProjects.length
+        ? chainProjects
+        : [{ chainId: project.chainId, projectId: project.projectId }]
+      ).filter(cp => chainIds.includes(cp.chainId)),
+    [chainProjects, chainIds, project.chainId, project.projectId],
+  )
 
   const [composition, setComposition] = useState<CompositionRow[] | null>(null)
   const [compositionError, setCompositionError] = useState(false)
@@ -123,32 +133,30 @@ export function SettlementSubtab({ project, chainIds }: SettlementSubtabProps) {
 
   useEffect(() => {
     let cancelled = false
-    const ids = chainKey ? chainKey.split(',').map(Number) : []
-    const projectId = project.projectId
     setCompositionError(false)
     setGossipError(false)
     setRoutesError(false)
     setMovementsError(false)
-    fetchCompositionRows(projectId, ids)
+    fetchCompositionRows(settlementChains)
       .then(rows => !cancelled && setComposition(rows))
       .catch(() => !cancelled && setCompositionError(true))
-    if (ids.length >= 2) {
-      fetchGossipKnowledge(projectId, ids)
+    if (settlementChains.length >= 2) {
+      fetchGossipKnowledge(settlementChains)
         .then(data => !cancelled && setGossip(data))
         .catch(() => !cancelled && setGossipError(true))
     } else {
       setGossip([])
     }
-    fetchBridgeRoutes(projectId, ids)
+    fetchBridgeRoutes(settlementChains)
       .then(data => !cancelled && setRoutes(data))
       .catch(() => !cancelled && setRoutesError(true))
-    fetchQueuedMovements(projectId, ids)
+    fetchQueuedMovements(settlementChains)
       .then(data => !cancelled && setMovements(data))
       .catch(() => !cancelled && setMovementsError(true))
     return () => {
       cancelled = true
     }
-  }, [project.projectId, chainKey, reloadNonce])
+  }, [settlementChains, reloadNonce])
 
   const setTx = (key: string, state: TxState) => setTxStates(previous => ({ ...previous, [key]: state }))
   const txOf = (key: string): TxState => txStates[key] ?? { kind: 'idle' }

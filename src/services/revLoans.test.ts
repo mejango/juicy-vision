@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   LOAN_LIQUIDATION_SECONDS,
   LOAN_MAX_PREPAID,
   LOAN_MIN_PREPAID,
   borrowMinAmountFromQuote,
   describeLoanToken,
+  fetchProjectLoans,
   loanFeeFracAt,
   loanOpeningAmounts,
   loanOutstandingFee,
@@ -14,6 +15,13 @@ import {
   prepaidWindowSeconds,
   type LoanFeeInputs,
 } from './revLoans'
+
+// Capture the projectId each chain's loans query is issued with.
+const safeRequestMock = vi.fn()
+vi.mock('./bendystraw/client', () => ({
+  safeRequest: (...args: unknown[]) => safeRequestMock(...args),
+  getNetworkOption: () => ({}),
+}))
 
 const DAY = 86_400
 const ONE_ETH = 10n ** 18n
@@ -179,5 +187,34 @@ describe('describeLoanToken', () => {
 
   it('returns null for unrecognized tokens so amounts render as raw units, never a wrong division', () => {
     expect(describeLoanToken(1, '0x1111111111111111111111111111111111111111')).toBeNull()
+  })
+})
+
+describe('fetchProjectLoans per-chain project id', () => {
+  it('queries each chain with ITS OWN project id — never the home id off-home', async () => {
+    // Divergent per-chain ids: #7 on chain 1 (home), #42 on chain 8453.
+    safeRequestMock.mockImplementation((_query: string, variables: { projectId: number; chainIds: number[] }) => ({
+      loans: {
+        items: [{ id: `${variables.chainIds[0]}-1`, chainId: variables.chainIds[0], createdAt: variables.chainIds[0] }],
+        totalCount: 1,
+      },
+    }))
+
+    const rows = await fetchProjectLoans([
+      { chainId: 1, projectId: 7 },
+      { chainId: 8453, projectId: 42 },
+    ])
+
+    const varsByChain = new Map<number, { projectId: number; chainIds: number[] }>()
+    for (const call of safeRequestMock.mock.calls) {
+      const vars = call[1] as { projectId: number; chainIds: number[] }
+      varsByChain.set(vars.chainIds[0], vars)
+    }
+    expect(varsByChain.get(1)?.projectId).toBe(7)
+    expect(varsByChain.get(8453)?.projectId).toBe(42)
+    // The off-home chain must be filtered to just its own chain, never lumped with home.
+    expect(varsByChain.get(8453)?.chainIds).toEqual([8453])
+    // Both chains' loans are merged.
+    expect(rows.map(row => row.chainId).sort()).toEqual([1, 8453])
   })
 })

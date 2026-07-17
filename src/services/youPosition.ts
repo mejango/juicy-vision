@@ -66,9 +66,18 @@ export interface YouPositionRow {
 
 /** The minimal project facts the loader needs. */
 export interface YouPositionProject {
-  projectId: number | string
   /** Loans + cash-out delay are revnet features; skip those reads otherwise. */
   isRevnet?: boolean
+}
+
+/**
+ * A chain the project lives on, with the project's id ON THAT CHAIN. V6 project
+ * ids are independent per chain, so every per-chain read must use the id for
+ * that specific chain — never the home id everywhere.
+ */
+export interface YouPositionChain {
+  chainId: number
+  projectId: number | string
 }
 
 /** Injectable for tests: swap the RPC client factory without touching the network. */
@@ -128,7 +137,8 @@ function emptyRow(chainId: number): YouPositionRow {
 }
 
 async function loadChainPosition(
-  project: YouPositionProject,
+  projectId: bigint,
+  isRevnet: boolean | undefined,
   chainId: number,
   account: Address,
   clientFor: (chainId: number) => PublicClient,
@@ -141,7 +151,6 @@ async function loadChainPosition(
   }
 
   const cid = chainId as JBChainId
-  const projectId = BigInt(project.projectId)
   const jbTokens = v6AddressOf('JBTokens', chainId)
   const jbDirectory = v6AddressOf('JBDirectory', chainId)
 
@@ -180,7 +189,7 @@ async function loadChainPosition(
     getAccountingContexts(client, { chainId: cid, projectId })
       .then(contexts => (contexts.length ? describeAccountingToken(chainId, contexts[0]) : null))
       .catch(() => null),
-    project.isRevnet
+    isRevnet
       ? getCashOutDelay(client, { chainId: cid, revnetId: projectId }).catch(() => null)
       : Promise.resolve(null),
   ])
@@ -223,7 +232,7 @@ async function loadChainPosition(
   // Returns 0 while the cash-out delay is active — the UI substitutes the
   // cash-out value as the would-be loan in that state.
   let maxLoan: bigint | null = null
-  if (project.isRevnet && hasRevLoans(chainId) && balance != null && accountingToken) {
+  if (isRevnet && hasRevLoans(chainId) && balance != null && accountingToken) {
     maxLoan =
       balance === 0n
         ? 0n
@@ -244,15 +253,21 @@ async function loadChainPosition(
 /**
  * Load the connected wallet's per-chain position. One row per requested chain,
  * in order; a chain whose reads fail produces a row of nulls (never zeros).
+ *
+ * Each chain is read with ITS OWN project id (V6 ids are independent per chain),
+ * so a linked deployment with a divergent id on some chain is never read against
+ * the home id — which would target the wrong project entirely.
  */
 export async function loadYouPosition(
   project: YouPositionProject,
-  chainIds: number[],
+  chains: readonly YouPositionChain[],
   account: Address,
   deps: YouPositionDeps = {},
 ): Promise<YouPositionRow[]> {
   const clientFor = deps.clientFor ?? (publicClientFor as (chainId: number) => PublicClient)
-  return Promise.all(chainIds.map(chainId => loadChainPosition(project, chainId, account, clientFor)))
+  return Promise.all(
+    chains.map(chain => loadChainPosition(BigInt(chain.projectId), project.isRevnet, chain.chainId, account, clientFor)),
+  )
 }
 
 /** Sum a token-count field across rows — only when EVERY row produced it. */

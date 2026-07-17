@@ -156,13 +156,15 @@ describe('isCashOutLocked (delay-lock logic)', () => {
 })
 
 describe('loadYouPosition', () => {
-  const project = { projectId: 7, isRevnet: true }
+  const project = { isRevnet: true }
+  // The project's id on CHAIN (#7); the loader must read each chain with its own id.
+  const CHAINS_HOME = [{ chainId: CHAIN, projectId: 7 }]
 
   it('assembles a full row for a healthy revnet chain', async () => {
     const state = defaults()
     state.delay = 2_000_000_000n
     const calls: RecordedCall[] = []
-    const [result] = await loadYouPosition(project, [CHAIN], ACCOUNT, { clientFor: () => mockClient(state, calls) })
+    const [result] = await loadYouPosition(project, CHAINS_HOME, ACCOUNT, { clientFor: () => mockClient(state, calls) })
 
     expect(result.chainId).toBe(CHAIN)
     expect(result.balance).toBe(state.balance)
@@ -187,7 +189,7 @@ describe('loadYouPosition', () => {
   })
 
   it('renders a failed chain as nulls, never fake zeros', async () => {
-    const [unreachable] = await loadYouPosition(project, [CHAIN], ACCOUNT, {
+    const [unreachable] = await loadYouPosition(project, CHAINS_HOME, ACCOUNT, {
       clientFor: () => {
         throw new Error('no rpc')
       },
@@ -208,7 +210,7 @@ describe('loadYouPosition', () => {
         throw new Error('read failed')
       },
     } as unknown as PublicClient
-    const [broken] = await loadYouPosition(project, [CHAIN], ACCOUNT, { clientFor: () => failing })
+    const [broken] = await loadYouPosition(project, CHAINS_HOME, ACCOUNT, { clientFor: () => failing })
     expect(broken.balance).toBeNull()
     expect(broken.creditBalance).toBeNull()
     expect(broken.cashOutValue).toBeNull()
@@ -219,7 +221,7 @@ describe('loadYouPosition', () => {
   it('a partially failing chain nulls only the affected fields', async () => {
     const state = defaults()
     state.credit = new Error('credit read failed')
-    const [result] = await loadYouPosition(project, [CHAIN], ACCOUNT, { clientFor: () => mockClient(state) })
+    const [result] = await loadYouPosition(project, CHAINS_HOME, ACCOUNT, { clientFor: () => mockClient(state) })
     expect(result.balance).toBe(state.balance)
     expect(result.creditBalance).toBeNull()
     expect(result.erc20Balance).toBeNull() // the split is unknown, not zero
@@ -231,7 +233,7 @@ describe('loadYouPosition', () => {
     state.balance = 0n
     state.credit = 0n
     const calls: RecordedCall[] = []
-    const [result] = await loadYouPosition(project, [CHAIN], ACCOUNT, { clientFor: () => mockClient(state, calls) })
+    const [result] = await loadYouPosition(project, CHAINS_HOME, ACCOUNT, { clientFor: () => mockClient(state, calls) })
     expect(result.cashOutValue).toBe(0n)
     expect(result.maxLoan).toBe(0n)
     expect(calls.some(call => call.functionName === 'currentReclaimableSurplusOf')).toBe(false)
@@ -241,21 +243,21 @@ describe('loadYouPosition', () => {
   it('skips the cash-out read when the supply guard fails (balance > supply)', async () => {
     const state = defaults()
     state.supply = 1n
-    const [result] = await loadYouPosition(project, [CHAIN], ACCOUNT, { clientFor: () => mockClient(state) })
+    const [result] = await loadYouPosition(project, CHAINS_HOME, ACCOUNT, { clientFor: () => mockClient(state) })
     expect(result.cashOutValue).toBeNull()
   })
 
   it('treats credits exceeding the balance as an unknown split', async () => {
     const state = defaults()
     state.credit = (state.balance as bigint) + 1n
-    const [result] = await loadYouPosition(project, [CHAIN], ACCOUNT, { clientFor: () => mockClient(state) })
+    const [result] = await loadYouPosition(project, CHAINS_HOME, ACCOUNT, { clientFor: () => mockClient(state) })
     expect(result.erc20Balance).toBeNull()
   })
 
   it('skips loans and the cash-out delay for non-revnet projects', async () => {
     const state = defaults()
     const calls: RecordedCall[] = []
-    const [result] = await loadYouPosition({ projectId: 7, isRevnet: false }, [CHAIN], ACCOUNT, {
+    const [result] = await loadYouPosition({ isRevnet: false }, CHAINS_HOME, ACCOUNT, {
       clientFor: () => mockClient(state, calls),
     })
     expect(result.maxLoan).toBeNull()
@@ -266,8 +268,39 @@ describe('loadYouPosition', () => {
 
   it('reports one row per requested chain, in order', async () => {
     const state = defaults()
-    const rows = await loadYouPosition(project, [1, 8453], ACCOUNT, { clientFor: () => mockClient(state) })
+    const rows = await loadYouPosition(
+      project,
+      [{ chainId: 1, projectId: 7 }, { chainId: 8453, projectId: 7 }],
+      ACCOUNT,
+      { clientFor: () => mockClient(state) },
+    )
     expect(rows.map(r => r.chainId)).toEqual([1, 8453])
+  })
+
+  it('reads each chain with ITS OWN project id — never the home id off-home', async () => {
+    const state = defaults()
+    const callsByChain = new Map<number, RecordedCall[]>()
+    // Divergent per-chain ids: #7 on chain 1, #42 on chain 8453.
+    await loadYouPosition(
+      project,
+      [{ chainId: 1, projectId: 7 }, { chainId: 8453, projectId: 42 }],
+      ACCOUNT,
+      {
+        clientFor: (chainId: number) => {
+          const calls: RecordedCall[] = []
+          callsByChain.set(chainId, calls)
+          return mockClient(state, calls)
+        },
+      },
+    )
+    // Chain 8453 must be read with 42n, never the home id 7n.
+    const balOn = (chainId: number) =>
+      callsByChain.get(chainId)!.find(call => call.functionName === 'totalBalanceOf')!.args[1]
+    expect(balOn(1)).toBe(7n)
+    expect(balOn(8453)).toBe(42n)
+    // The cash-out store read on 8453 must also carry 42n, not 7n.
+    const reclaim8453 = callsByChain.get(8453)!.find(call => call.functionName === 'currentReclaimableSurplusOf')
+    expect(reclaim8453?.args[0]).toBe(42n)
   })
 })
 

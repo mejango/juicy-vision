@@ -107,9 +107,9 @@ export default function ProjectTabs(props: ProjectTabsProps) {
   const renderOwnersSubtab = (id: Exclude<OwnersSubtabId, 'accounts'>): ReactNode => {
     switch (id) {
       case 'market':
-        return <MarketSubtab project={project} chainIds={chainIds} />
+        return <MarketSubtab project={project} chainIds={chainIds} chainProjects={chainProjects} />
       case 'settlement':
-        return <SettlementSubtab project={project} chainIds={chainIds} />
+        return <SettlementSubtab project={project} chainIds={chainIds} chainProjects={chainProjects} />
       case 'splits':
         return <SplitsSubtab project={project} chainIds={chainIds} chainProjects={chainProjects} variant="splits" onEditSplits={props.onEditSplits} />
       case 'reserved':
@@ -117,7 +117,7 @@ export default function ProjectTabs(props: ProjectTabsProps) {
       case 'autoissuance':
         return <AutoIssuanceSubtab project={project} chainIds={chainIds} chainProjects={chainProjects} />
       case 'loans':
-        return <LoansSubtab project={project} chainIds={chainIds} />
+        return <LoansSubtab project={project} chainIds={chainIds} chainProjects={chainProjects} />
       default:
         return null
     }

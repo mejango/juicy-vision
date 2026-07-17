@@ -10,7 +10,7 @@
  * id: the repay modal re-reads `loanOf` before sending anything.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { formatUnits } from 'viem'
 import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
@@ -31,6 +31,8 @@ export interface LoansSubtabProps {
   project: Project
   /** The sucker-group chains the project lives on (home chain first). */
   chainIds: number[]
+  /** Per-chain project ids (V6 ids differ per chain); each chain's loans are read with the id ON that chain. */
+  chainProjects?: Array<{ chainId: number; projectId: number | string }>
 }
 
 function shortAddress(address: string): string {
@@ -58,13 +60,21 @@ function formatLoanAmount(loan: IndexedLoan, value: bigint): string {
   return `${amount.toLocaleString(undefined, { maximumFractionDigits: meta.decimals === 6 ? 2 : 5 })} ${meta.symbol}`
 }
 
-export function LoansSubtab({ project, chainIds }: LoansSubtabProps) {
+export function LoansSubtab({ project, chainIds, chainProjects }: LoansSubtabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { activeAddress } = useGuardedTx()
 
   const symbol = project.tokenSymbol || 'tokens'
-  const chainKey = chainIds.join(',')
+  // Per-chain project ids (V6 ids differ per chain), restricted to the chains shown.
+  const loanChains = useMemo(
+    () =>
+      (chainProjects && chainProjects.length
+        ? chainProjects
+        : [{ chainId: project.chainId, projectId: project.projectId }]
+      ).filter(cp => chainIds.includes(cp.chainId)),
+    [chainProjects, chainIds, project.chainId, project.projectId],
+  )
 
   const [loans, setLoans] = useState<IndexedLoan[] | null>(null)
   const [loadError, setLoadError] = useState(false)
@@ -76,7 +86,7 @@ export function LoansSubtab({ project, chainIds }: LoansSubtabProps) {
   useEffect(() => {
     let cancelled = false
     setLoadError(false)
-    fetchProjectLoans(project.projectId, chainKey ? chainKey.split(',').map(Number) : [])
+    fetchProjectLoans(loanChains)
       .then(rows => {
         if (!cancelled) setLoans(rows)
       })
@@ -89,7 +99,7 @@ export function LoansSubtab({ project, chainIds }: LoansSubtabProps) {
     return () => {
       cancelled = true
     }
-  }, [project.projectId, chainKey, reloadNonce])
+  }, [loanChains, reloadNonce])
 
   // Every guarded tx (borrow, repay, …) dispatches this after it confirms.
   useEffect(() => {

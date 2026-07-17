@@ -141,6 +141,16 @@ export interface SuckerBridgeDeps {
   clientFor?: (chainId: number) => PublicClient
 }
 
+/**
+ * A chain the project lives on, with the project's id ON THAT CHAIN. V6 project
+ * ids are independent per chain, so every per-chain read/tx must use the id for
+ * that specific chain — never the home id everywhere.
+ */
+export interface SuckerChainProject {
+  chainId: number
+  projectId: number | string | bigint
+}
+
 // ---------------------------------------------------------------------------
 // Merkle helpers (pure) — exact port of the website's MerkleLib mirror
 // ---------------------------------------------------------------------------
@@ -529,7 +539,7 @@ const isZeroHex = (value: string | null | undefined): boolean => !value || /^0x0
 
 /** Active sucker pairs for a project on `chainId`. RPC failures propagate so callers can distinguish "no routes" from "could not verify". */
 export async function readSuckerPairsOf(
-  projectId: number | string,
+  projectId: number | string | bigint,
   chainId: number,
   deps: SuckerBridgeDeps = {},
 ): Promise<SuckerPair[]> {
@@ -547,7 +557,7 @@ export async function readSuckerPairsOf(
  * returns active routes only.
  */
 export async function readAllSuckerPairsOf(
-  projectId: number | string,
+  projectId: number | string | bigint,
   chainId: number,
   deps: SuckerBridgeDeps = {},
 ): Promise<SuckerPair[]> {
@@ -611,12 +621,12 @@ export async function classifySuckerInfra(
  * CCIP sucker, so a native edge and a CCIP edge on the same pair both stay.
  */
 export async function fetchBridgeRoutes(
-  projectId: number | string,
-  chainIds: number[],
+  chainProjects: readonly SuckerChainProject[],
   deps: SuckerBridgeDeps = {},
 ): Promise<BridgeRoute[]> {
   const lists = await Promise.all(
-    chainIds.map(async chainId => {
+    // Each chain resolves its sucker pairs with ITS OWN project id.
+    chainProjects.map(async ({ chainId, projectId }) => {
       const pairs = await readSuckerPairsOf(projectId, chainId, deps)
       return pairs.map(pair => ({ a: chainId, b: pair.remoteChainId, local: pair.local }))
     }),
@@ -647,13 +657,13 @@ const ONE_TOKEN = 10n ** 18n
  * adjustment via peerChainAdjustedAccountsOf). Null-tolerant per field.
  */
 export async function fetchCompositionRows(
-  projectId: number | string,
-  chainIds: number[],
+  chainProjects: readonly SuckerChainProject[],
   deps: SuckerBridgeDeps = {},
 ): Promise<CompositionRow[]> {
-  const pid = BigInt(projectId)
   return Promise.all(
-    chainIds.map(async chainId => {
+    // Each chain reads its composition with ITS OWN project id (V6 ids differ per chain).
+    chainProjects.map(async ({ chainId, projectId }) => {
+      const pid = BigInt(projectId)
       const empty: CompositionRow = {
         chainId,
         supply: null,
@@ -794,18 +804,19 @@ export async function fetchCompositionRows(
  * A↔B one. Timestamps arrive packed (ts<<128|seq) and are unpacked here.
  */
 export async function fetchGossipKnowledge(
-  projectId: number | string,
-  chainIds: number[],
+  chainProjects: readonly SuckerChainProject[],
   deps: SuckerBridgeDeps = {},
 ): Promise<GossipChainKnowledge[]> {
-  if (chainIds.length < 2) return []
-  const pid = BigInt(projectId)
+  if (chainProjects.length < 2) return []
+  const chainIds = chainProjects.map(cp => cp.chainId)
   const pairLists = await Promise.all(
-    chainIds.map(async chainId => ({ chainId, pairs: await readSuckerPairsOf(projectId, chainId, deps) })),
+    chainProjects.map(async ({ chainId, projectId }) => ({ chainId, pairs: await readSuckerPairsOf(projectId, chainId, deps) })),
   )
   const pairsByChain = new Map(pairLists.map(entry => [entry.chainId, entry.pairs]))
   return Promise.all(
-    chainIds.map(async viewChainId => {
+    // Each viewing chain reads its own registry with ITS OWN project id.
+    chainProjects.map(async ({ chainId: viewChainId, projectId }) => {
+      const pid = BigInt(projectId)
       const registry = suckerRegistryAddress(viewChainId)
       if (!registry) throw new Error(`Sucker registry unavailable on chain ${viewChainId}.`)
       const accounts = await clientOf(deps, viewChainId).readContract({
@@ -866,6 +877,7 @@ const MAX_SCAN_WINDOWS = 60
 async function scanChainMovements(
   pid: bigint,
   chainId: number,
+  remotePidFor: (chainId: number) => bigint | null,
   deps: SuckerBridgeDeps,
 ): Promise<QueuedMovement[]> {
   const client = clientOf(deps, chainId)
@@ -879,8 +891,11 @@ async function scanChainMovements(
       const { local: sourceSucker, remoteChainId, remote: peerSucker } = pair
       const infra = await classifySuckerInfra(chainId, sourceSucker, deps)
       const remoteClient = clientOf(deps, remoteChainId)
+      // The peer chain's contexts must be read with the peer chain's OWN project id.
+      const remotePid = remotePidFor(remoteChainId)
+      if (remotePid == null) throw new Error(`No known project id on peer chain ${remoteChainId}.`)
       const remoteContexts = (
-        await getAccountingContexts(remoteClient, { chainId: remoteChainId as JBChainId, projectId: pid })
+        await getAccountingContexts(remoteClient, { chainId: remoteChainId as JBChainId, projectId: remotePid })
       ).map(context => describeAccountingToken(remoteChainId, context))
       await Promise.all(
         sourceContexts.map(async acct => {
@@ -1073,17 +1088,18 @@ async function scanChainMovements(
  * while the others stay live.
  */
 export async function fetchQueuedMovements(
-  projectId: number | string,
-  chainIds: number[],
+  chainProjects: readonly SuckerChainProject[],
   deps: SuckerBridgeDeps = {},
 ): Promise<QueuedMovementsResult> {
-  const pid = BigInt(projectId)
+  const pidByChain = new Map(chainProjects.map(cp => [cp.chainId, BigInt(cp.projectId)]))
+  const remotePidFor = (chainId: number) => pidByChain.get(chainId) ?? null
   const rows: QueuedMovement[] = []
   const failedChains: number[] = []
   await Promise.all(
-    chainIds.map(async chainId => {
+    // Each chain scans with ITS OWN project id; peer contexts resolve via the map too.
+    chainProjects.map(async ({ chainId, projectId }) => {
       try {
-        rows.push(...(await scanChainMovements(pid, chainId, deps)))
+        rows.push(...(await scanChainMovements(BigInt(projectId), chainId, remotePidFor, deps)))
       } catch {
         failedChains.push(chainId)
       }
@@ -1190,7 +1206,7 @@ export interface BridgeableBalance {
 
 /** The wallet's CLAIMED ERC-20 balance — the only kind a sucker can bridge. */
 export async function readBridgeableBalance(
-  projectId: number | string,
+  projectId: number | string | bigint,
   chainId: number,
   account: Address,
   deps: SuckerBridgeDeps = {},
@@ -1221,7 +1237,7 @@ export interface MoveBackingQuote {
 
 /** The proportional backing that bridges with the tokens: surplus × amount / totalSupply. Read on the FROM chain. */
 export async function quoteMoveBacking(
-  projectId: number | string,
+  projectId: number | string | bigint,
   chainId: number,
   deps: SuckerBridgeDeps = {},
 ): Promise<MoveBackingQuote> {
@@ -1257,7 +1273,10 @@ export interface MoveRouteCheck {
  */
 export async function verifyMoveRoute(
   args: {
-    projectId: number | string
+    /** The project's id on the FROM chain — the id the source sucker is bound to. */
+    fromProjectId: number | string | bigint
+    /** The project's id on the TO chain — used to read the destination's accounting contexts. */
+    toProjectId: number | string | bigint
     fromChainId: number
     toChainId: number
     sucker: Address
@@ -1266,17 +1285,18 @@ export async function verifyMoveRoute(
   },
   deps: SuckerBridgeDeps = {},
 ): Promise<MoveRouteCheck> {
-  const { projectId, fromChainId, toChainId, sucker, termToken } = args
+  const { fromProjectId, toProjectId, fromChainId, toChainId, sucker, termToken } = args
   const client = clientOf(deps, fromChainId)
   const [suckerProject, mapping, infra, remoteContexts] = await Promise.all([
     client.readContract({ address: sucker, abi: suckerViewAbi, functionName: 'projectId' }),
     client.readContract({ address: sucker, abi: suckerViewAbi, functionName: 'remoteTokenFor', args: [termToken] }),
     classifySuckerInfra(fromChainId, sucker, deps),
-    getAccountingContexts(clientOf(deps, toChainId), { chainId: toChainId as JBChainId, projectId: BigInt(projectId) }).catch(
+    // The destination contexts belong to the project's id ON the TO chain, not the source id.
+    getAccountingContexts(clientOf(deps, toChainId), { chainId: toChainId as JBChainId, projectId: BigInt(toProjectId) }).catch(
       () => null,
     ),
   ])
-  if (suckerProject !== BigInt(projectId)) throw new Error('The selected bridge belongs to a different project.')
+  if (suckerProject !== BigInt(fromProjectId)) throw new Error('The selected bridge belongs to a different project.')
   if (!mapping.enabled || isZeroHex(mapping.addr)) throw new Error('This backing token is not mapped on the selected bridge.')
   if (infra === 'unknown') {
     throw new Error('The selected bridge type could not be verified. Try again when the source RPC is available.')
@@ -1310,7 +1330,7 @@ export interface PrepareQuote {
  * move aborts if the fresh net quote drops below the reviewed floor.
  */
 export async function quotePrepareMin(
-  args: { projectId: number | string; chainId: number; sucker: Address; amount: bigint; termToken: Address },
+  args: { projectId: number | string | bigint; chainId: number; sucker: Address; amount: bigint; termToken: Address },
   deps: SuckerBridgeDeps = {},
 ): Promise<PrepareQuote> {
   const { projectId, chainId, sucker, amount, termToken } = args

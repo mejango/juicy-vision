@@ -4,7 +4,7 @@
  * Ports website/src/discover.js renderYouCard (:17295) + renderOwnersAll (:15083).
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { formatUnits } from 'viem'
 import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
@@ -110,7 +110,16 @@ export function AccountsSubtab({
   const [reloadNonce, setReloadNonce] = useState(0)
 
   const symbol = hasErc20 ? project.tokenSymbol || 'tokens' : 'project credits'
-  const chainKey = chainIds.join(',')
+  // Per-chain project ids (V6 ids differ per chain). Only chains with a known id
+  // are read; a chain absent from the map is "not this project on that chain".
+  const youChains = useMemo(
+    () =>
+      (chainProjects && chainProjects.length
+        ? chainProjects
+        : [{ chainId: project.chainId, projectId: project.projectId }]
+      ).filter(cp => chainIds.includes(cp.chainId)),
+    [chainProjects, chainIds, project.chainId, project.projectId],
+  )
 
   useEffect(() => {
     if (!activeAddress) {
@@ -120,11 +129,7 @@ export function AccountsSubtab({
     let cancelled = false
     setLoading(true)
     setLoadError(null)
-    loadYouPosition(
-      { projectId: project.projectId, isRevnet },
-      chainKey ? chainKey.split(',').map(Number) : [],
-      activeAddress,
-    )
+    loadYouPosition({ isRevnet }, youChains, activeAddress)
       .then(loaded => {
         if (!cancelled) setRows(loaded)
       })
@@ -137,7 +142,7 @@ export function AccountsSubtab({
     return () => {
       cancelled = true
     }
-  }, [activeAddress, project.projectId, isRevnet, chainKey, reloadNonce])
+  }, [activeAddress, isRevnet, youChains, reloadNonce])
 
   const reload = useCallback(() => setReloadNonce(nonce => nonce + 1), [])
 
@@ -374,6 +379,7 @@ export function AccountsSubtab({
           onClose={() => setMoveOpen(false)}
           project={project}
           chainIds={chainIds}
+          chainProjects={chainProjects}
         />
       ) : null}
       {addLiquidityAvailable ? (
@@ -382,6 +388,7 @@ export function AccountsSubtab({
           onClose={() => setAddLpOpen(false)}
           project={project}
           chainIds={chainIds}
+          chainProjects={chainProjects}
         />
       ) : null}
     </div>

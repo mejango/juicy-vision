@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest'
-import { keccak256, type Hex } from 'viem'
+import { keccak256, zeroAddress, type Hex, type PublicClient } from 'viem'
 import {
   BYTES32_ZERO,
   CCIP_TRANSPORT_LADDER,
@@ -15,6 +15,7 @@ import {
   assertCcipTransport,
   classifyMovementStatus,
   escalateValue,
+  fetchCompositionRows,
   gossipSnapshotStaleness,
   relativeDrift,
   snapshotAge,
@@ -300,5 +301,44 @@ describe('timestamps', () => {
     expect(snapshotAge(now - 300, now)).toBe('5m ago')
     expect(snapshotAge(now - 7200, now)).toBe('2h ago')
     expect(snapshotAge(now - 172800, now)).toBe('2d ago')
+  })
+})
+
+describe('fetchCompositionRows per-chain project id', () => {
+  interface RecordedRead {
+    chainId: number
+    functionName: string
+    args: readonly unknown[]
+  }
+
+  // A client that records every read and short-circuits: controllerOf returns
+  // the zero address so the row read stops before the per-context balance reads,
+  // and everything else rejects (the callers all tolerate per-chain failures).
+  function recordingClient(chainId: number, log: RecordedRead[]): PublicClient {
+    return {
+      readContract: async ({ functionName, args }: { functionName: string; args?: readonly unknown[] }) => {
+        log.push({ chainId, functionName, args: args ?? [] })
+        if (functionName === 'controllerOf') return zeroAddress
+        if (functionName === 'terminalsOf') return []
+        throw new Error(`unhandled read ${functionName}`)
+      },
+    } as unknown as PublicClient
+  }
+
+  it('reads each chain with ITS OWN project id — never the home id off-home', async () => {
+    const log: RecordedRead[] = []
+    // Divergent per-chain ids: #7 on chain 1 (home), #42 on chain 8453.
+    await fetchCompositionRows(
+      [{ chainId: 1, projectId: 7 }, { chainId: 8453, projectId: 42 }],
+      { clientFor: (chainId: number) => recordingClient(chainId, log) },
+    )
+
+    const controllerArg = (chainId: number) =>
+      log.find(entry => entry.chainId === chainId && entry.functionName === 'controllerOf')?.args[0]
+    expect(controllerArg(1)).toBe(7n)
+    expect(controllerArg(8453)).toBe(42n)
+    // The off-home chain must NEVER be read with the home id.
+    expect(log.some(entry => entry.chainId === 8453 && entry.args[0] === 7n)).toBe(false)
+    expect(log.some(entry => entry.chainId === 1 && entry.args[0] === 42n)).toBe(false)
   })
 })

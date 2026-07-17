@@ -21,6 +21,7 @@ import { ExplainerMessage } from '../../ui/ExplainerMessage'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import type { GuardedTxPhase } from '../../../services/projectTx'
 import type { Project } from '../../../services/bendystraw'
+import { makeProjectIdResolver } from '../../../utils/projectChains'
 import {
   ammChainAvailable,
   buildRemoveLiquidityTx,
@@ -38,6 +39,8 @@ export interface RemoveLiquidityModalProps {
   project: Project
   /** The sucker-group chains the project lives on (home chain first). */
   chainIds: number[]
+  /** Per-chain project ids (V6 ids differ per chain); reads/txs target the id ON that chain. */
+  chainProjects?: Array<{ chainId: number; projectId: number | string }>
 }
 
 type Status =
@@ -62,7 +65,7 @@ function formatAmount(value: bigint, decimals: number, symbol: string): string {
   return `${amount.toLocaleString(undefined, { maximumFractionDigits: 6 })} ${symbol}`
 }
 
-export function RemoveLiquidityModal({ isOpen, onClose, project, chainIds }: RemoveLiquidityModalProps) {
+export function RemoveLiquidityModal({ isOpen, onClose, project, chainIds, chainProjects }: RemoveLiquidityModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { activeAddress, run } = useGuardedTx()
@@ -76,7 +79,12 @@ export function RemoveLiquidityModal({ isOpen, onClose, project, chainIds }: Rem
   const [reloadNonce, setReloadNonce] = useState(0)
 
   const symbol = project.tokenSymbol || 'tokens'
-  const projectId = useMemo(() => BigInt(project.projectId), [project.projectId])
+  const pidFor = useMemo(
+    () => makeProjectIdResolver(chainProjects, { chainId: project.chainId, projectId: project.projectId }),
+    [chainProjects, project.chainId, project.projectId],
+  )
+  // The selected chain's own project id (V6 ids differ per chain); null = not this project on that chain.
+  const projectId = pidFor(chainId)
 
   useEffect(() => {
     if (isOpen) {
@@ -87,7 +95,7 @@ export function RemoveLiquidityModal({ isOpen, onClose, project, chainIds }: Rem
   }, [isOpen])
 
   useEffect(() => {
-    if (!isOpen || !chainId || !activeAddress) return
+    if (!isOpen || !chainId || !activeAddress || projectId == null) return
     let cancelled = false
     setLoading(true)
     setLoadError(false)

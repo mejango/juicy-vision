@@ -24,6 +24,7 @@ import { CHAINS, NATIVE_TOKEN } from '../../../constants'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import { type GuardedTxPhase } from '../../../services/projectTx'
 import type { Project } from '../../../services/bendystraw'
+import { makeProjectIdResolver } from '../../../utils/projectChains'
 import {
   assertCcipTransport,
   classifySuckerInfra,
@@ -45,6 +46,8 @@ export interface MoveChainsModalProps {
   project: Project
   /** The sucker-group chains the project lives on (home chain first). */
   chainIds: number[]
+  /** Per-chain project ids (V6 ids differ per chain); reads/txs target the id ON each chain. */
+  chainProjects?: Array<{ chainId: number; projectId: number | string }>
 }
 
 const PHASE_LABELS: Record<GuardedTxPhase, string> = {
@@ -92,12 +95,18 @@ function formatBalance(value: bigint, decimals: number, symbol: string): string 
   return `${amount.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${symbol}`
 }
 
-export function MoveChainsModal({ isOpen, onClose, project, chainIds }: MoveChainsModalProps) {
+export function MoveChainsModal({ isOpen, onClose, project, chainIds, chainProjects }: MoveChainsModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { activeAddress, run } = useGuardedTx()
 
   const symbol = project.tokenSymbol || 'tokens'
+  // Per-chain project ids (V6 ids differ per chain): the source sucker + FROM-chain
+  // reads use the FROM id; the destination contexts use the TO id.
+  const pidFor = useMemo(
+    () => makeProjectIdResolver(chainProjects, { chainId: project.chainId, projectId: project.projectId }),
+    [chainProjects, project.chainId, project.projectId],
+  )
   const [fromChainId, setFromChainId] = useState<number>(chainIds[0])
   const [toChainId, setToChainId] = useState<number>(chainIds[1] ?? chainIds[0])
   const [amountInput, setAmountInput] = useState('')
@@ -107,6 +116,10 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds }: MoveChai
   const [bridgeIndex, setBridgeIndex] = useState(0)
   const [backing, setBacking] = useState<MoveBackingQuote | null>(null)
   const [flow, setFlow] = useState<FlowState>({ kind: 'idle' })
+
+  // The project's id on each selected chain (null = project not on that chain).
+  const fromPid = pidFor(fromChainId)
+  const toPid = pidFor(toChainId)
 
   // Reset per open / per source chain.
   useEffect(() => {
@@ -121,27 +134,27 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds }: MoveChai
   // Balance + pairs + backing all key off the FROM chain; stale async results
   // are dropped by re-checking the chain the effect ran for.
   useEffect(() => {
-    if (!isOpen) return
+    if (!isOpen || fromPid == null) return
     let cancelled = false
     setBalance(null)
     setPairs(null)
     setBacking(null)
     setMatchInfras(null)
     if (activeAddress) {
-      readBridgeableBalance(project.projectId, fromChainId, activeAddress).then(result => {
+      readBridgeableBalance(fromPid, fromChainId, activeAddress).then(result => {
         if (!cancelled) setBalance(result)
       })
     }
-    readSuckerPairsOf(project.projectId, fromChainId)
+    readSuckerPairsOf(fromPid, fromChainId)
       .then(result => !cancelled && setPairs(result))
       .catch(() => !cancelled && setPairs('error'))
-    quoteMoveBacking(project.projectId, fromChainId).then(result => {
+    quoteMoveBacking(fromPid, fromChainId).then(result => {
       if (!cancelled) setBacking(result)
     })
     return () => {
       cancelled = true
     }
-  }, [isOpen, fromChainId, activeAddress, project.projectId])
+  }, [isOpen, fromChainId, fromPid, activeAddress])
 
   const matches = useMemo(
     () => (Array.isArray(pairs) ? pairs.filter(pair => pair.remoteChainId === toChainId) : []),
@@ -193,6 +206,8 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds }: MoveChai
   const blockReason = useMemo(() => {
     if (!activeAddress) return 'Connect a wallet to move tokens.'
     if (fromChainId === toChainId) return 'Pick two different chains to bridge between.'
+    if (fromPid == null) return `This project is not on ${chainName(fromChainId)}.`
+    if (toPid == null) return `This project is not on ${chainName(toChainId)}.`
     if (pairs === 'error') return `Could not verify bridge routes on ${chainName(fromChainId)}. Try again shortly.`
     if (pairs == null) return 'Finding a verified bridge route…'
     if (!matches.length) return `No bridge from ${chainName(fromChainId)} to ${chainName(toChainId)}.`
@@ -207,23 +222,25 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds }: MoveChai
     if (parsedAmount === 0n) return 'Enter an amount.'
     if (balance.balance != null && parsedAmount > balance.balance) return 'Amount exceeds your bridgeable balance.'
     return null
-  }, [activeAddress, fromChainId, toChainId, pairs, matches, selectedSucker, balance, backing, parsedAmount, amountInput, symbol])
+  }, [activeAddress, fromChainId, toChainId, fromPid, toPid, pairs, matches, selectedSucker, balance, backing, parsedAmount, amountInput, symbol])
 
   // -- Review: run every route guard + quote the floor, then freeze the inputs.
   const review = useCallback(async () => {
     if (blockReason || !activeAddress || !selectedSucker || !balance?.token || !backing?.acct || parsedAmount == null) return
+    if (fromPid == null || toPid == null) return
     setFlow({ kind: 'checking' })
     try {
       const termToken = backing.acct.token
       const { infra } = await verifyMoveRoute({
-        projectId: project.projectId,
+        fromProjectId: fromPid,
+        toProjectId: toPid,
         fromChainId,
         toChainId,
         sucker: selectedSucker,
         termToken,
       })
       const quote = await quotePrepareMin({
-        projectId: project.projectId,
+        projectId: fromPid,
         chainId: fromChainId,
         sucker: selectedSucker,
         amount: parsedAmount,
@@ -243,7 +260,7 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds }: MoveChai
     } catch (error) {
       setFlow({ kind: 'error', message: error instanceof Error ? error.message : 'Could not safely preview this movement.' })
     }
-  }, [blockReason, activeAddress, selectedSucker, balance, backing, parsedAmount, backingMoved, project.projectId, fromChainId, toChainId])
+  }, [blockReason, activeAddress, selectedSucker, balance, backing, parsedAmount, backingMoved, fromPid, toPid, fromChainId, toChainId])
 
   // -- Submit: step 1 prepare (approval pre-step + re-quote guard), step 2 toRemote.
   const submit = useCallback(
@@ -268,10 +285,11 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds }: MoveChai
             // Re-read the reviewed state right before the send: the route must
             // still be valid and the live net quote must not have dropped
             // below the floor the user reviewed.
-            await verifyMoveRoute({ projectId: project.projectId, fromChainId, toChainId, sucker, termToken })
+            if (fromPid == null || toPid == null) throw new Error('This project is not on the selected chains.')
+            await verifyMoveRoute({ fromProjectId: fromPid, toProjectId: toPid, fromChainId, toChainId, sucker, termToken })
             const [fresh, freshBalance] = await Promise.all([
-              quotePrepareMin({ projectId: project.projectId, chainId: fromChainId, sucker, amount, termToken }),
-              activeAddress ? readBridgeableBalance(project.projectId, fromChainId, activeAddress) : Promise.resolve(null),
+              quotePrepareMin({ projectId: fromPid, chainId: fromChainId, sucker, amount, termToken }),
+              activeAddress ? readBridgeableBalance(fromPid, fromChainId, activeAddress) : Promise.resolve(null),
             ])
             if (fresh.net < minReclaimed) {
               throw new Error('The live reclaim quote dropped below the reviewed floor. Reopen to re-review.')
@@ -304,7 +322,7 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds }: MoveChai
         setFlow({ kind: 'error', message: error instanceof Error ? error.message : 'The move failed.' })
       }
     },
-    [activeAddress, fromChainId, toChainId, project.projectId, run],
+    [activeAddress, fromChainId, toChainId, fromPid, toPid, run],
   )
 
   if (!isOpen) return null
