@@ -83,7 +83,7 @@ export const DEADLINE_HOOKS: Record<string, string> = {
  * OP Sepolia (11155420), where lphook rows fall back to a plain wallet split
  * (mirroring the website's missing-getAddress fallthrough).
  */
-export const JBP6_FEE_LP_SPLIT_HOOK = '0xfcdbabd7b8de07c6e4ca7d79790e235848edc251'
+export const JBP6_FEE_LP_SPLIT_HOOK = '0xae6705c33c8b46f56878a1d4f1ce4d75fcfb6f62'
 const LP_SPLIT_HOOK_CHAINS = new Set([1, 10, 8453, 42161, 84532, 421614, 11155111])
 
 // ---------------------------------------------------------------------------
