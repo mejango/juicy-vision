@@ -21,10 +21,15 @@ import {
   type YouPositionRow,
 } from '../../../services/youPosition'
 import { ClaimCreditsModal } from './ClaimCreditsModal'
+import { OpenLoanModal } from './OpenLoanModal'
+import MoveChainsModal from './MoveChainsModal'
+import { AddLiquidityModal } from './AddLiquidityModal'
 
 export interface AccountsSubtabProps {
   project: Project
   chainIds: number[]
+  /** Per-chain project ids (V6 ids differ per chain) — threaded to the loan modal. */
+  chainProjects?: Array<{ chainId: number; projectId: number | string }>
   isRevnet: boolean
   hasErc20: boolean
   /** Opens the existing CashOutForm modal. */
@@ -79,6 +84,7 @@ function balanceSub(hasCredit: boolean, hasErc20Portion: boolean): string | unde
 export function AccountsSubtab({
   project,
   chainIds,
+  chainProjects,
   isRevnet,
   hasErc20,
   onCashOut,
@@ -98,6 +104,9 @@ export function AccountsSubtab({
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [claimOpen, setClaimOpen] = useState(false)
+  const [loanOpen, setLoanOpen] = useState(false)
+  const [moveOpen, setMoveOpen] = useState(false)
+  const [addLpOpen, setAddLpOpen] = useState(false)
   const [reloadNonce, setReloadNonce] = useState(0)
 
   const symbol = hasErc20 ? project.tokenSymbol || 'tokens' : 'project credits'
@@ -314,9 +323,9 @@ export function AccountsSubtab({
         {activeAddress ? (
           <div className="flex flex-wrap gap-2 mt-4">
             {actionButton('Cash out', onCashOut)}
-            {loanAvailable && onOpenLoan ? actionButton('Get a loan', onOpenLoan) : null}
-            {moveChainsAvailable && onMoveChains ? actionButton('Move between chains', onMoveChains) : null}
-            {addLiquidityAvailable && onAddLiquidity ? actionButton('Add market liquidity', onAddLiquidity) : null}
+            {loanAvailable ? actionButton('Get a loan', onOpenLoan ?? (() => setLoanOpen(true))) : null}
+            {moveChainsAvailable ? actionButton('Move between chains', onMoveChains ?? (() => setMoveOpen(true))) : null}
+            {addLiquidityAvailable ? actionButton('Add market liquidity', onAddLiquidity ?? (() => setAddLpOpen(true))) : null}
             {hasErc20 && claimRows.length
               ? actionButton(
                   'Claim credits',
@@ -349,6 +358,32 @@ export function AccountsSubtab({
         rows={claimRows}
         onClaimed={reload}
       />
+      {loanAvailable ? (
+        <OpenLoanModal
+          isOpen={loanOpen}
+          onClose={() => setLoanOpen(false)}
+          project={project}
+          chainIds={chainIds}
+          chainProjects={chainProjects}
+          onOpened={reload}
+        />
+      ) : null}
+      {moveChainsAvailable ? (
+        <MoveChainsModal
+          isOpen={moveOpen}
+          onClose={() => setMoveOpen(false)}
+          project={project}
+          chainIds={chainIds}
+        />
+      ) : null}
+      {addLiquidityAvailable ? (
+        <AddLiquidityModal
+          isOpen={addLpOpen}
+          onClose={() => setAddLpOpen(false)}
+          project={project}
+          chainIds={chainIds}
+        />
+      ) : null}
     </div>
   )
 }

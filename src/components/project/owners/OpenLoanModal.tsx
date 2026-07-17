@@ -49,6 +49,8 @@ export interface OpenLoanModalProps {
   project: Project
   /** The sucker-group chains the revnet lives on (home chain first). */
   chainIds: number[]
+  /** Per-chain project ids — the revnetId differs per chain. Falls back to the home id. */
+  chainProjects?: Array<{ chainId: number; projectId: number | string }>
   /** Fired after the borrow confirms so the caller can refresh loan/balance reads. */
   onOpened?: (chainId: number) => void
 }
@@ -127,7 +129,7 @@ function LoanFeeChart({ prepaidFee, isDark }: { prepaidFee: number; isDark: bool
   )
 }
 
-export function OpenLoanModal({ isOpen, onClose, project, chainIds, onOpened }: OpenLoanModalProps) {
+export function OpenLoanModal({ isOpen, onClose, project, chainIds, chainProjects, onOpened }: OpenLoanModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { activeAddress, run } = useGuardedTx()
@@ -136,6 +138,13 @@ export function OpenLoanModal({ isOpen, onClose, project, chainIds, onOpened }: 
   const loanChains = chainIds.filter(hasRevLoans)
 
   const [chainId, setChainId] = useState<number>(loanChains[0] ?? chainIds[0] ?? project.chainId)
+  // V6 revnet ids are independent per chain — the borrow's revnetId must be the
+  // id on the SELECTED chain, not the home id.
+  const revnetIdFor = useCallback(
+    (cid: number): bigint =>
+      BigInt(chainProjects?.find(cp => cp.chainId === cid)?.projectId ?? project.projectId),
+    [chainProjects, project.projectId],
+  )
   const [amountInput, setAmountInput] = useState('')
   const [prepaidFee, setPrepaidFee] = useState(LOAN_MIN_PREPAID)
   const [balance, setBalance] = useState<bigint | null>(null)
@@ -188,7 +197,7 @@ export function OpenLoanModal({ isOpen, onClose, project, chainIds, onOpened }: 
     setFeeless(false)
     setQuote(null)
     const cid = chainId as JBChainId
-    const projectId = BigInt(project.projectId)
+    const projectId = revnetIdFor(chainId)
     let client: ReturnType<typeof publicClientFor>
     try {
       client = publicClientFor(chainId)
@@ -228,7 +237,7 @@ export function OpenLoanModal({ isOpen, onClose, project, chainIds, onOpened }: 
     return () => {
       cancelled = true
     }
-  }, [isOpen, chainId, project.projectId, activeAddress])
+  }, [isOpen, chainId, project.projectId, activeAddress, revnetIdFor])
 
   // Live borrowable preview (debounced). borrowableAmountFrom returns 0 for ALL
   // collateral while the revnet's cash-out delay is active — time-locked, not an error.
@@ -254,7 +263,7 @@ export function OpenLoanModal({ isOpen, onClose, project, chainIds, onOpened }: 
       }
       quoteBorrowable(client, {
         chainId,
-        revnetId: BigInt(project.projectId),
+        revnetId: revnetIdFor(chainId),
         collateralCount: collateral,
         decimals: source.decimals,
         currency: source.currency,
@@ -273,7 +282,7 @@ export function OpenLoanModal({ isOpen, onClose, project, chainIds, onOpened }: 
     }, 350)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, chainId, collateral, source?.token, project.projectId])
+  }, [isOpen, chainId, collateral, source?.token, project.projectId, revnetIdFor])
 
   if (!isOpen) return null
 
@@ -308,7 +317,7 @@ export function OpenLoanModal({ isOpen, onClose, project, chainIds, onOpened }: 
       return
     }
     const cid = chainId as JBChainId
-    const projectId = BigInt(project.projectId)
+    const projectId = revnetIdFor(chainId)
     const client = publicClientFor(chainId)
     const reviewedPrepaidFee = prepaidFee
     // The floor comes from the quote the user actually saw in the panel — not a

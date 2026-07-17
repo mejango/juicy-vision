@@ -19,6 +19,8 @@ export interface OwnersTabProps {
   project: Project
   /** The sucker-group chains the project lives on (home chain first). */
   chainIds: number[]
+  /** Per-chain project ids (V6 ids differ per chain). */
+  chainProjects?: Array<{ chainId: number; projectId: number | string }>
   isRevnet: boolean
   /** True once the project's ERC-20 is deployed (drives the Market subtab + token panel). */
   hasErc20: boolean
@@ -52,6 +54,7 @@ function shortAddress(address: string): string {
 export default function OwnersTab({
   project,
   chainIds,
+  chainProjects,
   isRevnet,
   hasErc20,
   erc20Address,
@@ -194,6 +197,7 @@ export default function OwnersTab({
             <AccountsSubtab
               project={project}
               chainIds={chainIds}
+              chainProjects={chainProjects}
               isRevnet={isRevnet}
               hasErc20={hasErc20}
               onCashOut={onCashOut}

@@ -199,6 +199,7 @@ export default function ProjectTabs(props: ProjectTabsProps) {
           <OwnersTab
             project={project}
             chainIds={chainIds}
+            chainProjects={chainProjects}
             isRevnet={isRevnet}
             hasErc20={hasErc20}
             erc20Address={erc20Address}
