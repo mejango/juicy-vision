@@ -369,6 +369,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
         hasShop={hasNftHook}
         hasErc20={!!project.token}
         erc20Address={(project.token as `0x${string}`) || null}
+        revnetOperator={revnetOperator}
         canEdit={isOwner}
         activeTab={activeTab}
         onTabChange={setActiveTab}
