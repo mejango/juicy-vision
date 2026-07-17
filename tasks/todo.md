@@ -107,9 +107,25 @@ the highest-risk invariants instead:
 - No dangerouslySetInnerHTML in ported tabs; loans have no interest-rate language;
   no hardcoded-18-dec in owner subtabs; loans grant BURN_TOKENS not SDK ROOT.
 
+### Manual audit round 2 — findings FOUND + FIXED
+- **CRITICAL** mobile pay card missing (ce5d4d2) — restored.
+- **HIGH** per-chain projectId ignored for reserved distribute / pending / auto-issue
+  (2aa3d1b) — threaded ChainProject[]; V6 ids differ per chain, home id off-home
+  hit the wrong project (permissionless tx). Tests updated.
+- **HIGH** loan/move/add-liquidity modals were built but NEVER MOUNTED — unreachable
+  (f105b44). AccountsSubtab now self-mounts all three. Same commit: OpenLoanModal
+  used home revnetId despite a chain selector → per-chain revnetIdFor.
+- **MED** open-loan floor recomputed from a fresh quote and sent without re-display
+  (c947954) — now uses the reviewed quote, aborts on drop (matches sibling modals).
+
 ### STILL TODO before merge
-- Re-run the full tab-by-tab parity sweep + exhaustive tx-safety audit after the
-  session limit resets. The manual pass was not exhaustive.
+- **Per-chain projectId in suckerBridge (MoveChainsModal + SettlementSubtab)** — same
+  class as 2aa3d1b: both use home project.projectId with a user-selected source chain.
+  Lower risk (Settlement = display reads; MoveChains sucker resolution fails safe —
+  `prepare` takes no projectId, only readSuckerPairsOf does), but should thread
+  per-chain ids through suckerBridge.ts. Follow-up, not started (budget).
+- Re-run the full 4-agent adversarial audit after the session limit resets; the
+  manual passes were not exhaustive (tab-by-tab parity + remaining tx paths).
 
 ### Deferred (flagged in PR, not bugs)
 Safe-queue cards; direct-swap execution (link-out); LP partial-exit; copy-project
