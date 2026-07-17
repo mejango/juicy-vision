@@ -7,6 +7,8 @@ export { useOmnichainTransaction } from './useOmnichainTransaction'
 export { useOmnichainQueueRuleset } from './useOmnichainQueueRuleset'
 export { useOmnichainDistribute } from './useOmnichainDistribute'
 export { useOmnichainDeployERC20 } from './useOmnichainDeployERC20'
+export { useOmnichainDeployProjectPayer, preflightProjectPayerTransactions } from './useOmnichainDeployProjectPayer'
+export type { OmnichainDeployProjectPayerParams, UseOmnichainDeployProjectPayerReturn } from './useOmnichainDeployProjectPayer'
 
 // Project creation hooks
 export { useOmnichainLaunchProject } from './useOmnichainLaunchProject'
