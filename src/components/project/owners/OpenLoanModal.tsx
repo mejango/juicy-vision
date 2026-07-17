@@ -328,6 +328,12 @@ export function OpenLoanModal({ isOpen, onClose, project, chainIds, chainProject
       return
     }
     const minBorrow = borrowMinAmountFromQuote(reviewedBorrowable)
+    // A dust quote floors the 99% minBorrow to 0, which would send a
+    // value-bearing param at 0 (no lower bound on what's borrowed). Abort.
+    if (minBorrow === 0n) {
+      setError('The loan quote is too small to borrow. Add more collateral and try again.')
+      return
+    }
     try {
       setStep({ kind: 'checking' })
       // Fresh quote at submit time — abort (never silently lower the floor) if the

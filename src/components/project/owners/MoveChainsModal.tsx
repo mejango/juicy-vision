@@ -14,7 +14,7 @@
  * (canonical tokens over a native bridge strand in escrow).
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { encodeFunctionData, formatUnits, parseUnits } from 'viem'
 import { type JBChainId } from '@bananapus/nana-sdk-core'
@@ -116,6 +116,11 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds, chainProje
   const [bridgeIndex, setBridgeIndex] = useState(0)
   const [backing, setBacking] = useState<MoveBackingQuote | null>(null)
   const [flow, setFlow] = useState<FlowState>({ kind: 'idle' })
+  // Ref-lock: the Confirm button lives on the frozen 'review' screen, which stays
+  // mounted through the async gap before run() flips flow to 'preparing'. Guard
+  // against a double-confirm (and against clicks racing a chain-select change).
+  const confirmLock = useRef(false)
+  const [confirming, setConfirming] = useState(false)
 
   // The project's id on each selected chain (null = project not on that chain).
   const fromPid = pidFor(fromChainId)
@@ -266,6 +271,10 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds, chainProje
   const submit = useCallback(
     async (reviewed: Extract<FlowState, { kind: 'review' }>) => {
       if (!activeAddress) return
+      // Acquire the in-flight lock before the first await; release in finally.
+      if (confirmLock.current) return
+      confirmLock.current = true
+      setConfirming(true)
       const { amount, sucker, erc20, termToken, infra, minReclaimed } = reviewed
       try {
         const prepare = buildBridgePrepareTx({
@@ -320,6 +329,9 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds, chainProje
         setFlow({ kind: 'done' })
       } catch (error) {
         setFlow({ kind: 'error', message: error instanceof Error ? error.message : 'The move failed.' })
+      } finally {
+        confirmLock.current = false
+        setConfirming(false)
       }
     },
     [activeAddress, fromChainId, toChainId, fromPid, toPid, run],
@@ -368,7 +380,7 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds, chainProje
           {/* From / to */}
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className={labelClass}>From</span>
-            <select value={fromChainId} onChange={event => setFromChainId(Number(event.target.value))} disabled={busy} className={selectClass}>
+            <select value={fromChainId} onChange={event => setFromChainId(Number(event.target.value))} disabled={busy || flow.kind === 'review'} className={selectClass}>
               {chainIds.map(chainId => (
                 <option key={chainId} value={chainId}>
                   {chainName(chainId)}
@@ -376,7 +388,7 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds, chainProje
               ))}
             </select>
             <span className={labelClass}>to</span>
-            <select value={toChainId} onChange={event => setToChainId(Number(event.target.value))} disabled={busy} className={selectClass}>
+            <select value={toChainId} onChange={event => setToChainId(Number(event.target.value))} disabled={busy || flow.kind === 'review'} className={selectClass}>
               {chainIds.map(chainId => (
                 <option key={chainId} value={chainId}>
                   {chainName(chainId)}
@@ -507,7 +519,8 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds, chainProje
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => submit(flow)}
-                  className="px-3 py-1 text-xs font-bold bg-amber-500 text-black hover:bg-amber-500/90 transition-colors"
+                  disabled={confirming}
+                  className="px-3 py-1 text-xs font-bold bg-amber-500 text-black hover:bg-amber-500/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Confirm move
                 </button>

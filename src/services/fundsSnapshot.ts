@@ -417,6 +417,36 @@ export function kindTotals(rows: FundsChainRow[]): FundsKindTotals {
   }
 }
 
+/**
+ * Cross-token USD total across every accounting-token kind — the same figure
+ * the project header shows. Returns null (never a partial sum) when any kind is
+ * unreadable (a chain read failed) or unpriceable: an ETH balance without a
+ * live price, or a custom accounting token holding a nonzero, unvalued balance.
+ * A zero balance in an unpriceable kind is safely worth $0 and doesn't block.
+ */
+export function totalBalanceUsd(
+  kinds: FundsKindSnapshot[],
+  ethPrice: number | null,
+): number | null {
+  let total = 0
+  for (const { kind, totals } of kinds) {
+    if (!totals.allChainsOk || totals.balance == null) return null
+    const amount = Number(formatUnits(totals.balance, kind.decimals))
+    if (kind.key === 'usdc') {
+      total += amount
+    } else if (kind.key === 'native') {
+      if (amount > 0) {
+        if (ethPrice == null) return null
+        total += amount * ethPrice
+      }
+    } else if (amount > 0) {
+      // Custom accounting token with a live balance we can't value → suppress.
+      return null
+    }
+  }
+  return total
+}
+
 function normalizeChainRefs(project: FundsProjectRef, chainRefs: readonly FundsChainRef[]) {
   const refs = chainRefs.length ? chainRefs : [project.chainId]
   return refs.map(ref => {

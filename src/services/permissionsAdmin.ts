@@ -110,6 +110,9 @@ const PERMISSION_BY_ID = new Map(PERMISSIONS.map(info => [info.id, info]))
 
 export const JB_PERMISSION_MAX_ID = PERMISSIONS[PERMISSIONS.length - 1]?.id ?? 0
 
+/** ROOT (id 1) grants EVERY permission — full control of the project. Gated behind an extra confirm in the UI. */
+export const JB_ROOT_PERMISSION_ID: number = JBPermissionIdsV6.ROOT
+
 export function permissionLabel(id: number): string {
   return PERMISSION_BY_ID.get(id)?.label ?? `Permission #${id}`
 }

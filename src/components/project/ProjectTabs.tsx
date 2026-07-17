@@ -44,6 +44,8 @@ export interface ProjectTabsProps {
   hasShop: boolean
   hasErc20: boolean
   erc20Address?: `0x${string}` | null
+  /** Resolved revnet operator address — powers Overview's Operator row on revnets. */
+  revnetOperator?: string | null
   canEdit: boolean
   activeTab: ProjectTabId
   onTabChange: (tab: ProjectTabId) => void
@@ -137,6 +139,7 @@ export default function ProjectTabs(props: ProjectTabsProps) {
             connectedChains={connectedChains}
             isRevnet={isRevnet}
             canEdit={canEdit}
+            revnetOperator={props.revnetOperator}
             onEditMetadata={props.onEditMetadata}
             priceChart={isRevnet ? props.priceChart : undefined}
             summary={props.summary}

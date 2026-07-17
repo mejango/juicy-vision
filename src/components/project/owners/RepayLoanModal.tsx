@@ -174,6 +174,14 @@ export function RepayLoanModal({ isOpen, onClose, project, loan, onRepaid }: Rep
           if (live.amount !== fresh.amount || live.collateral !== fresh.collateral) {
             throw new Error('The loan changed while the repayment was loading. Review the new amounts and try again.')
           }
+          // The fee ramps per-second; maxRepay only baked ~120s of that ramp at
+          // review. A slow ERC-20 repay (approval + send) can outrun the guard —
+          // re-read the live fee and abort if the owed amount now exceeds maxRepay
+          // (which would revert on-chain) instead of quoting a stale ceiling.
+          const liveFee = await readSourceFeeAmount(client, chainId, live, live.amount)
+          if (live.amount + liveFee > maxRepay) {
+            throw new Error('The repayment fee grew past the reviewed ceiling while the transaction was loading. Review the new total and try again.')
+          }
         },
         onPhase: phase => setStep({ kind: 'running', phase }),
       })

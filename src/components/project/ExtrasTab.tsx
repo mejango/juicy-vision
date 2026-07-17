@@ -18,6 +18,7 @@ import type { GuardedTxPhase } from '../../services/projectTx'
 import {
   buildProjectPayerDeployCall,
   fetchProjectPayers,
+  getProjectPayerDeployer,
   normalizeProjectPayerMetadata,
   type ProjectPayerRow,
 } from '../../services/projectPayers'
@@ -132,7 +133,9 @@ export default function ExtrasTab({ projectId, chainId, tokenSymbol, connectedCh
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editable])
   const [metadataHex, setMetadataHex] = useState('0x')
-  const [selectedChains, setSelectedChains] = useState<number[]>(() => chains.map((c) => c.chainId))
+  // Only chains that actually have JBProjectPayerDeployer can be selected.
+  const [selectedChains, setSelectedChains] = useState<number[]>(() =>
+    chains.filter((c) => getProjectPayerDeployer(c.chainId)).map((c) => c.chainId))
   const [deployStatus, setDeployStatus] = useState<Status>(IDLE)
   const [deployBusy, setDeployBusy] = useState(false)
 
@@ -153,10 +156,11 @@ export default function ExtrasTab({ projectId, chainId, tokenSymbol, connectedCh
 
   useEffect(() => { loadPayers() }, [loadPayers])
 
-  // Keep the chain checklist in sync if connected chains resolve late.
+  // Keep the chain checklist in sync if connected chains resolve late. Chains
+  // without a deployer can never be selected, so they're excluded outright.
   useEffect(() => {
     setSelectedChains((previous) => {
-      const known = chains.map((c) => c.chainId)
+      const known = chains.filter((c) => getProjectPayerDeployer(c.chainId)).map((c) => c.chainId)
       const kept = previous.filter((id) => known.includes(id))
       const added = known.filter((id) => !previous.includes(id) && !kept.includes(id))
       return [...kept, ...added]
@@ -387,22 +391,33 @@ export default function ExtrasTab({ projectId, chainId, tokenSymbol, connectedCh
         <div className="space-y-1">
           <label className={label}>Deploy on</label>
           <div className="flex flex-wrap gap-x-4 gap-y-1">
-            {chains.map((c) => (
-              <label
-                key={c.chainId}
-                className={`flex items-center gap-2 text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedChains.includes(c.chainId)}
-                  onChange={(e) => setSelectedChains((previous) =>
-                    e.target.checked
-                      ? [...previous, c.chainId]
-                      : previous.filter((id) => id !== c.chainId))}
-                />
-                {chainName(c.chainId)}
-              </label>
-            ))}
+            {chains.map((c) => {
+              const deployer = getProjectPayerDeployer(c.chainId)
+              return (
+                <label
+                  key={c.chainId}
+                  className={`flex items-center gap-2 text-sm ${
+                    deployer
+                      ? isDark ? 'text-gray-300' : 'text-gray-700'
+                      : `cursor-not-allowed ${isDark ? 'text-gray-600' : 'text-gray-400'}`
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!deployer && selectedChains.includes(c.chainId)}
+                    disabled={!deployer}
+                    onChange={(e) => setSelectedChains((previous) =>
+                      e.target.checked
+                        ? [...previous, c.chainId]
+                        : previous.filter((id) => id !== c.chainId))}
+                  />
+                  {chainName(c.chainId)}
+                  {!deployer && (
+                    <span className="text-[10px] uppercase tracking-wide opacity-70">no deployer</span>
+                  )}
+                </label>
+              )
+            })}
           </div>
         </div>
 

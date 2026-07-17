@@ -63,6 +63,11 @@ const HOOK_PRICING_CONTEXT_ABI = [{
     { name: 'decimals', type: 'uint256' },
   ],
 }] as const
+const HOOK_PAY_CREDITS_ABI = [{
+  name: 'payCreditsOf', type: 'function', stateMutability: 'view',
+  inputs: [{ name: 'addr', type: 'address' }],
+  outputs: [{ name: '', type: 'uint256' }],
+}] as const
 
 const MAX_REVIEWABLE_TIER_ID = 1_000
 
@@ -134,14 +139,6 @@ export async function fetchNFTPricingContext(
   return readPricingContext(client, hookAddress)
 }
 
-const HOOK_PAY_CREDITS_ABI = [{
-  name: 'payCreditsOf',
-  type: 'function',
-  stateMutability: 'view',
-  inputs: [{ name: 'addr', type: 'address' }],
-  outputs: [{ name: '', type: 'uint256' }],
-}] as const
-
 /**
  * Read a beneficiary's shop credit balance (payCreditsOf) on a recognized 721 hook.
  * Credits are denominated in the hook's pricing unit and offset the NFT checkout total.
@@ -167,6 +164,28 @@ export async function fetchPayCredits(
   } catch {
     return 0n
   }
+}
+
+/**
+ * The connected wallet's 721 "shop credit" held by a collection's hook. These
+ * are 721 pay credits — overpayment left over from a prior purchase, denominated
+ * in the hook's pricing currency/decimals — and are applied automatically to an
+ * eligible same-wallet checkout. Distinct from Juicebox project-token pay credits.
+ * Returns the raw amount (in pricing decimals); 0n when there's no credit.
+ */
+export async function fetchShopPayCredits(
+  hookAddress: `0x${string}`,
+  account: `0x${string}`,
+  chainId: number,
+): Promise<bigint> {
+  const { chain, rpcUrl } = nftChainConfig(chainId)
+  const client = createPublicClient({ chain, transport: http(rpcUrl) })
+  return client.readContract({
+    address: hookAddress,
+    abi: HOOK_PAY_CREDITS_ABI,
+    functionName: 'payCreditsOf',
+    args: [account],
+  })
 }
 
 export function getEffectiveTierPrice(
