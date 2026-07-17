@@ -107,6 +107,38 @@ describe('unlimited sentinel (>= 2^200)', () => {
   })
 })
 
+describe('per-chain project-id safety (no home-id fallback off-home)', () => {
+  it('maps a bare home chain-id ref to the home project id', async () => {
+    const home = mockClient({ balance: 10n ** 18n, surplus: 0n })
+    const snapshot = await loadFundsSnapshot({ projectId: 3, chainId: 1 }, [1], depsFor({ 1: home.client }))
+    expect(snapshot.kinds[0].rows[0].projectId).toBe(3)
+  })
+
+  it('reads each explicit ref with ITS OWN project id, never the home id', async () => {
+    const a = mockClient({ balance: 10n ** 18n, surplus: 0n })
+    const b = mockClient({ balance: 2n * 10n ** 18n, surplus: 0n })
+    const snapshot = await loadFundsSnapshot(
+      { projectId: 3, chainId: 1 },
+      [{ chainId: 1, projectId: 3 }, { chainId: 8453, projectId: 42 }],
+      depsFor({ 1: a.client, 8453: b.client }),
+    )
+    const rows = snapshot.kinds[0].rows
+    expect(rows.find(row => row.chainId === 8453)!.projectId).toBe(42)
+    // The off-home read used project 42, NOT the home id 3.
+    const readCall = b.calls.find(call => call.functionName === 'balanceOf')!
+    expect(readCall.args[1]).toBe(42n)
+  })
+
+  it('rejects a bare NON-home chain-id ref rather than silently using the home id', async () => {
+    const home = mockClient({ balance: 10n ** 18n, surplus: 0n })
+    // 8453 as a bare number carries no per-chain id — using the home id 3 there
+    // would target the wrong project, so the loader must throw instead.
+    await expect(
+      loadFundsSnapshot({ projectId: 3, chainId: 1 }, [8453], depsFor({ 8453: home.client })),
+    ).rejects.toThrow(/not the home chain/)
+  })
+})
+
 describe('partial-failure total suppression', () => {
   it('never sums partial data: one failed chain nulls every total', async () => {
     const okChain = mockClient({

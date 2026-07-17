@@ -17,6 +17,8 @@ import { publicClientFor, type GuardedTxPhase } from '../../../services/projectT
 
 export interface ClaimCreditsRow {
   chainId: number
+  /** The project's id ON this chain (V6 ids differ per chain) — the claim targets THIS id. */
+  projectId: number | string
   /** The unclaimed credit balance captured at review time (18 decimals). */
   creditBalance: bigint
 }
@@ -24,6 +26,8 @@ export interface ClaimCreditsRow {
 export interface ClaimCreditsModalProps {
   isOpen: boolean
   onClose: () => void
+  /** Home-chain project id — display only. Each row carries the id ON ITS chain,
+   *  which is what the claim/reverify actually use (V6 ids differ per chain). */
   projectId: number | string
   tokenSymbol?: string | null
   rows: ClaimCreditsRow[]
@@ -55,7 +59,6 @@ function formatCredits(value: bigint): string {
 export function ClaimCreditsModal({
   isOpen,
   onClose,
-  projectId,
   tokenSymbol,
   rows,
   onClaimed,
@@ -86,10 +89,12 @@ export function ClaimCreditsModal({
     try {
       // Build the exact calldata from the SDK; the decoded summary below shows
       // this same request — what you review is what gets sent.
+      // Claim targets the project's id ON row.chainId (V6 ids differ per chain),
+      // never the home id — that would claim against the wrong project off-home.
       const request = buildClaimTokensTx({
         chainId: row.chainId as JBChainId,
         holder: activeAddress,
-        projectId: BigInt(projectId),
+        projectId: BigInt(row.projectId),
         tokenCount: claimAmount,
         beneficiary: activeAddress,
       })
@@ -108,7 +113,7 @@ export function ClaimCreditsModal({
         reverify: async () => {
           const fresh = await getCreditBalance(publicClientFor(row.chainId), {
             chainId: row.chainId as JBChainId,
-            projectId: BigInt(projectId),
+            projectId: BigInt(row.projectId),
             holder: activeAddress,
           })
           if (fresh < claimAmount) {
@@ -206,7 +211,7 @@ export function ClaimCreditsModal({
                           <span>holder</span>
                           <span className="break-all">{activeAddress}</span>
                           <span>projectId</span>
-                          <span>{String(projectId)}</span>
+                          <span>{String(row.projectId)}</span>
                           <span>tokenCount</span>
                           <span>
                             {row.creditBalance.toString()} ({formatCredits(row.creditBalance)} credits)

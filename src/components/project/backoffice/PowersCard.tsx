@@ -25,7 +25,8 @@ import {
 import { BackOfficeCard, BackOfficeModal, ChainRunRows, DangerGate, chainName, type ChainRunState } from './shared'
 
 export interface PowersCardProps {
-  projectId: number
+  /** Resolve the project's id ON a given chain (V6 ids differ per chain); null = not on that chain. */
+  resolveProjectId: (chainId: number) => bigint | null
   chainIds: number[]
 }
 
@@ -37,12 +38,12 @@ const PRIMARY_CHAIN_DEFAULT: ReadonlySet<string> = new Set(['mintTokens', 'migra
 
 function PowerModal({
   power,
-  projectId,
+  resolveProjectId,
   chainIds,
   onClose,
 }: {
   power: OwnerPowerDef
-  projectId: number
+  resolveProjectId: (chainId: number) => bigint | null
   chainIds: number[]
   onClose: () => void
 }) {
@@ -83,14 +84,20 @@ function PowerModal({
   const activeChainIds = chainIds.filter(chainId => selectedChains[chainId])
   const anyRunning = Object.values(statuses).some(status => status.kind === 'running')
 
-  // Validate by building the home-chain calldata; the error doubles as the hint.
+  // Validate by building one selected chain's calldata; the error doubles as the
+  // hint. Uses that chain's OWN project id (V6 ids differ per chain).
   let inputError: string | null = null
   if (activeChainIds.length === 0) inputError = 'Select at least one chain'
   else {
-    try {
-      buildOwnerPowerRequest(power, { chainId: activeChainIds[0], projectId: BigInt(projectId), values })
-    } catch (error) {
-      inputError = error instanceof Error ? error.message : 'Check the form values'
+    const validationPid = resolveProjectId(activeChainIds[0])
+    if (validationPid == null) {
+      inputError = `This project is not on ${chainName(activeChainIds[0])}`
+    } else {
+      try {
+        buildOwnerPowerRequest(power, { chainId: activeChainIds[0], projectId: validationPid, values })
+      } catch (error) {
+        inputError = error instanceof Error ? error.message : 'Check the form values'
+      }
     }
   }
 
@@ -102,8 +109,14 @@ function PowerModal({
       setStatus(chainId, { kind: 'error', message: 'Connect a wallet first.' })
       return
     }
+    // This chain's OWN project id (V6 ids differ per chain); no id → skip it.
+    const pid = resolveProjectId(chainId)
+    if (pid == null) {
+      setStatus(chainId, { kind: 'error', message: `This project is not on ${chainName(chainId)}.` })
+      return
+    }
     try {
-      const request = buildOwnerPowerRequest(power, { chainId, projectId: BigInt(projectId), values })
+      const request = buildOwnerPowerRequest(power, { chainId, projectId: pid, values })
       const txHash = await run({
         chainId,
         to: request.to,
@@ -111,7 +124,7 @@ function PowerModal({
         // Reviewed-state re-verification: the ruleset may have rolled over
         // since review — abort when this power's flag is off on this chain.
         reverify: async () => {
-          const flags = await readOwnerPowerFlags(chainId, BigInt(projectId))
+          const flags = await readOwnerPowerFlags(chainId, pid)
           if (!flags[power.flag]) {
             throw new Error(
               `The current ruleset on ${chainName(chainId)} no longer allows this (${power.flag} is off).`,
@@ -223,7 +236,7 @@ function PowerModal({
 
 // ─── Card ────────────────────────────────────────────────────────────────────
 
-export function PowersCard({ projectId, chainIds }: PowersCardProps) {
+export function PowersCard({ resolveProjectId, chainIds }: PowersCardProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -232,16 +245,19 @@ export function PowersCard({ projectId, chainIds }: PowersCardProps) {
   const [openPower, setOpenPower] = useState<OwnerPowerDef | null>(null)
 
   const homeChainId = chainIds[0]
+  // The home chain's OWN project id — powers availability reads the home
+  // ruleset, but with the id ON the home chain, never a blind home fallback.
+  const homeProjectId = homeChainId == null ? null : resolveProjectId(homeChainId)
 
   useEffect(() => {
     let cancelled = false
     setAvailability(null)
     setFailed(false)
-    if (homeChainId == null) {
+    if (homeChainId == null || homeProjectId == null) {
       setFailed(true)
       return
     }
-    readOwnerPowerFlags(homeChainId, BigInt(projectId))
+    readOwnerPowerFlags(homeChainId, homeProjectId)
       .then(flags => {
         if (!cancelled) setAvailability(powerAvailability(flags))
       })
@@ -251,7 +267,7 @@ export function PowersCard({ projectId, chainIds }: PowersCardProps) {
     return () => {
       cancelled = true
     }
-  }, [projectId, homeChainId])
+  }, [homeProjectId, homeChainId])
 
   return (
     <BackOfficeCard title="Powers" isDark={isDark}>
@@ -311,7 +327,7 @@ export function PowersCard({ projectId, chainIds }: PowersCardProps) {
       )}
 
       {openPower ? (
-        <PowerModal power={openPower} projectId={projectId} chainIds={chainIds} onClose={() => setOpenPower(null)} />
+        <PowerModal power={openPower} resolveProjectId={resolveProjectId} chainIds={chainIds} onClose={() => setOpenPower(null)} />
       ) : null}
     </BackOfficeCard>
   )

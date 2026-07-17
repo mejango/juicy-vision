@@ -7,6 +7,7 @@ export { useJuiceBalance, type JuiceBalance } from './useJuiceBalance'
 export { useIsMobile } from './useIsMobile'
 export { useMobileKeyboard } from './useMobileKeyboard'
 export { useAccountLinking, type AccountLinkingState, type LinkedAddress } from './useAccountLinking'
+export { useSafeApp, type UseSafeApp } from './useSafeApp'
 export {
   useCurrentRuleset,
   useQueuedRuleset,

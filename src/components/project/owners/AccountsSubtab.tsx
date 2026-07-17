@@ -20,7 +20,7 @@ import {
   type YouAccountingToken,
   type YouPositionRow,
 } from '../../../services/youPosition'
-import { ClaimCreditsModal } from './ClaimCreditsModal'
+import { ClaimCreditsModal, type ClaimCreditsRow } from './ClaimCreditsModal'
 import { OpenLoanModal } from './OpenLoanModal'
 import MoveChainsModal from './MoveChainsModal'
 import { AddLiquidityModal } from './AddLiquidityModal'
@@ -154,9 +154,18 @@ export function AccountsSubtab({
 
   const held = (rows ?? []).filter(row => row.balance != null && row.balance > 0n)
   const balanceComplete = (rows ?? []).every(row => row.balance != null) && rows != null
-  const claimRows = held
+  // Each row's project id ON its chain (V6 ids differ per chain) — carried into
+  // the claim so it targets the right project off-home, never the home id.
+  const projectIdByChain = new Map(youChains.map(cp => [cp.chainId, cp.projectId]))
+  const claimRows: ClaimCreditsRow[] = held
     .filter(row => row.creditBalance != null && row.creditBalance > 0n)
-    .map(row => ({ chainId: row.chainId, creditBalance: row.creditBalance as bigint }))
+    .map(row => {
+      const chainProjectId = projectIdByChain.get(row.chainId)
+      return chainProjectId == null
+        ? null
+        : { chainId: row.chainId, projectId: chainProjectId, creditBalance: row.creditBalance as bigint }
+    })
+    .filter((row): row is ClaimCreditsRow => row !== null)
 
   // The delay gates cash outs AND loans; the value still computes, shown locked.
   const lockedUntil = (rows ?? []).reduce<bigint | null>(

@@ -277,16 +277,24 @@ export function aggregatePermissionHolders(items: PermissionHolderItem[]): Proje
  * bendystraw — there is no on-chain way to ENUMERATE operators, only to check
  * a known one (which is what the on-chain reverify reads do).
  */
-export async function fetchPermissionOperators(projectId: number, chainIds: number[]): Promise<ProjectOperator[]> {
-  if (!chainIds.length) return []
+export async function fetchPermissionOperators(
+  chainProjects: ReadonlyArray<{ chainId: number; projectId: number | string | bigint }>,
+): Promise<ProjectOperator[]> {
+  if (!chainProjects.length) return []
   // Lazy import keeps this module's test import-graph free of the graphql client.
   const { safeRequest, getNetworkOption } = await import('./bendystraw/client')
-  const data = await safeRequest<{ permissionHolders: { items: PermissionHolderItem[] } }>(
-    PERMISSION_HOLDERS_QUERY,
-    { projectId, version: 6, chainIds },
-    getNetworkOption(chainIds[0]),
+  // V6 project ids are independent per chain — query each chain by ITS OWN id
+  // and merge; a single projectId + chainId_in filter reads the wrong project off-home.
+  const pages = await Promise.all(
+    chainProjects.map(cp =>
+      safeRequest<{ permissionHolders: { items: PermissionHolderItem[] } }>(
+        PERMISSION_HOLDERS_QUERY,
+        { projectId: Number(cp.projectId), version: 6, chainIds: [cp.chainId] },
+        getNetworkOption(cp.chainId),
+      ),
+    ),
   )
-  return aggregatePermissionHolders(data?.permissionHolders?.items ?? [])
+  return aggregatePermissionHolders(pages.flatMap(d => d?.permissionHolders?.items ?? []))
 }
 
 /** Read the operator's CURRENT on-chain permission ids for (account, project) on one chain. */

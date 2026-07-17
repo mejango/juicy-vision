@@ -20,7 +20,7 @@ import ParticipantAvatars from './components/chat/ParticipantAvatars'
 import { SettingsPanel } from './components/settings'
 import ErrorBoundary from './components/ui/ErrorBoundary'
 import { useChatStore, useThemeStore, type ChatMember } from './stores'
-import { useTransactionExecutor, useManagedWallet, useIsMobile } from './hooks'
+import { useTransactionExecutor, useManagedWallet, useIsMobile, useSafeApp } from './hooks'
 import { getSessionPseudoAddress, getCachedPseudoAddress } from './services/session'
 import { getWalletSession } from './services/siwe'
 import { useEnsNameResolved } from './hooks'
@@ -864,6 +864,11 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
 
 // Main chat app component (with hooks)
 function MainApp() {
+  // If opened as a Safe App (inside Safe{Wallet}), detect + connect the Safe on
+  // load so the whole app treats it as the active account and transactions
+  // route to the Safe queue. No-op when not framed by Safe{Wallet}.
+  useSafeApp()
+
   // Pre-fetch pseudo-address from backend on mount (populates cache for all components)
   useEffect(() => {
     getSessionPseudoAddress()

@@ -28,7 +28,8 @@ import {
 import { BackOfficeCard, BackOfficeModal, ChainRunRows, DangerGate, chainName, shortAddress, type ChainRunState } from './shared'
 
 export interface BuybackRouterCardProps {
-  projectId: number
+  /** Resolve the project's id ON a given chain (V6 ids differ per chain); null = not on that chain. */
+  resolveProjectId: (chainId: number) => bigint | null
   chainIds: number[]
 }
 
@@ -89,14 +90,14 @@ function summarizeCurrent(rows: CurrentRow[]): string {
 
 function BuybackRouterModal({
   action,
-  projectId,
+  resolveProjectId,
   chainIds,
   current,
   onClose,
   onChanged,
 }: {
   action: ActionDef
-  projectId: number
+  resolveProjectId: (chainId: number) => bigint | null
   chainIds: number[]
   /** The per-chain registry value shown at review time (the reverify snapshot). */
   current: CurrentRow[]
@@ -135,8 +136,7 @@ function BuybackRouterModal({
   const setStatus = (chainId: number, status: ChainRunState) =>
     setStatuses(previous => ({ ...previous, [chainId]: status }))
 
-  const buildRequest = (chainId: number) => {
-    const pid = BigInt(projectId)
+  const buildRequest = (chainId: number, pid: bigint) => {
     if (action.kind === 'setHook') {
       return buildSetBuybackHookRequest({ chainId, projectId: pid, hook: address.trim() as Address })
     }
@@ -159,8 +159,14 @@ function BuybackRouterModal({
       setStatus(chainId, { kind: 'error', message: 'Connect a wallet first.' })
       return
     }
+    // This chain's OWN project id (V6 ids differ per chain); no id → skip it.
+    const pid = resolveProjectId(chainId)
+    if (pid == null) {
+      setStatus(chainId, { kind: 'error', message: `This project is not on ${chainName(chainId)}.` })
+      return
+    }
     try {
-      const request = buildRequest(chainId)
+      const request = buildRequest(chainId, pid)
       const txHash = await run({
         chainId,
         to: request.to,
@@ -168,7 +174,7 @@ function BuybackRouterModal({
         // Reviewed-state re-verification: abort when the registry value shown
         // at review changed underneath (or, for pool init, the hook is gone).
         reverify: async () => {
-          const fresh = await action.read(chainId, BigInt(projectId))
+          const fresh = await action.read(chainId, pid)
           const reviewed = snapshotByChain.get(chainId) ?? null
           if (action.kind === 'initPool' && !fresh) {
             throw new Error(`No buyback hook is registered on ${chainName(chainId)} — set the hook first.`)
@@ -271,7 +277,7 @@ function BuybackRouterModal({
 
 // ─── Card ────────────────────────────────────────────────────────────────────
 
-export function BuybackRouterCard({ projectId, chainIds }: BuybackRouterCardProps) {
+export function BuybackRouterCard({ resolveProjectId, chainIds }: BuybackRouterCardProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -286,10 +292,13 @@ export function BuybackRouterCard({ projectId, chainIds }: BuybackRouterCardProp
   useEffect(() => {
     let cancelled = false
     setCurrentByKind({ setHook: null, setTerminal: null, initPool: null })
-    const pid = BigInt(projectId)
     const load = async (read: ActionDef['read']): Promise<CurrentRow[]> =>
       Promise.all(
         chainIds.map(async chainId => {
+          // Each chain reads with ITS OWN project id (V6 ids differ per chain);
+          // a chain that isn't this project's is left unset, never read with home id.
+          const pid = resolveProjectId(chainId)
+          if (pid == null) return { chainId, value: null }
           try {
             return { chainId, value: await read(chainId, pid) }
           } catch {
@@ -305,7 +314,7 @@ export function BuybackRouterCard({ projectId, chainIds }: BuybackRouterCardProp
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, chainIds.join(','), refreshNonce])
+  }, [resolveProjectId, chainIds.join(','), refreshNonce])
 
   return (
     <BackOfficeCard title="Buyback & swap router" isDark={isDark}>
@@ -342,7 +351,7 @@ export function BuybackRouterCard({ projectId, chainIds }: BuybackRouterCardProp
       {open && currentByKind[open.kind] ? (
         <BuybackRouterModal
           action={open}
-          projectId={projectId}
+          resolveProjectId={resolveProjectId}
           chainIds={chainIds}
           current={currentByKind[open.kind]!}
           onClose={() => setOpen(null)}

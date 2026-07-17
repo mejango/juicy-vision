@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useAccount, useConnect, useDisconnect, useSignMessage } from 'wagmi'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
 import { useThemeStore, useAuthStore, useSettingsStore } from '../../stores'
-import { useManagedWallet, useEnsNameResolved, useJuiceBalance } from '../../hooks'
+import { useManagedWallet, useEnsNameResolved, useJuiceBalance, useSafeApp } from '../../hooks'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
 import { CHAINS, ALL_CHAIN_IDS } from '../../constants'
 import { hasValidWalletSession, signInWithWallet, clearWalletSession } from '../../services/siwe'
@@ -2886,6 +2886,7 @@ function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: (
 export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPosition, initialView }: WalletPanelProps) {
   const { mode, logout: authLogout, isAuthenticated } = useAuthStore()
   const { address, isConnected: walletConnected } = useAccount()
+  const { isSafeApp, safeInfo } = useSafeApp()
   const { t } = useTranslation()
 
   // Self-custody users are "signed in" if they have a valid SIWE session
@@ -3092,6 +3093,27 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
         <h2 className={`text-sm font-semibold mb-3 pr-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>
           {getTitle()}
         </h2>
+
+        {/* Safe App status: when running inside Safe{Wallet}, the Safe is the
+            active account and transactions are proposed to its queue. */}
+        {isSafeApp && safeInfo && (
+          <div
+            className={`mb-3 flex items-center gap-2 p-2 border text-xs ${
+              isDark ? 'border-[#12FF80]/40 bg-[#12FF80]/10 text-[#12FF80]' : 'border-green-300 bg-green-50 text-green-700'
+            }`}
+          >
+            <svg className="w-4 h-4 shrink-0" viewBox="0 0 32 32" fill="none">
+              <rect width="32" height="32" rx="8" fill="#12FF80" />
+              <path
+                d="M16 6L7 10V16C7 21.52 10.84 26.74 16 28C21.16 26.74 25 21.52 25 16V10L16 6ZM16 15.99H23C22.47 20.11 19.72 23.78 16 24.93V16H9V11.3L16 8.19V15.99Z"
+                fill="#121312"
+              />
+            </svg>
+            <span className="font-mono truncate">
+              Connected via Safe&#123;Wallet&#125;: {shortenAddress(safeInfo.safeAddress)}
+            </span>
+          </div>
+        )}
 
         {currentView === 'select' && (
           <ConnectOptions

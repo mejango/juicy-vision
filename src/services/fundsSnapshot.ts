@@ -419,11 +419,21 @@ export function kindTotals(rows: FundsChainRow[]): FundsKindTotals {
 
 function normalizeChainRefs(project: FundsProjectRef, chainRefs: readonly FundsChainRef[]) {
   const refs = chainRefs.length ? chainRefs : [project.chainId]
-  return refs.map(ref =>
-    typeof ref === 'number'
-      ? { chainId: ref, projectId: Number(project.projectId) }
-      : { chainId: ref.chainId, projectId: ref.projectId },
-  )
+  return refs.map(ref => {
+    if (typeof ref !== 'number') return { chainId: ref.chainId, projectId: ref.projectId }
+    // A bare chain-id ref carries no per-chain project id, so it can ONLY mean the
+    // home chain (whose id is project.projectId). V6 project ids are independent
+    // per chain, so mapping a NON-home bare number to the home id would silently
+    // read the WRONG project. Callers covering other chains must pass explicit
+    // { chainId, projectId } objects.
+    if (ref !== project.chainId) {
+      throw new Error(
+        `normalizeChainRefs: bare chain id ${ref} is not the home chain ${project.chainId}; ` +
+          'pass { chainId, projectId } so the per-chain project id is explicit.',
+      )
+    }
+    return { chainId: ref, projectId: Number(project.projectId) }
+  })
 }
 
 /**

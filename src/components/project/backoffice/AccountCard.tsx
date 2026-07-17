@@ -23,7 +23,8 @@ import { BackOfficeCard, chainName, shortAddress } from './shared'
 import { TransferAuthorityModal } from './TransferAuthorityModal'
 
 export interface AccountCardProps {
-  projectId: number
+  /** Resolve the project's id ON a given chain (V6 ids differ per chain); null = not on that chain. */
+  resolveProjectId: (chainId: number) => bigint | null
   chainIds: number[]
   isRevnet: boolean
 }
@@ -50,7 +51,7 @@ async function classify(chainId: number, address: Address): Promise<string> {
   }
 }
 
-export function AccountCard({ projectId, chainIds, isRevnet }: AccountCardProps) {
+export function AccountCard({ resolveProjectId, chainIds, isRevnet }: AccountCardProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -67,10 +68,14 @@ export function AccountCard({ projectId, chainIds, isRevnet }: AccountCardProps)
     setFailed(false)
     Promise.all(
       chainIds.map(async (chainId): Promise<AuthorityRow> => {
+        // This chain's OWN project id (V6 ids differ per chain); no id → not this
+        // project on this chain, so read nothing (never fall back to the home id).
+        const pid = resolveProjectId(chainId)
+        if (pid == null) return { chainId, authority: null, type: '—' }
         try {
           const authority = isRevnet
-            ? ((await fetchRevnetOperator(String(projectId), chainId)) as Address | null)
-            : await readProjectOwner(chainId, BigInt(projectId))
+            ? ((await fetchRevnetOperator(String(pid), chainId)) as Address | null)
+            : await readProjectOwner(chainId, pid)
           if (!authority) return { chainId, authority: null, type: '—' }
           return { chainId, authority, type: await classify(chainId, authority) }
         } catch {
@@ -90,7 +95,7 @@ export function AccountCard({ projectId, chainIds, isRevnet }: AccountCardProps)
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, isRevnet, chainKey])
+  }, [resolveProjectId, isRevnet, chainKey])
 
   const addrLabel = isRevnet ? 'Operator' : 'Owner'
 
@@ -182,7 +187,7 @@ export function AccountCard({ projectId, chainIds, isRevnet }: AccountCardProps)
         <TransferAuthorityModal
           isOpen
           onClose={() => setTransfer(null)}
-          projectId={projectId}
+          resolveProjectId={resolveProjectId}
           isRevnet={isRevnet}
           currentAuthority={transfer.authority}
           chainIds={transfer.chainIds}

@@ -37,7 +37,12 @@ import {
 import { BackOfficeCard, BackOfficeModal, ChainRunRows, DangerGate, chainName, shortAddress, type ChainRunState } from './shared'
 
 export interface PermissionsCardProps {
+  /** Home-chain project id — used ONLY for the indexer operators-list query
+   *  (which is keyed by the home project). Every on-chain read/write resolves
+   *  the id ON its chain via `resolveProjectId`. */
   projectId: number
+  /** Resolve the project's id ON a given chain (V6 ids differ per chain); null = not on that chain. */
+  resolveProjectId: (chainId: number) => bigint | null
   chainIds: number[]
   isRevnet: boolean
 }
@@ -53,13 +58,13 @@ interface ChainSnapshot {
 }
 
 function SetPermissionsModal({
-  projectId,
+  resolveProjectId,
   chainIds,
   existingOperator,
   onClose,
   onChanged,
 }: {
-  projectId: number
+  resolveProjectId: (chainId: number) => bigint | null
   chainIds: number[]
   /** null → adding a new operator. */
   existingOperator: Address | null
@@ -91,9 +96,12 @@ function SetPermissionsModal({
     setSnapshots(null)
     setLoadError(null)
     try {
-      const pid = BigInt(projectId)
       const loaded = await Promise.all(
-        chainIds.map(async (chainId): Promise<ChainSnapshot> => {
+        chainIds.map(async (chainId): Promise<ChainSnapshot | null> => {
+          // This chain's OWN project id (V6 ids differ per chain); a chain that
+          // isn't this project's is skipped, never read/written with the home id.
+          const pid = resolveProjectId(chainId)
+          if (pid == null) return null
           const owner = await readProjectOwner(chainId, pid)
           const permissionIds = await readPermissionIds({ chainId, operator: op, account: owner, projectId: pid })
           return { chainId, owner, permissionIds }
@@ -102,6 +110,7 @@ function SetPermissionsModal({
       const byChain: Record<number, ChainSnapshot> = {}
       const union = new Set<number>()
       for (const snapshot of loaded) {
+        if (!snapshot) continue
         byChain[snapshot.chainId] = snapshot
         for (const id of snapshot.permissionIds) union.add(id)
       }
@@ -113,7 +122,7 @@ function SetPermissionsModal({
       setLoadError(error instanceof Error ? error.message : 'Could not read the current permissions.')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, chainIds.join(',')])
+  }, [resolveProjectId, chainIds.join(',')])
 
   useEffect(() => {
     if (editing && existingOperator) void loadSnapshots(existingOperator)
@@ -142,7 +151,12 @@ function SetPermissionsModal({
       setStatus(chainId, { kind: 'error', message: `No reviewed snapshot for ${chainName(chainId)}. Reopen to refresh.` })
       return
     }
-    const pid = BigInt(projectId)
+    // This chain's OWN project id (V6 ids differ per chain); no id → skip it.
+    const pid = resolveProjectId(chainId)
+    if (pid == null) {
+      setStatus(chainId, { kind: 'error', message: `This project is not on ${chainName(chainId)}.` })
+      return
+    }
     try {
       const request = buildSetPermissionsRequest({
         chainId,
@@ -282,7 +296,7 @@ function SetPermissionsModal({
 
 // ─── Card ────────────────────────────────────────────────────────────────────
 
-export function PermissionsCard({ projectId, chainIds, isRevnet }: PermissionsCardProps) {
+export function PermissionsCard({ projectId, resolveProjectId, chainIds, isRevnet }: PermissionsCardProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 
@@ -296,7 +310,12 @@ export function PermissionsCard({ projectId, chainIds, isRevnet }: PermissionsCa
   useEffect(() => {
     let cancelled = false
     setFailed(false)
-    fetchPermissionOperators(projectId, chainIds)
+    // Each chain queried with its own project id (V6 ids differ per chain);
+    // a chain with no resolvable id is skipped, never read with the home id.
+    const chainProjects = chainIds
+      .map(chainId => ({ chainId, projectId: resolveProjectId(chainId) }))
+      .filter((cp): cp is { chainId: number; projectId: bigint } => cp.projectId != null)
+    fetchPermissionOperators(chainProjects)
       .then(result => {
         if (!cancelled) setOperators(result)
       })
@@ -387,7 +406,7 @@ export function PermissionsCard({ projectId, chainIds, isRevnet }: PermissionsCa
 
       {editor ? (
         <SetPermissionsModal
-          projectId={projectId}
+          resolveProjectId={resolveProjectId}
           chainIds={chainIds}
           existingOperator={editor.operator}
           onClose={() => setEditor(null)}

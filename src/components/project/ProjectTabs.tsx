@@ -233,6 +233,7 @@ export default function ProjectTabs(props: ProjectTabsProps) {
             project={project}
             projectId={projectId}
             chainIds={chainIds}
+            chainProjects={chainProjects}
             isRevnet={isRevnet}
             onEditMetadata={props.onEditMetadata}
             onEditToken={props.onEditToken}
