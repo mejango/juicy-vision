@@ -214,6 +214,8 @@ export const TOKEN_HOLDERS_QUERY = `
         address
         chainId
         balance
+        volume
+        volumeUsd
       }
     }
   }
@@ -237,6 +239,8 @@ export const SUCKER_GROUP_PARTICIPANTS_QUERY = `
         address
         chainId
         balance
+        volume
+        volumeUsd
       }
     }
   }

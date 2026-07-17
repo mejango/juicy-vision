@@ -41,6 +41,7 @@ import {
   type QueuedMovement,
   type QueuedMovementsResult,
   type Staleness,
+  type SuckerInfra,
 } from '../../../services/suckerBridge'
 
 export interface SettlementSubtabProps {
@@ -85,6 +86,22 @@ function formatBalance(value: bigint, decimals: number, symbol: string): string 
 function timeAgo(seconds: number | null): string {
   return seconds ? snapshotAge(seconds) : '—'
 }
+
+/**
+ * A part's share of a cross-chain total as a compact percent ("100%", "42.5%").
+ * Null when the denominator is unknown — a share without a complete cross-chain
+ * total is worse than none, so it renders as nothing rather than a fake 100%.
+ */
+function pctOf(part: bigint | null, total: bigint | null): string | null {
+  if (part == null || total == null || total <= 0n || part < 0n) return null
+  const pct = Number((part * 1_000_000n) / total) / 10_000
+  if (pct >= 10) return `${pct.toFixed(2).replace(/\.?0+$/, '')}%`
+  if (pct >= 0.01) return `${pct.toFixed(4).replace(/\.?0+$/, '')}%`
+  return pct > 0 ? '<0.01%' : '0%'
+}
+
+/** Order infra tags native → CCIP → unknown so a mixed pair reads consistently. */
+const INFRA_ORDER: Record<string, number> = { native: 0, CCIP: 1, unknown: 2 }
 
 /** Rough delivery estimate by route — native L2→L1 exits wait out the challenge period. */
 function bridgeEtaHint(tx: QueuedMovement): string | null {
@@ -420,6 +437,29 @@ export function SettlementSubtab({ project, chainIds, chainProjects }: Settlemen
     return { totalSupply, balancesComplete, byUnit }
   }, [composition])
 
+  // Bridges: one row per unordered chain-pair, tagging each with its infra(s) —
+  // a pair carrying both a native and a CCIP sucker shows both tags on one row.
+  const bridgeGroups = useMemo(() => {
+    if (!routes) return null
+    const byPair = new Map<string, { a: number; b: number; infras: SuckerInfra[] }>()
+    const order: string[] = []
+    for (const route of routes) {
+      const [lo, hi] = route.a <= route.b ? [route.a, route.b] : [route.b, route.a]
+      const key = `${lo}-${hi}`
+      let group = byPair.get(key)
+      if (!group) {
+        group = { a: route.a, b: route.b, infras: [] }
+        byPair.set(key, group)
+        order.push(key)
+      }
+      if (!group.infras.includes(route.infra)) group.infras.push(route.infra)
+    }
+    for (const key of order) {
+      byPair.get(key)!.infras.sort((x, y) => (INFRA_ORDER[x] ?? 9) - (INFRA_ORDER[y] ?? 9))
+    }
+    return order.map(key => byPair.get(key)!)
+  }, [routes])
+
   const compositionByChain = useMemo(() => {
     const map = new Map<number, CompositionRow>()
     for (const row of composition ?? []) map.set(row.chainId, row)
@@ -487,26 +527,49 @@ export function SettlementSubtab({ project, chainIds, chainProjects }: Settlemen
                 </tr>
               </thead>
               <tbody>
-                {composition.map(row => (
-                  <tr key={row.chainId} className={rowBorder}>
-                    <td className="py-2 pr-3">{chainName(row.chainId)}</td>
-                    <td className="py-2 pl-3 text-right">{row.supply == null ? '—' : formatTokens(row.supply)}</td>
-                    <td className="py-2 pl-3 text-right">
-                      {row.tokens.length === 0
-                        ? '—'
-                        : row.tokens.map(token => (
-                            <div key={token.token}>
-                              {token.balance == null ? '—' : formatBalance(token.balance, token.decimals, token.symbol)}
-                            </div>
-                          ))}
-                    </td>
-                    <td className="py-2 pl-3 text-right">
-                      {row.unitValue == null || !row.acct
-                        ? '—'
-                        : formatBalance(row.unitValue, row.acct.decimals, row.acct.symbol)}
-                    </td>
-                  </tr>
-                ))}
+                {composition.map(row => {
+                  // Supply share of the cross-chain total (only when every chain's supply read succeeded).
+                  const supplyPct = pctOf(row.supply, compositionTotals?.totalSupply ?? null)
+                  return (
+                    <tr key={row.chainId} className={rowBorder}>
+                      <td className="py-2 pr-3">{chainName(row.chainId)}</td>
+                      <td className="py-2 pl-3 text-right">
+                        {row.supply == null ? (
+                          '—'
+                        ) : (
+                          <>
+                            <div>{formatTokens(row.supply)}</div>
+                            {supplyPct ? <div className={`text-xs ${muted}`}>{supplyPct}</div> : null}
+                          </>
+                        )}
+                      </td>
+                      <td className="py-2 pl-3 text-right">
+                        {row.tokens.length === 0
+                          ? '—'
+                          : row.tokens.map(token => {
+                              // Balance share of THAT token's cross-chain total.
+                              const unit = compositionTotals?.balancesComplete
+                                ? compositionTotals.byUnit[`${token.symbol}@${token.decimals}`]
+                                : undefined
+                              const balancePct = pctOf(token.balance, unit?.sum ?? null)
+                              return (
+                                <div key={token.token}>
+                                  <div>
+                                    {token.balance == null ? '—' : formatBalance(token.balance, token.decimals, token.symbol)}
+                                  </div>
+                                  {balancePct ? <div className={`text-xs ${muted}`}>{balancePct}</div> : null}
+                                </div>
+                              )
+                            })}
+                      </td>
+                      <td className="py-2 pl-3 text-right">
+                        {row.unitValue == null || !row.acct
+                          ? '—'
+                          : formatBalance(row.unitValue, row.acct.decimals, row.acct.symbol)}
+                      </td>
+                    </tr>
+                  )
+                })}
                 {composition.length > 1 && compositionTotals ? (
                   <tr className={`border-t font-medium ${isDark ? 'border-white/20' : 'border-gray-200'}`}>
                     <td className="py-2 pr-3">Total</td>
@@ -649,22 +712,27 @@ export function SettlementSubtab({ project, chainIds, chainProjects }: Settlemen
               <thead>
                 <tr className={headText}>
                   <th className="py-1.5 font-medium text-left">Chains</th>
-                  <th className="py-1.5 font-medium text-left">Type</th>
+                  <th className="py-1.5 font-medium text-left">Types</th>
                 </tr>
               </thead>
               <tbody>
-                {routes.map(route => (
-                  <tr key={`${route.a}-${route.b}-${route.infra}`} className={rowBorder}>
+                {(bridgeGroups ?? []).map(group => (
+                  <tr key={`${group.a}-${group.b}`} className={rowBorder}>
                     <td className="py-2 pr-3">
-                      {chainName(route.a)} <span className={muted}>↔</span> {chainName(route.b)}
+                      {chainName(group.a)} <span className={muted}>↔</span> {chainName(group.b)}
                     </td>
                     <td className="py-2">
-                      <span
-                        className={`px-1.5 py-0.5 text-xs border ${
-                          isDark ? 'border-white/15 text-gray-300' : 'border-gray-200 text-gray-600'
-                        }`}
-                      >
-                        {route.infra === 'unknown' ? 'Unverified' : route.infra}
+                      <span className="inline-flex flex-wrap gap-1">
+                        {group.infras.map(infra => (
+                          <span
+                            key={infra}
+                            className={`px-1.5 py-0.5 text-xs border ${
+                              isDark ? 'border-white/15 text-gray-300' : 'border-gray-200 text-gray-600'
+                            }`}
+                          >
+                            {infra === 'unknown' ? 'Unverified' : infra}
+                          </span>
+                        ))}
                       </span>
                     </td>
                   </tr>

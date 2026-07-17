@@ -3913,10 +3913,10 @@ const PARTICIPANT_QUERY_LIMIT = 1_000
 function parseParticipantPage(
   page: {
     totalCount: number
-    items: Array<{ address?: string; wallet?: string; chainId?: number; balance: string }>
+    items: Array<{ address?: string; wallet?: string; chainId?: number; balance: string; volumeUsd?: string }>
   } | null | undefined,
   expectedChainIds?: number | ReadonlySet<number>,
-): Array<{ address: string; chainId: number; balance: string }> {
+): Array<{ address: string; chainId: number; balance: string; volumeUsd: string }> {
   if (!page || !Number.isSafeInteger(page.totalCount) || page.totalCount < 0 || !Array.isArray(page.items)) {
     throw new Error('Member data is malformed')
   }
@@ -3945,7 +3945,10 @@ function parseParticipantPage(
     const key = `${chainId}:${address.toLowerCase()}`
     if (seen.has(key)) throw new Error('Member data contains duplicate balances')
     seen.add(key)
-    return { address: address.toLowerCase(), chainId, balance: item.balance }
+    // Pay events don't carry their source token, so volumeUsd is the only exact
+    // denomination the table's "Paid" column can show. Absent/invalid → 0 (never inferred).
+    const volumeUsd = isRawAmount(item.volumeUsd) ? (item.volumeUsd as string) : '0'
+    return { address: address.toLowerCase(), chainId, balance: item.balance, volumeUsd }
   })
 }
 
@@ -4115,6 +4118,111 @@ export async function fetchMultiChainParticipants(
     if (participantGroupsResult.status === 'rejected') throw participantGroupsResult.reason
     const items = participantGroupsResult.value.flat()
     return aggregateParticipants(items, totalSupply, limit)
+  } catch (err) {
+    throw new Error(`Member data unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
+  }
+}
+
+// Full owners table (website renderOwnersTable): EVERY indexed holder aggregated
+// across the sucker group, carrying paid volume (USD) and the chains each holds on.
+// Unlike fetchMultiChainParticipants (top-N donut feed), this keeps the whole list
+// so the table can search + paginate client-side.
+export interface HolderRow {
+  address: string
+  balance: bigint
+  chains: number[]
+  /** Paid-in volume in USD, scaled by 1e18 (bendystraw's volumeUsd denomination). */
+  volumeUsd: bigint
+}
+
+export interface HoldersDistribution {
+  holders: HolderRow[]
+  /** Live cross-chain supply for share %s, or null when any chain's supply read failed. */
+  totalSupply: bigint | null
+  /** Sum of the returned holders' balances (donut denominator). */
+  totalBalance: bigint
+  /** True when the indexer reported more holder rows than were returned. */
+  truncated: boolean
+}
+
+function aggregateHolders(
+  items: Array<{ address: string; chainId: number; balance: string; volumeUsd: string }>,
+): HolderRow[] {
+  const byAddress = new Map<string, { balance: bigint; volumeUsd: bigint; chains: Set<number> }>()
+  for (const item of items) {
+    const existing = byAddress.get(item.address) ?? { balance: 0n, volumeUsd: 0n, chains: new Set<number>() }
+    existing.balance += BigInt(item.balance)
+    existing.volumeUsd += BigInt(item.volumeUsd)
+    existing.chains.add(item.chainId)
+    byAddress.set(item.address, existing)
+  }
+  return [...byAddress.entries()]
+    .map(([address, d]) => ({
+      address,
+      balance: d.balance,
+      volumeUsd: d.volumeUsd,
+      chains: [...d.chains].sort((a, b) => a - b),
+    }))
+    .filter(h => h.balance > 0n)
+    .sort((a, b) => (a.balance === b.balance ? 0 : b.balance > a.balance ? 1 : -1))
+}
+
+/**
+ * Every indexed owner of a project across its sucker group, aggregated by
+ * address with paid volume + per-holder chains. The live cross-chain supply is
+ * read on-chain for share %s; any failed supply read leaves totalSupply null
+ * so shares render as unknown rather than treating the indexed set as 100%.
+ */
+export async function fetchHoldersDistribution(
+  connectedChains: Array<{ chainId: number; projectId: number }>,
+): Promise<HoldersDistribution> {
+  if (connectedChains.length === 0) throw new Error('Member data unavailable: no verified project scope')
+
+  const chainsByProject = new Map<number, number[]>()
+  const seenChains = new Set<number>()
+  for (const { chainId, projectId } of connectedChains) {
+    if (!Number.isSafeInteger(chainId) || chainId <= 0
+      || !Number.isSafeInteger(projectId) || projectId <= 0
+      || seenChains.has(chainId)) {
+      throw new Error('Member data unavailable: connected project mapping is invalid')
+    }
+    seenChains.add(chainId)
+    const list = chainsByProject.get(projectId) ?? []
+    list.push(chainId)
+    chainsByProject.set(projectId, list)
+  }
+
+  try {
+    const pages = await Promise.all([...chainsByProject.entries()].map(async ([projectId, chainIds]) => {
+      const client = getClient(getNetworkOption(chainIds[0]))
+      const data = await client.request<{
+        participants: {
+          totalCount: number
+          items: Array<{ address: string; chainId: number; balance: string; volumeUsd?: string }>
+        }
+      }>(TOKEN_HOLDERS_QUERY, { projectId, chainIds, version: 6, limit: PARTICIPANT_QUERY_LIMIT })
+      return {
+        items: parseParticipantPage(data.participants, new Set(chainIds)),
+        totalCount: Number(data.participants.totalCount) || 0,
+      }
+    }))
+
+    // Live supply per chain; a failure hides share %s (never treat indexed as 100%).
+    const supplies = await Promise.all(connectedChains.map(async ({ chainId, projectId }) => {
+      try {
+        const supply = await fetchProjectTokenSupply(String(projectId), chainId)
+        return isRawAmount(supply) ? BigInt(supply as string) : null
+      } catch {
+        return null
+      }
+    }))
+    const totalSupply = supplies.some(s => s == null) ? null : supplies.reduce<bigint>((sum, s) => sum + (s as bigint), 0n)
+
+    const items = pages.flatMap(p => p.items)
+    const indexedTotal = pages.reduce((sum, p) => sum + p.totalCount, 0)
+    const holders = aggregateHolders(items)
+    const totalBalance = holders.reduce((sum, h) => sum + h.balance, 0n)
+    return { holders, totalSupply, totalBalance, truncated: indexedTotal > items.length }
   } catch (err) {
     throw new Error(`Member data unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
   }

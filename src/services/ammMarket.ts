@@ -97,6 +97,16 @@ export function ammChainAvailable(chainId: number): boolean {
   return Boolean(POOL_MANAGER_BY_CHAIN[chainId] && POSITION_MANAGER_BY_CHAIN[chainId])
 }
 
+/**
+ * The V4 PoolManager (singleton per chain) custodies all pooled tokens, so a
+ * buyback pool's project tokens show up in the owners list under the PoolManager
+ * address. Flag those rows as the AMM (website isAmmAddress :3151).
+ */
+const AMM_ADDRESSES = new Set(Object.values(POOL_MANAGER_BY_CHAIN).map(address => address.toLowerCase()))
+export function isAmmAddress(address: string | null | undefined): boolean {
+  return Boolean(address && AMM_ADDRESSES.has(address.toLowerCase()))
+}
+
 // ---------------------------------------------------------------------------
 // ABIs
 // ---------------------------------------------------------------------------
@@ -1539,6 +1549,10 @@ export interface SplitHookChainState {
   hookAddress: Address
   /** The terminal token the hook keys its pool by (the accounting token). */
   terminalToken: Address
+  /** The terminal (accounting) token's decimals — claimable LP fees are in this unit, NOT 18-dec project token. */
+  terminalDecimals: number
+  /** The terminal (accounting) token's display symbol (ETH / USDC / TOKEN). */
+  terminalSymbol: string
   accumulated: bigint
   hasPool: boolean
   claimableFees: bigint
@@ -1588,6 +1602,8 @@ export async function readSplitHookState(
     chainId,
     hookAddress,
     terminalToken,
+    terminalDecimals: pair.decimals,
+    terminalSymbol: pair.symbol,
     accumulated: accumulated != null ? BigInt(accumulated) : 0n,
     hasPool: Boolean(hasPool),
     claimableFees: fees != null ? BigInt(fees) : 0n,
