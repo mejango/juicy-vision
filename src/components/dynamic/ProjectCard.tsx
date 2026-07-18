@@ -29,6 +29,7 @@ import { ProjectLink } from './ProjectLink'
 import { getPaymentTerminal } from '../../utils/paymentTerminal'
 import { assertCurrentProjectPayConfigurationTrusted } from '../../utils/projectTrust'
 import { resolveProjectChains } from '../../utils/projectChains'
+import { fetchProjectBalanceBreakdown, type ProjectBalanceBreakdown } from '../../services/projectBalanceBreakdown'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { IpfsImage } from '../ui/IpfsMedia'
 import { ExplainerMessage } from '../ui/ExplainerMessage'
@@ -395,6 +396,10 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const amountInputRef = useRef<HTMLInputElement>(null)
   // Connected chains with their project IDs (may differ per chain)
   const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>([])
+  // On-chain, all-accounting-tokens balance priced through JBPrices. Supersedes the indexed single-token
+  // sucker-group figure once it resolves; balanceRefreshTick re-runs it after a balance-changing tx.
+  const [balanceBreakdown, setBalanceBreakdown] = useState<ProjectBalanceBreakdown | null>(null)
+  const [balanceRefreshTick, setBalanceRefreshTick] = useState(0)
   const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
   const [payPreview, setPayPreview] = useState<PayCardPreview>({ status: 'idle' })
   // Unix start of the first ruleset when it is still in the future ("Starts in" gate).
@@ -668,10 +673,26 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       fetchSuckerGroupBalance(currentProjectId, parseInt(selectedChainId))
         .then(setSuckerBalance)
         .catch(() => {})
+      setBalanceRefreshTick(tick => tick + 1)
     }
     window.addEventListener('juice:project-data-invalidated', refetchBalance)
     return () => window.removeEventListener('juice:project-data-invalidated', refetchBalance)
   }, [currentProjectId, selectedChainId])
+
+  // Price every accounting token this project holds (across its chains) through JBPrices. Fail-closed: a chain
+  // that can't be verified marks the whole aggregate unpriced, and an unpriceable token falls back to a raw
+  // per-token summary rather than a guessed dollar figure.
+  useEffect(() => {
+    let cancelled = false
+    const chains = (connectedChains.length > 0
+      ? connectedChains
+      : [{ chainId: parseInt(initialChainId), projectId: parseInt(projectId) }]
+    ).map(chain => ({ chainId: chain.chainId, projectId: chain.projectId }))
+    fetchProjectBalanceBreakdown(chains)
+      .then(breakdown => { if (!cancelled) setBalanceBreakdown(breakdown) })
+      .catch(() => { if (!cancelled) setBalanceBreakdown(null) })
+    return () => { cancelled = true }
+  }, [connectedChains, projectId, initialChainId, balanceRefreshTick])
 
   // Fetch wallet balances when connected and chain changes
   const fetchWalletBalances = useCallback(async () => {
@@ -1972,6 +1993,43 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   // Calculate total balance USD value using currency/decimals from suckerBalance
   const totalBalanceUsd = balanceAvailable ? formatUsd(displayedBalance, suckerBalance.currency, suckerBalance.decimals) : null
 
+  // Prefer the on-chain, JBPrices-priced breakdown (all accounting tokens) once it resolves; until then show the
+  // faster indexed single-token figure. When a total can't be summed honestly, show the raw per-token summary.
+  const usdFigure = (value: number) => `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const balanceHeadline = balanceBreakdown
+    ? (!balanceBreakdown.verified
+      ? 'Unavailable'
+      : balanceBreakdown.priced
+      ? usdFigure(balanceBreakdown.totalUsd)
+      : balanceBreakdown.rawSummary)
+    : (!balanceAvailable
+      ? 'Unavailable'
+      : totalBalanceUsd
+      ? `$${totalBalanceUsd}`
+      : suckerBalance
+      ? `${formatBalance(displayedBalance, suckerBalance.decimals)} ${suckerBalance.currency === 2 ? 'USDC' : 'ETH'}`
+      : 'Unavailable')
+
+  const balanceTooltipRows: Array<{ key: string; label: string; value: string }> = balanceBreakdown
+    ? balanceBreakdown.rows.filter(row => row.balance > 0n).map((row, index) => ({
+      key: `${row.chainId}-${row.token}-${index}`,
+      label: CHAIN_INFO[row.chainId.toString()]?.name ?? `Chain ${row.chainId}`,
+      value: `${formatBalance(row.balance.toString(), row.decimals)}${row.symbol ? ` ${row.symbol}` : ''}`,
+    }))
+    : (suckerBalance?.projectBalances ?? [])
+      .filter(pb => !!CHAIN_INFO[pb.chainId.toString()])
+      .map(pb => {
+        const pbCurrency = pb.currency ?? suckerBalance!.currency
+        const pbDecimals = pb.decimals ?? suckerBalance!.decimals
+        return {
+          key: String(pb.chainId),
+          label: CHAIN_INFO[pb.chainId.toString()]!.name,
+          value: pbCurrency === 2 ? `$${formatBalance(pb.balance, pbDecimals)}` : `${formatBalance(pb.balance, pbDecimals)} ETH`,
+        }
+      })
+
+  const showBalanceTooltipContent = (balanceBreakdown ? balanceBreakdown.verified : balanceAvailable) && balanceTooltipRows.length > 0
+
   const handlePay = async (event?: React.MouseEvent<HTMLButtonElement>) => {
     if (nftSafetyError || paymentSafetyError || paymentSafetyLoading) return
     // Paying before the first ruleset starts reverts in the terminal.
@@ -2543,37 +2601,23 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         <div className="flex gap-6 mb-3 text-sm">
           <div className="relative" onMouseEnter={() => setShowBalanceTooltip(true)} onMouseLeave={() => setShowBalanceTooltip(false)} onClick={() => setShowBalanceTooltip((prev) => !prev)}>
             <span className={`font-mono cursor-pointer ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {!balanceAvailable
-                ? 'Unavailable'
-                : totalBalanceUsd
-                ? `$${totalBalanceUsd}`
-                : `${formatBalance(displayedBalance, suckerBalance.decimals)} ${suckerBalance.currency === 2 ? 'USDC' : 'ETH'}`}
+              {balanceHeadline}
             </span>
             <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{balanceScope}</span>
 
-            {/* Per-chain breakdown tooltip */}
-            {showBalanceTooltip && balanceAvailable && suckerBalance.projectBalances.length > 0 && (
+            {/* Per-chain / per-token breakdown tooltip */}
+            {showBalanceTooltip && showBalanceTooltipContent && (
               <div className={`absolute top-full left-0 mt-1 p-2 shadow-lg z-20 min-w-[180px] text-xs ${isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'}`}>
-                {suckerBalance.projectBalances.map((pb) => {
-                  const chainInfo = CHAIN_INFO[pb.chainId.toString()]
-                  if (!chainInfo) return null
-                  const pbCurrency = pb.currency ?? suckerBalance.currency
-                  const pbDecimals = pb.decimals ?? suckerBalance.decimals
-                  return (
-                    <div key={pb.chainId} className="flex justify-between gap-4 py-0.5">
-                      <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{chainInfo.name}</span>
-                      <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                        {pbCurrency === 2 ? `$${formatBalance(pb.balance, pbDecimals)}` : `${formatBalance(pb.balance, pbDecimals)} ETH`}
-                      </span>
-                    </div>
-                  )
-                })}
+                {balanceTooltipRows.map((row) => (
+                  <div key={row.key} className="flex justify-between gap-4 py-0.5">
+                    <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{row.label}</span>
+                    <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>{row.value}</span>
+                  </div>
+                ))}
                 <div className={`flex justify-between gap-4 pt-1 mt-1 border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
                   <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Total</span>
                   <span className={`font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {suckerBalance.currency === 2
-                      ? `$${formatBalance(suckerBalance.totalBalance, suckerBalance.decimals)}`
-                      : `${formatBalance(suckerBalance.totalBalance, suckerBalance.decimals)} ETH`}
+                    {balanceHeadline}
                   </span>
                 </div>
               </div>
