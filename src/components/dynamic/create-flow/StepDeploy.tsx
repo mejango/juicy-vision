@@ -13,6 +13,7 @@ import {
   badStageIndex,
   chainName,
   exportDraftFile,
+  shopMediaUploadIssue,
   surplusTokenLabel,
   type CreateFlowState,
   type RecipientRow,
@@ -557,10 +558,11 @@ export default function StepDeploy({
   const recipBad = recipientIssue(state) // a split/payout/auto-issuance with a value but no valid recipient
   const totalBad = splitTotalIssue(state) // a stage whose reserved/payout percentages sum over 100%
   const approvalBad = approvalIssue(state) // custom approval condition with no valid hook address on some chain
+  const mediaBad = shopMediaUploadIssue(state) // a shop item whose media is still pinning or failed to pin
 
   const disabled = launching || !!buildingLabel || !state.tos || !state.chainIds.length
     || !state.details.name || needTicker || needOwner || needOperator || needCustomToken
-    || !!recipBad || !!totalBad || !!approvalBad || bad !== -1
+    || !!recipBad || !!totalBad || !!approvalBad || !!mediaBad || bad !== -1
 
   const launchLabel = launching
     ? (isRev ? 'Deploying…' : 'Launching…')
@@ -661,6 +663,7 @@ export default function StepDeploy({
       {approvalBad && (
         <WarnNote>{`${approvalBad} Without it the approval condition silently becomes “none” (no review window for edits).`}</WarnNote>
       )}
+      {mediaBad && <WarnNote>{`${mediaBad} A store item deployed while its media is unresolved becomes a permanent name-only tier.`}</WarnNote>}
       {!state.chainIds.length && <WarnNote>Select at least one chain on the Flavor step before deploying.</WarnNote>}
       {bad !== -1 && (
         <WarnNote>{`Stage ${bad + 1} has no duration but isn’t the last stage. Give it a duration on the Stages step so Stage ${bad + 2} starts when its cycle ends.`}</WarnNote>

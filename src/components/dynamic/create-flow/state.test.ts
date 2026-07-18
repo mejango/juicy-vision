@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest'
 import { ALL_CHAIN_IDS } from '../../../constants'
 import {
-  createStage, initState, itemDraft, parseCreateDraftJson, sanitizeState,
+  createStage, initState, itemDraft, parseCreateDraftJson, sanitizeState, shopMediaUploadIssue,
   type CreateFlowState, type RecipientRow,
 } from './state'
 
@@ -124,5 +124,25 @@ describe('.jb round-trip completeness', () => {
     ;(exported.stages[0].payoutByKind as Record<string, unknown>).evil = { mode: 'steal', recipients: 'nope' }
     const imported = parseCreateDraftJson(JSON.stringify(exported))
     expect(imported.stages[0].payoutByKind.evil).toEqual({ mode: 'none', recipients: [] })
+  })
+
+  it('blocks deploy while a shop item media upload is pending or failed', () => {
+    const withNfts = (nft: Partial<ReturnType<typeof itemDraft>>): CreateFlowState => {
+      const s = initState(); s.shopEnabled = true; s.nfts = [{ ...itemDraft(), ...nft }]; return s
+    }
+    expect(shopMediaUploadIssue(withNfts({ _mediaUploading: true }))).toMatch(/still uploading/i)
+    expect(shopMediaUploadIssue(withNfts({ _mediaError: 'network failed' }))).toMatch(/upload failed/i)
+    // A resolved video attachment (animation_url media) is fine.
+    expect(shopMediaUploadIssue(withNfts({ imageUri: 'ipfs://vid', mediaType: 'video/mp4' }))).toBeNull()
+    // Transient flags on a disabled shop never block launch.
+    const off = withNfts({ _mediaError: 'stale' }); off.shopEnabled = false
+    expect(shopMediaUploadIssue(off)).toBeNull()
+  })
+
+  it('drops the transient media flags from exported .jb drafts', () => {
+    const s = initState(); s.shopEnabled = true; s.nfts = [{ ...itemDraft(), _mediaUploading: true, _mediaError: 'x' }]
+    const exported = sanitizeState(s)
+    expect(exported.nfts[0]).not.toHaveProperty('_mediaUploading')
+    expect(exported.nfts[0]).not.toHaveProperty('_mediaError')
   })
 })

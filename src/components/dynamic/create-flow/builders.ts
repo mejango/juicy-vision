@@ -49,6 +49,7 @@ import {
   type ItemState,
   type RecipientRow,
   createStage,
+  shopMediaUploadIssue,
 } from './state'
 
 // ---------------------------------------------------------------------------
@@ -821,6 +822,9 @@ function itemSplits(nft: ItemState): { splitPercent: number; splits: NonNullable
  */
 export async function buildDeployTiersConfigFromState(state: CreateFlowState): Promise<JBDeployTiersHookConfig | undefined> {
   if (!state.shopEnabled || !state.nfts.length) return undefined
+  // Never pin a name-only tier from an unresolved upload (the deploy button already gates on this).
+  const mediaIssue = shopMediaUploadIssue(state)
+  if (mediaIssue) throw new Error(mediaIssue)
   const col = state.collection
   const priceDecimals = storeDecimals(state)
 
