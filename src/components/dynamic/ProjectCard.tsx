@@ -659,6 +659,20 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     load()
   }, [currentProjectId, selectedChainId])
 
+  // Refresh only the treasury total after a confirmed balance-changing tx (pay / cash out / payout /
+  // surplus allowance), so the header USD figure never lags the Funds panel until a reload. Balance-only
+  // (no full reload → no loading flash); the emitting forms fire `juice:project-data-invalidated`, and the
+  // pay flow below dispatches it too. Keeps the prior figure on a transient read failure.
+  useEffect(() => {
+    const refetchBalance = () => {
+      fetchSuckerGroupBalance(currentProjectId, parseInt(selectedChainId))
+        .then(setSuckerBalance)
+        .catch(() => {})
+    }
+    window.addEventListener('juice:project-data-invalidated', refetchBalance)
+    return () => window.removeEventListener('juice:project-data-invalidated', refetchBalance)
+  }, [currentProjectId, selectedChainId])
+
   // Fetch wallet balances when connected and chain changes
   const fetchWalletBalances = useCallback(async () => {
     if (!activeWalletAddress) {
@@ -1374,6 +1388,11 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         txHash: activePayment.hash,
         confirmedAt: new Date().toISOString(),
       })
+      // A confirmed pay grew the treasury — tell the header refetch above and the Funds panel to refresh
+      // (the cash out / payout / allowance forms already emit this; the pay flow otherwise did not).
+      window.dispatchEvent(new CustomEvent('juice:project-data-invalidated', {
+        detail: { chainId: parseInt(selectedChainId), projectId: Number(currentProjectId) },
+      }))
     } else if (activePayment?.status === 'queued') {
       setPaying(false)
       refetchJuiceBalance()
@@ -1397,7 +1416,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         error: activePayment.error || 'Transaction failed',
       })
     }
-  }, [activePayment?.status, activePayment?.hash, activePayment?.error, refetchJuiceBalance, updatePersistedPayment])
+  }, [activePayment?.status, activePayment?.hash, activePayment?.error, refetchJuiceBalance, updatePersistedPayment, selectedChainId, currentProjectId])
 
   // Format a shop pricing amount ($ for USD tiers, ETH otherwise).
   const formatPricingAmount = (raw: bigint, decimals: number, currency: number) => {

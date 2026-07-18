@@ -294,4 +294,23 @@ describe('ProjectCard', () => {
       })
     })
   })
+
+  describe('treasury balance refresh', () => {
+    it('refetches the group balance when a balance-changing tx invalidates project data', async () => {
+      render(<ProjectCard projectId="1" />)
+      await waitFor(() => {
+        expect(bendystraw.fetchSuckerGroupBalance).toHaveBeenCalled()
+      })
+      ;(bendystraw.fetchSuckerGroupBalance as Mock).mockClear()
+
+      // A cash out / payout / pay confirmation fires this; the header must refetch, not wait for a reload.
+      window.dispatchEvent(new CustomEvent('juice:project-data-invalidated', {
+        detail: { chainId: 1, projectId: 1 },
+      }))
+
+      await waitFor(() => {
+        expect(bendystraw.fetchSuckerGroupBalance).toHaveBeenCalledTimes(1)
+      })
+    })
+  })
 })
