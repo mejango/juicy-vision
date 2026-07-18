@@ -104,6 +104,8 @@ export interface ItemState {
   description: string
   imageUri: string
   mediaType: string
+  _mediaUploading: boolean
+  _mediaError: string
   metaUri: string
   encodedIpfsUri: string
   price: string
@@ -241,7 +243,7 @@ export function itemDraft(): ItemState {
   return {
     expanded: true, advOpen: false,
     name: '', description: '',
-    imageUri: '', mediaType: '', metaUri: '', encodedIpfsUri: '',
+    imageUri: '', mediaType: '', _mediaUploading: false, _mediaError: '', metaUri: '', encodedIpfsUri: '',
     price: '', limited: false, supply: '',
     splitOn: false, splitRecipients: [],
     discountOn: false, discountPct: '',
@@ -250,6 +252,19 @@ export function itemDraft(): ItemState {
     votingOn: false, votingUnits: '',
     flags: { allowOwnerMint: false, transfersPausable: false, cantBeRemoved: false, allowCredits: true, ownerCanEditDiscount: true },
   }
+}
+
+// A pending or failed shop-item media upload must never silently deploy as a name-only onchain tier —
+// the tier is immutable once minted. The `_`-prefixed flags are stripped from exported .jb drafts, so
+// after a reload an unpinned file has to be chosen again.
+export function shopMediaUploadIssue(state: CreateFlowState): string | null {
+  if (!state || state.shopEnabled === false) return null
+  const items = state.nfts || []
+  for (let i = 0; i < items.length; i++) {
+    if (items[i]._mediaUploading) return `Item ${i + 1} media is still uploading.`
+    if (items[i]._mediaError) return `Item ${i + 1} media upload failed. Choose the file again before continuing.`
+  }
+  return null
 }
 
 export function initState(): CreateFlowState {
