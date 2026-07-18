@@ -5,6 +5,7 @@ import type { JB721TierConfigInput } from '../../services/tiersHook'
 import type { JB721HookFlags, TierPermissions } from '../../services/nft'
 import { validateTierChange } from '../../services/nft'
 import { encodeIpfsUri, pinFile } from '../../utils/ipfs'
+import { mediaTypeForFile } from '../../utils/ipfsMedia'
 import { pinMetadata } from '../../services/ipfsPinning'
 import { buildTierMetadata, type StoredTierMetadata } from '../../utils/tierMetadata'
 import { ZERO_ADDRESS } from '../../constants'
@@ -124,6 +125,9 @@ export default function TierEditor({
     try {
       const cid = await pinFile(file, pinataJwt, `tier-${formState.name || 'image'}`)
       updateField('imageUri', `ipfs://${cid}`)
+      // Auto-detect the MIME (falling back to the extension when File.type is empty) so a raw CID renders
+      // with the right player; the operator can still override it in the Media type field below.
+      updateField('mediaType', mediaTypeForFile(file))
     } catch (err) {
       console.error('Failed to upload image:', err)
       setError('Failed to upload image. Please try again.')

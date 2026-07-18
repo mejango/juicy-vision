@@ -9,6 +9,7 @@
 import { useCallback, useState } from 'react'
 
 import { pinFileToBackend } from '../../../services/ipfsPinning'
+import { mediaTypeForFile } from '../../../utils/ipfsMedia'
 import { PerChainNumControl } from './pickers'
 import { itemDraft, surplusTokenLabel, type CreateFlowState, type ItemState } from './state'
 import {
@@ -234,7 +235,7 @@ function ItemEditor({ state, nft, idx, update }: {
     upd((n) => { n._mediaUploading = true; n._mediaError = '' })
     pinFileToBackend(f, nft.name || f.name)
       .then((uri) => {
-        upd((n) => { n.imageUri = uri; n.mediaType = (f.type || '').toLowerCase(); n._mediaUploading = false; n._mediaError = '' })
+        upd((n) => { n.imageUri = uri; n.mediaType = mediaTypeForFile(f); n._mediaUploading = false; n._mediaError = '' })
       })
       .catch((e: unknown) => {
         const msg = 'Could not upload: ' + (e instanceof Error ? e.message : String(e))
