@@ -27,14 +27,17 @@
  */
 
 import {
+  createPublicClient,
   encodeAbiParameters,
   encodeFunctionData,
   erc20Abi,
   formatUnits,
+  http,
   keccak256,
   toEventSelector,
   zeroAddress,
   type Address,
+  type Chain,
   type PublicClient,
 } from 'viem'
 import { jbSplitsAbi, jbTerminalStoreAbi, type JBChainId } from '@bananapus/nana-sdk-core'
@@ -47,6 +50,7 @@ import {
   NATIVE_TOKEN,
   REV_OWNER,
 } from '../constants'
+import { ALL_VIEM_CHAINS } from '../constants/chains'
 import { JB_CONTROLLER_ABI } from '../constants/abis/jbController'
 import { getProjectController } from '../utils/paymentTerminal'
 import { publicClientFor } from './projectTx'
@@ -514,6 +518,33 @@ function clientFor(chainId: number): PublicClient {
   return publicClientFor(chainId) as PublicClient
 }
 
+// The default RPCs (publicnode) now 403 the archive eth_getLogs the LP-position
+// scan needs ("Archive requests require a personal token") — stranding the LP
+// column on "Unavailable". Route the LP-position log scan ONLY through Tenderly's
+// public gateways, which serve the address-filtered Initialize/ModifyLiquidity
+// scan. All other reads still go through clientFor. Override per chain via
+// localStorage['jb-lp-logs-rpc:<id>'] (e.g. your own archive endpoint — keeps
+// API-key URLs out of the build). Mirrors website discover.js lpLogsClient.
+const LP_LOGS_RPC: Record<number, string> = {
+  1: 'https://mainnet.gateway.tenderly.co',
+  10: 'https://optimism.gateway.tenderly.co',
+  8453: 'https://base.gateway.tenderly.co',
+  42161: 'https://arbitrum.gateway.tenderly.co',
+  11155111: 'https://sepolia.gateway.tenderly.co',
+  11155420: 'https://optimism-sepolia.gateway.tenderly.co',
+  84532: 'https://base-sepolia.gateway.tenderly.co',
+  421614: 'https://arbitrum-sepolia.gateway.tenderly.co',
+}
+
+function lpLogsClient(chainId: number): PublicClient {
+  let override: string | null = null
+  try { override = localStorage.getItem(`jb-lp-logs-rpc:${chainId}`) } catch { /* SSR / no storage */ }
+  const url = override || LP_LOGS_RPC[chainId]
+  if (!url) return clientFor(chainId) // no gateway mapped → fall back (best effort)
+  const chain = (ALL_VIEM_CHAINS as Record<number, Chain>)[chainId]
+  return createPublicClient({ chain, transport: http(url) }) as PublicClient
+}
+
 /**
  * The buyback pool's PAIR token for a project on a chain — its Uniswap
  * pool-currency address (native ETH = zero address), decimals, and symbol.
@@ -877,7 +908,8 @@ export async function scanPoolPositionTokenIds(
   positionManager: Address,
   poolId: `0x${string}`,
 ): Promise<PoolTokenIdScan> {
-  const client = clientFor(chainId)
+  // getLogs-capable gateway (publicnode 403s the archive scan); reads elsewhere use clientFor.
+  const client = lpLogsClient(chainId)
   const latest = await client.getBlockNumber()
   const cacheKey = `${chainId}:${poolManager.toLowerCase()}:${positionManager.toLowerCase()}:${poolId.toLowerCase()}`
   let cached = poolHistoryCache.get(cacheKey) ?? null
