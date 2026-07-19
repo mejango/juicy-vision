@@ -409,6 +409,8 @@ export type CallState =
   | { state: 'Included'; data: { block: number } }
   | { state: 'Cancelled'; data: Record<string, unknown> }
   | { state: 'Success'; data: Record<string, unknown> }
+  // Relayr reports both 'Success' and 'Completed' for a terminally-confirmed record; treat them the same.
+  | { state: 'Completed'; data: Record<string, unknown> }
   | { state: 'Reverted'; data: Record<string, unknown> }
 
 export interface RawTransactionStatus {
@@ -460,6 +462,7 @@ function mapCallStateToStatus(callState: CallState): 'pending' | 'submitted' | '
     case 'Cancelled':
       return 'failed'
     case 'Success':
+    case 'Completed':
       return 'confirmed'
     case 'Mempool':
     case 'Cancel':
