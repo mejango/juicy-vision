@@ -5,7 +5,7 @@ const SPLITS_TOTAL_PERCENT = 1_000_000_000
 const MAX_LOCKED_UNTIL = 2 ** 48 - 1
 const MAX_PROJECT_ID = (1n << 64n) - 1n
 
-export type SplitKind = 'payout' | 'reserved'
+type SplitKind = 'payout' | 'reserved'
 
 export interface SplitInput {
   percent: string
@@ -157,6 +157,3 @@ export function assertSafeStoredSplitGroups(
     if (total > SPLITS_TOTAL_PERCENT) throw new Error(`Split group ${groupIndex + 1} exceeds 100%`)
   })
 }
-
-// Backwards-compatible export while callers migrate to the accurate name.
-export const assertSimpleStoredSplitGroups = assertSafeStoredSplitGroups

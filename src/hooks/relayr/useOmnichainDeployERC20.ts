@@ -4,7 +4,7 @@ import { useOmnichainTransaction } from './useOmnichainTransaction'
 import type { UseOmnichainTransactionOptions, UseOmnichainTransactionReturn } from './types'
 import { assertSafeErc20TokenMetadata } from '../../utils/erc20Safety'
 
-export interface OmnichainDeployERC20Params {
+interface OmnichainDeployERC20Params {
   chainIds: number[]
   projectIds: Record<number, number>  // chainId -> projectId
   tokenName: string
@@ -14,7 +14,7 @@ export interface OmnichainDeployERC20Params {
   // This ensures same address on all chains via CREATE2
 }
 
-export interface UseOmnichainDeployERC20Return extends Omit<UseOmnichainTransactionReturn, 'execute'> {
+interface UseOmnichainDeployERC20Return extends Omit<UseOmnichainTransactionReturn, 'execute'> {
   deploy: (params: OmnichainDeployERC20Params) => Promise<void>
 }
 

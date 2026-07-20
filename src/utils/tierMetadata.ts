@@ -1,9 +1,9 @@
-export interface TierCategoryPlan {
+interface TierCategoryPlan {
   categoryByTierId: Record<string, number>
   storeCategories: Record<string, string>
 }
 
-export interface TierMetadataInput {
+interface TierMetadataInput {
   name: string
   description?: string
   image?: string

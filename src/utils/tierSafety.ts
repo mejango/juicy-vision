@@ -6,9 +6,9 @@ import { isUsdcCurrency } from './technicalDetails'
 const DEAD_ADDRESS = '0x000000000000000000000000000000000000dead'
 const ZERO_BYTES32 = `0x${'0'.repeat(64)}`
 
-export type NFTPaymentToken = 'ETH' | 'USDC'
+type NFTPaymentToken = 'ETH' | 'USDC'
 
-export interface VerifiedNFTPaymentItem {
+interface VerifiedNFTPaymentItem {
   tierId: number
   quantity: number
   name: string

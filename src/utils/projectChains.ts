@@ -1,6 +1,6 @@
 import { fetchConnectedChains, type ConnectedChain } from '../services/bendystraw'
 
-export interface ProjectChainResolution {
+interface ProjectChainResolution {
   chains: ConnectedChain[]
   mappingAvailable: boolean
   error?: string

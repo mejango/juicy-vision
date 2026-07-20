@@ -1,5 +1,11 @@
 // Shared utilities for technical details display in transaction modals
 import { IS_TESTNET, CHAIN_IDS } from '../config/environment'
+import {
+  CANONICAL_USDC_BY_CHAIN,
+  CONTRACTS,
+  MAINNET_CHAINS as SHARED_MAINNET_CHAINS,
+  TESTNET_CHAINS as SHARED_TESTNET_CHAINS,
+} from '../../shared/chains'
 
 // Chain name mapping (environment-aware)
 export const CHAIN_NAMES: Record<string, string> = IS_TESTNET
@@ -23,38 +29,14 @@ export const CHAIN_COLORS: Record<string, string> = {
   [String(CHAIN_IDS.arbitrum)]: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
 }
 
-// Known JB ecosystem addresses (Juicebox V6 - same address on all chains)
-export const JB_ADDRESSES: Record<string, string> = {
-  // Core contracts
-  '0x3fcec3572e84b624477bcff4e2cf1f7deab648f1': 'JBController',
-  '0x130f5dd2bd8805443cf41755253d778a75a67f53': 'JBMultiTerminal',
-  '0x26f2228a4e8b0079ed1c2a3d22f12ff7f83cdfba': 'JBRulesets',
-  '0x7497ae014a60561925b51c0a3b4ade7460b9927c': 'JBTerminalStore',
-  '0x6017d1fba9dc279bfa0b03fd931c22e242ab3691': 'JBProjects',
-  '0x1f80d8f057ee36b4c2656d107e4e4558b71ba7d9': 'JBTokens',
-  '0x5aff29060e023e6fb87be5596652b33c65af535b': 'JBDirectory',
-  '0x28b3d11fcb8d2ad0a143c5b193cd9f2e4d43f4c3': 'JBSplits',
-  '0xc93360158f187fc8fc8f1062a1b31d06f185dbab': 'JBFundAccessLimits',
-  '0xf92ac1ab5a00033e35a3975739124f61928c36b0': 'JBPermissions',
-  '0xad45e4627f068d1e6b21e5301870d807543a8401': 'JBPrices',
-  '0x657d0e588fca6f8c49394c9ca8a1cf6505b10314': 'JBFeelessAddresses',
-  '0x62e77076b6e902e7aec8b2925acc9b46058e3d38': 'JBHeldFees',
-  // Deployers
-  '0xb853758a70a6b4216c09f1d071ea2344aba0a34f': 'JBOmnichainDeployer',
-  '0xb552eb94284f94b833837d4b2cbb237128415d4e': 'REVDeployer',
-  '0x2ba4705ad0332cdfb299b452068438bcba3faaf3': 'REVOwner',
-  '0x056265c31157748818f0910d1859acd2f7d427de': 'REVLoans',
-  '0xb7b8ec35e2dd84afff04ee769c6189e7a4d44a78': 'JB721TiersHookDeployer',
-  '0x3ffdc94e7f1de4b74c52158ec9dd3b965585f451': 'JB721TiersHookProjectDeployer',
-  '0x69913acf79dbba170d9efafe605ee62b42164f9c': 'JB721TiersHookStore',
-  // Hooks and extensions
-  '0x77bee1ad2ac0ace98a9b5b58d75685c8b4d94948': 'JBBuybackHook',
-  '0x72f55a54cd53410a5ff175508a5a384227081788': 'JBBuybackHookRegistry',
-  // Router terminal (routes swaps into a project's accounting token)
-  '0x0fbcbb3d10c8f524840d74ef81c1a9f161c418d7': 'JBRouterTerminal',
-  '0xe0427f250fdb0379c8e98e884ee4570521208cbc': 'JBRouterTerminalRegistry',
-  // Suckers
-  '0x7903a854ae91eaf635430d120a1a434085cef297': 'JBSuckerRegistry',
+// Known JB ecosystem addresses (Juicebox V6 - same address on all chains),
+// derived from the shared canonical contract table plus labels for entries
+// the shared table doesn't carry (sucker deployers, native token, zero).
+const JB_ADDRESSES: Record<string, string> = {
+  ...Object.fromEntries(
+    Object.entries(CONTRACTS).map(([name, address]) => [address.toLowerCase(), name]),
+  ),
+  // Native-bridge sucker deployers
   '0x298a775c030adcedb641a89d9047ec9972674e1a': 'JBOptimismSuckerDeployer',
   '0x54140331902de5c3445eb0c26e15099a5a9d59e6': 'JBBaseSuckerDeployer',
   '0xa12ebfca3d4e0810e4ed174e4c08277c26917acb': 'JBArbitrumSuckerDeployer',
@@ -71,55 +53,14 @@ export const JB_ADDRESSES: Record<string, string> = {
   '0x0000000000000000000000000000000000000000': 'None',
 }
 
-// Chain-aware token addresses (different per chain)
-export const CHAIN_TOKENS: Record<string, Record<string, string>> = {
-  // Ethereum mainnet
-  '1': {
-    '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48': 'USDC',
-  },
-  // Optimism
-  '10': {
-    '0x0b2c639c533813f4aa9d7837caf62653d097ff85': 'USDC',
-  },
-  // Base
-  '8453': {
-    '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913': 'USDC',
-  },
-  // Arbitrum
-  '42161': {
-    '0xaf88d065e77c8cc2239327c5edb3a432268e5831': 'USDC',
-  },
-  // Sepolia testnet
-  '11155111': {
-    '0x1c7d4b196cb0c7b01d743fbc6116a902379c7238': 'USDC',
-  },
-  // OP Sepolia testnet
-  '11155420': {
-    '0x5fd84259d66cd46123540766be93dfe6d43130d7': 'USDC',
-  },
-  // Base Sepolia testnet
-  '84532': {
-    '0x036cbd53842c5426634e7929541ec2318f3dcf7e': 'USDC',
-  },
-  // Arb Sepolia testnet
-  '421614': {
-    '0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d': 'USDC',
-  },
-}
-
-// All USDC addresses by chain for chain-specific display
-export const USDC_ADDRESSES: Record<string, string> = {
-  // Mainnet
-  '1': '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
-  '10': '0x0b2c639c533813f4aa9d7837caf62653d097ff85',
-  '8453': '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
-  '42161': '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
-  // Testnet
-  '11155111': '0x1c7d4b196cb0c7b01d743fbc6116a902379c7238',
-  '11155420': '0x5fd84259d66cd46123540766be93dfe6d43130d7',
-  '84532': '0x036cbd53842c5426634e7929541ec2318f3dcf7e',
-  '421614': '0x75faf114eafb1bdbe2f0316df893fd58ce46aa4d',
-}
+// All USDC addresses by chain (mainnet + testnet) for chain-specific display.
+// Lowercased for direct comparison and display.
+export const USDC_ADDRESSES: Record<string, string> = Object.fromEntries(
+  Object.entries(CANONICAL_USDC_BY_CHAIN).map(([chainId, address]) => [
+    chainId,
+    address.toLowerCase(),
+  ]),
+)
 
 // Check if an address is USDC (varies by chain)
 export function isUsdcAddress(address: string): boolean {
@@ -127,19 +68,13 @@ export function isUsdcAddress(address: string): boolean {
   return Object.values(USDC_ADDRESSES).some(addr => addr.toLowerCase() === lower)
 }
 
-// USDC currency codes by chain (derived from token addresses in the protocol)
-export const USDC_CURRENCIES: Record<string, number> = {
-  // JB token-keyed currencies are uint32(uint160(token)). Keep these derived
-  // from the canonical USDC address on each chain, never from an AI response.
-  '11155111': 932999736,  // 0x...379c7238
-  '11155420': 3559993559, // 0x...d43130d7
-  '84532': 2403192702,    // 0x...8f3dcf7e
-  '421614': 3460737613,   // 0x...ce46aa4d
-  '1': 906423112,         // 0x...3606eb48
-  '10': 3499622277,       // 0x...d097ff85
-  '8453': 3181390099,     // 0x...bda02913
-  '42161': 646862897,     // 0x...268e5831
-}
+// USDC currency codes by chain: uint32(uint160(token)), derived from the shared
+// canonical per-chain USDC config — never from an AI response.
+export const USDC_CURRENCIES: Record<string, number> = Object.fromEntries(
+  [...Object.values(SHARED_MAINNET_CHAINS), ...Object.values(SHARED_TESTNET_CHAINS)].map(
+    chain => [String(chain.id), chain.usdc.currency],
+  ),
+)
 
 // Check if a currency code is USDC (varies by chain)
 export function isUsdcCurrency(currency: number): boolean {
@@ -160,8 +95,8 @@ export function getAddressLabel(address: string, chainId?: string | number): str
   const chainStr = chainId?.toString()
 
   // Check chain-specific tokens first
-  if (chainStr && CHAIN_TOKENS[chainStr]?.[lower]) {
-    return CHAIN_TOKENS[chainStr][lower]
+  if (chainStr && USDC_ADDRESSES[chainStr] === lower) {
+    return 'USDC'
   }
 
   // Fall back to global addresses

@@ -42,7 +42,7 @@ export interface ManagedWalletBalance {
   decimals: number
 }
 
-export interface SmartAccountInfo {
+interface SmartAccountInfo {
   chainId: number
   address: string
   deployed: boolean

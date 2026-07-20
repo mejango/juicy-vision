@@ -17,85 +17,18 @@
  * 4. Combine with BASE_PROMPT for final system prompt
  */
 
-// Re-export everything from the original prompts.ts for backward compatibility
-export {
-  BASE_PROMPT,
-  DATA_QUERY_CONTEXT,
-  HOOK_DEVELOPER_CONTEXT,
-  TRANSACTION_CONTEXT,
-  EXAMPLE_INTERACTIONS,
-  SYSTEM_PROMPT,
-  INTENT_HINTS,
-  MODULE_TOKENS,
-} from '../prompts.ts';
+// Keyword hints shared with intent detection.
+export { INTENT_HINTS } from '../prompts.ts';
 
-// Export transaction sub-modules
+// Transaction sub-module registry + loaders.
 export {
   TRANSACTION_SUB_MODULES,
   TRANSACTION_CORE,
   TRANSACTION_CORE_TOKEN_ESTIMATE,
-  getSubModule,
-  getSubModuleIds,
   buildTransactionContext,
   estimateSubModuleTokens,
   matchSubModulesByKeywords,
-  type SubModule,
 } from './transaction/index.ts';
-
-// Export individual sub-modules for direct access
-export {
-  CHAINS_CONTEXT,
-  CHAINS_HINTS,
-  CHAINS_TOKEN_ESTIMATE,
-} from './transaction/chains.ts';
-
-export {
-  V6_ADDRESSES_CONTEXT,
-  V6_ADDRESSES_HINTS,
-  V6_ADDRESSES_TOKEN_ESTIMATE,
-} from './transaction/v6Addresses.ts';
-
-export {
-  TERMINALS_CONTEXT,
-  TERMINALS_HINTS,
-  TERMINALS_TOKEN_ESTIMATE,
-} from './transaction/terminals.ts';
-
-export {
-  SPLITS_LIMITS_CONTEXT,
-  SPLITS_LIMITS_HINTS,
-  SPLITS_LIMITS_TOKEN_ESTIMATE,
-} from './transaction/splitsLimits.ts';
-
-export {
-  NFT_TIERS_CONTEXT,
-  NFT_TIERS_HINTS,
-  NFT_TIERS_TOKEN_ESTIMATE,
-} from './transaction/nftTiers.ts';
-
-export {
-  REVNET_PARAMS_CONTEXT,
-  REVNET_PARAMS_HINTS,
-  REVNET_PARAMS_TOKEN_ESTIMATE,
-} from './transaction/revnetParams.ts';
-
-export {
-  RULESETS_CONTEXT,
-  RULESETS_HINTS,
-  RULESETS_TOKEN_ESTIMATE,
-} from './transaction/rulesets.ts';
-
-export {
-  DEPLOYMENT_CONTEXT,
-  DEPLOYMENT_HINTS,
-  DEPLOYMENT_TOKEN_ESTIMATE,
-} from './transaction/deployment.ts';
-
-export {
-  METADATA_CONTEXT,
-  METADATA_HINTS,
-  METADATA_TOKEN_ESTIMATE,
-} from './transaction/metadata.ts';
 
 /**
  * Semantic descriptions for embedding-based matching

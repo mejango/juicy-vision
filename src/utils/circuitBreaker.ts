@@ -27,9 +27,9 @@
 
 import { logger } from './logger'
 
-export type CircuitState = 'closed' | 'open' | 'half_open'
+type CircuitState = 'closed' | 'open' | 'half_open'
 
-export interface CircuitBreakerOptions {
+interface CircuitBreakerOptions {
   /** Number of failures before opening circuit (default: 3) */
   failureThreshold?: number
   /** Time window for counting failures in ms (default: 60_000) */
@@ -42,7 +42,7 @@ export interface CircuitBreakerOptions {
   onClose?: () => void
 }
 
-export interface CircuitBreakerResult<T> {
+interface CircuitBreakerResult<T> {
   status: 'success' | 'failure' | 'circuit_open'
   data?: T
   error?: Error
@@ -178,34 +178,9 @@ export function createCircuitBreaker<T = unknown>(
   }
 }
 
-// =============================================================================
-// Pre-configured Circuit Breakers for External Services
-// =============================================================================
-
-/** Circuit breaker for Claude API calls */
-export const claudeCircuit = createCircuitBreaker('claude', {
-  failureThreshold: 3,
-  failureWindow: 60_000,
-  cooldownPeriod: 300_000, // 5 minutes
-})
-
-/** Circuit breaker for RPC provider calls */
-export const rpcCircuit = createCircuitBreaker('rpc', {
-  failureThreshold: 5,
-  failureWindow: 30_000,
-  cooldownPeriod: 60_000, // 1 minute - RPCs recover faster
-})
-
 /** Circuit breaker for Bendystraw GraphQL API */
 export const bendystrawCircuit = createCircuitBreaker('bendystraw', {
   failureThreshold: 3,
   failureWindow: 60_000,
   cooldownPeriod: 120_000, // 2 minutes
-})
-
-/** Circuit breaker for Stripe API */
-export const stripeCircuit = createCircuitBreaker('stripe', {
-  failureThreshold: 2,
-  failureWindow: 60_000,
-  cooldownPeriod: 300_000, // 5 minutes - payments are sensitive
 })

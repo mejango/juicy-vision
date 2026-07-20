@@ -8,7 +8,7 @@ import {
 } from '../constants'
 import type { JBRulesetConfig } from '../services/relayr'
 import type { JBSplitGroupData } from '../services/bendystraw'
-import { assertSimpleStoredSplitGroups } from './splitSafety'
+import { assertSafeStoredSplitGroups } from './splitSafety'
 
 const MAX_UINT224 = (1n << 224n) - 1n
 
@@ -84,7 +84,7 @@ export function assertRulesetConfigurationSafe(
     throw new Error('Base currency is not tied to a recognized live accounting token')
   }
 
-  assertSimpleStoredSplitGroups(config.splitGroups)
+  assertSafeStoredSplitGroups(config.splitGroups)
   const splitGroupIds = new Set<string>()
   for (const group of config.splitGroups) {
     const groupId = BigInt(group.groupId)
@@ -146,8 +146,8 @@ export function assertPreservedSplitGroups(
   proposed: JBRulesetConfig['splitGroups'],
   current: JBSplitGroupData[],
 ): void {
-  assertSimpleStoredSplitGroups(proposed)
-  assertSimpleStoredSplitGroups(current)
+  assertSafeStoredSplitGroups(proposed)
+  assertSafeStoredSplitGroups(current)
   const proposedById = new Map(proposed.map(group => [String(group.groupId), group.splits]))
   const currentById = new Map(current.map(group => [String(group.groupId), group.splits]))
   if (proposedById.size !== proposed.length || currentById.size !== current.length) {

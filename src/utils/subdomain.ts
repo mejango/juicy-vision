@@ -5,7 +5,7 @@
 /**
  * Check if the current hostname is the admin dashboard subdomain (dash.*)
  */
-export function isDashboardSubdomain(): boolean {
+function isDashboardSubdomain(): boolean {
   const hostname = window.location.hostname
   return hostname.startsWith('dash.')
 }
@@ -13,7 +13,7 @@ export function isDashboardSubdomain(): boolean {
 /**
  * Check for ?admin=true query param (dev override)
  */
-export function hasAdminQueryParam(): boolean {
+function hasAdminQueryParam(): boolean {
   const params = new URLSearchParams(window.location.search)
   return params.get('admin') === 'true'
 }

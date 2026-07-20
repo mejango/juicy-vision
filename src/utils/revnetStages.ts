@@ -1,7 +1,7 @@
 import { parseEther } from 'viem'
 import type { REVStageConfig } from '../services/relayr'
 
-export interface RevnetStageInput {
+interface RevnetStageInput {
   startsAtOrAfter: string
   splitPercent: string
   initialIssuance: string

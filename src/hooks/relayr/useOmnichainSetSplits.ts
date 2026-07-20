@@ -23,7 +23,7 @@ import { buildSplitGroup } from '../../utils/splitSafety'
 import { fetchProjectSplits, type JBSplitData } from '../../services/bendystraw'
 
 // Split data as used in the form
-export interface FormSplit {
+interface FormSplit {
   percent: string // 0-100
   beneficiary: string
   projectId: string
@@ -34,7 +34,7 @@ export interface FormSplit {
 }
 
 // Chain data for setting splits
-export interface ChainSplitData {
+interface ChainSplitData {
   chainId: number
   projectId: number
   rulesetId: string

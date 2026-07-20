@@ -1,12 +1,10 @@
-import { ethers } from 'ethers'
 import { encodeAbiParameters, keccak256, toBytes, type Address, type Hex } from 'viem'
 
 /** Compute the V6 721 pay metadata ID from the hook implementation target. */
-export function computeNftPayMetadataId(metadataIdTarget: Address): Hex {
+function computeNftPayMetadataId(metadataIdTarget: Address): Hex {
   const purposeBytes20 = keccak256(toBytes('pay')).slice(0, 42)
-  const purpose = ethers.BigNumber.from(purposeBytes20)
-  const target = ethers.BigNumber.from(metadataIdTarget.toLowerCase())
-  const xorHex = purpose.xor(target).toHexString().slice(2).padStart(40, '0')
+  const xor = BigInt(purposeBytes20) ^ BigInt(metadataIdTarget.toLowerCase())
+  const xorHex = xor.toString(16).padStart(40, '0')
   return `0x${xorHex.slice(0, 8)}` as Hex
 }
 

@@ -5,7 +5,7 @@ export interface ParsedComponent {
   isStreaming?: boolean // True if this component is still being streamed
 }
 
-export interface ParsedContent {
+interface ParsedContent {
   segments: Array<{ type: 'text'; content: string } | { type: 'component'; component: ParsedComponent }>
 }
 
@@ -297,36 +297,4 @@ export function stripComponents(content: string): string {
         return `[${componentType} component]`
     }
   }).trim()
-}
-
-export function extractComponents(content: string): ParsedComponent[] {
-  const components: ParsedComponent[] = []
-  const matches = content.matchAll(COMPONENT_REGEX)
-
-  for (const match of matches) {
-    const attrsString = match[1]
-    const props: Record<string, string> = {}
-
-    // Match double-quoted attributes
-    const doubleMatches = attrsString.matchAll(ATTR_REGEX_DOUBLE)
-    for (const attrMatch of doubleMatches) {
-      props[attrMatch[1]] = unescapeAttrValue(attrMatch[2])
-    }
-    // Match single-quoted attributes (used for JSON)
-    const singleMatches = attrsString.matchAll(ATTR_REGEX_SINGLE)
-    for (const attrMatch of singleMatches) {
-      props[attrMatch[1]] = unescapeAttrValue(attrMatch[2])
-    }
-
-    const componentType = props.type || 'unknown'
-    delete props.type
-
-    components.push({
-      type: componentType,
-      props,
-      raw: match[0],
-    })
-  }
-
-  return components
 }

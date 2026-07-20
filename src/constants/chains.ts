@@ -1,10 +1,39 @@
 import { mainnet, optimism, base, arbitrum, sepolia, optimismSepolia, baseSepolia, arbitrumSepolia } from 'viem/chains'
 import { IS_TESTNET, CHAIN_IDS } from '../config/environment'
+import {
+  CONTRACTS,
+  MAINNET_CHAINS as SHARED_MAINNET_CHAINS,
+  TESTNET_CHAINS as SHARED_TESTNET_CHAINS,
+} from '../../shared/chains'
 
 // =============================================================================
 // CHAIN CONFIGURATION
 // =============================================================================
 // Environment-aware chain configuration. Uses Sepolia testnets when IS_TESTNET is true.
+
+// Mainnet chain IDs (always available, even in staging mode for cross-network queries)
+export const MAINNET_CHAIN_IDS = {
+  ethereum: 1,
+  optimism: 10,
+  base: 8453,
+  arbitrum: 42161,
+} as const
+
+// Mainnet viem chain configs (always available for on-chain reads of mainnet data in staging)
+export const MAINNET_VIEM_CHAINS = {
+  [MAINNET_CHAIN_IDS.ethereum]: mainnet,
+  [MAINNET_CHAIN_IDS.optimism]: optimism,
+  [MAINNET_CHAIN_IDS.base]: base,
+  [MAINNET_CHAIN_IDS.arbitrum]: arbitrum,
+} as const
+
+// Mainnet RPC endpoints (always available for on-chain reads of mainnet data in staging)
+export const MAINNET_RPC_ENDPOINTS: Record<number, string[]> = {
+  [MAINNET_CHAIN_IDS.ethereum]: ['https://ethereum.publicnode.com', 'https://eth.drpc.org', 'https://rpc.ankr.com/eth'],
+  [MAINNET_CHAIN_IDS.optimism]: ['https://optimism.publicnode.com', 'https://mainnet.optimism.io', 'https://rpc.ankr.com/optimism'],
+  [MAINNET_CHAIN_IDS.base]: ['https://base.publicnode.com', 'https://mainnet.base.org', 'https://rpc.ankr.com/base'],
+  [MAINNET_CHAIN_IDS.arbitrum]: ['https://arbitrum-one.publicnode.com', 'https://arb1.arbitrum.io/rpc', 'https://rpc.ankr.com/arbitrum'],
+}
 
 // Viem chain configurations for RPC calls
 export const VIEM_CHAINS = IS_TESTNET
@@ -43,54 +72,18 @@ export const RPC_ENDPOINTS: Record<number, string[]> = IS_TESTNET
       [CHAIN_IDS.base]: ['https://sepolia.base.org', 'https://base-sepolia.drpc.org', 'https://rpc.ankr.com/base_sepolia'],
       [CHAIN_IDS.arbitrum]: ['https://sepolia-rollup.arbitrum.io/rpc', 'https://arbitrum-sepolia.drpc.org', 'https://rpc.ankr.com/arbitrum_sepolia'],
     }
-  : {
-      [CHAIN_IDS.ethereum]: ['https://ethereum.publicnode.com', 'https://eth.drpc.org', 'https://rpc.ankr.com/eth'],
-      [CHAIN_IDS.optimism]: ['https://optimism.publicnode.com', 'https://mainnet.optimism.io', 'https://rpc.ankr.com/optimism'],
-      [CHAIN_IDS.base]: ['https://base.publicnode.com', 'https://mainnet.base.org', 'https://rpc.ankr.com/base'],
-      [CHAIN_IDS.arbitrum]: ['https://arbitrum-one.publicnode.com', 'https://arb1.arbitrum.io/rpc', 'https://rpc.ankr.com/arbitrum'],
-    }
+  : MAINNET_RPC_ENDPOINTS
 
 export type SupportedChainId = (typeof CHAIN_IDS)[keyof typeof CHAIN_IDS]
 
-// Mainnet chain IDs (always available, even in staging mode for cross-network queries)
-export const MAINNET_CHAIN_IDS = {
-  ethereum: 1,
-  optimism: 10,
-  base: 8453,
-  arbitrum: 42161,
-} as const
-
-// Mainnet viem chain configs (always available for on-chain reads of mainnet data in staging)
-export const MAINNET_VIEM_CHAINS = {
-  [MAINNET_CHAIN_IDS.ethereum]: mainnet,
-  [MAINNET_CHAIN_IDS.optimism]: optimism,
-  [MAINNET_CHAIN_IDS.base]: base,
-  [MAINNET_CHAIN_IDS.arbitrum]: arbitrum,
-} as const
-
-// Mainnet RPC endpoints (always available for on-chain reads of mainnet data in staging)
-export const MAINNET_RPC_ENDPOINTS: Record<number, string[]> = {
-  [MAINNET_CHAIN_IDS.ethereum]: ['https://ethereum.publicnode.com', 'https://eth.drpc.org', 'https://rpc.ankr.com/eth'],
-  [MAINNET_CHAIN_IDS.optimism]: ['https://optimism.publicnode.com', 'https://mainnet.optimism.io', 'https://rpc.ankr.com/optimism'],
-  [MAINNET_CHAIN_IDS.base]: ['https://base.publicnode.com', 'https://mainnet.base.org', 'https://rpc.ankr.com/base'],
-  [MAINNET_CHAIN_IDS.arbitrum]: ['https://arbitrum-one.publicnode.com', 'https://arb1.arbitrum.io/rpc', 'https://rpc.ankr.com/arbitrum'],
-}
-
-// USDC contract addresses per chain
-// Testnet uses test USDC tokens (may need faucet or minting)
-export const USDC_ADDRESSES: Record<SupportedChainId, `0x${string}`> = IS_TESTNET
-  ? {
-      [CHAIN_IDS.ethereum]: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', // Sepolia USDC
-      [CHAIN_IDS.optimism]: '0x5fd84259d66Cd46123540766Be93DFE6D43130D7', // OP Sepolia USDC
-      [CHAIN_IDS.base]: '0x036CbD53842c5426634e7929541eC2318f3dCF7e', // Base Sepolia USDC
-      [CHAIN_IDS.arbitrum]: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d', // Arb Sepolia USDC
-    }
-  : {
-      [CHAIN_IDS.ethereum]: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-      [CHAIN_IDS.optimism]: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
-      [CHAIN_IDS.base]: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-      [CHAIN_IDS.arbitrum]: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-    }
+// USDC contract addresses per chain, derived from the shared canonical tables.
+// Testnet uses test USDC tokens (may need faucet or minting).
+export const USDC_ADDRESSES: Record<SupportedChainId, `0x${string}`> = Object.fromEntries(
+  Object.values(IS_TESTNET ? SHARED_TESTNET_CHAINS : SHARED_MAINNET_CHAINS).map(chain => [
+    chain.id,
+    chain.usdc.address as `0x${string}`,
+  ]),
+) as Record<SupportedChainId, `0x${string}`>
 
 // =============================================================================
 // JUICEBOX V6 CONTRACTS
@@ -102,39 +95,29 @@ export const USDC_ADDRESSES: Record<SupportedChainId, `0x${string}`> = IS_TESTNE
 // =============================================================================
 
 export const JB_CONTRACTS = {
-  JBController: '0x3fcec3572e84b624477bcff4e2cf1f7deab648f1' as `0x${string}`,
-  JBMultiTerminal: '0x130f5dd2bd8805443cf41755253d778a75a67f53' as `0x${string}`,
-  JBRulesets: '0x26f2228a4e8b0079ed1c2a3d22f12ff7f83cdfba' as `0x${string}`,
-  JBTerminalStore: '0x7497ae014a60561925b51c0a3b4ade7460b9927c' as `0x${string}`,
-  JBTokens: '0x1f80d8f057ee36b4c2656d107e4e4558b71ba7d9' as `0x${string}`,
-  JBProjects: '0x6017d1fba9dc279bfa0b03fd931c22e242ab3691' as `0x${string}`,
-  JBDirectory: '0x5aff29060e023e6fb87be5596652b33c65af535b' as `0x${string}`,
-  JBSplits: '0x28b3d11fcb8d2ad0a143c5b193cd9f2e4d43f4c3' as `0x${string}`,
-  JBFundAccessLimits: '0xc93360158f187fc8fc8f1062a1b31d06f185dbab' as `0x${string}`,
-  JBPermissions: '0xf92ac1ab5a00033e35a3975739124f61928c36b0' as `0x${string}`,
-  JBPrices: '0xad45e4627f068d1e6b21e5301870d807543a8401' as `0x${string}`,
-  JBFeelessAddresses: '0x657d0e588fca6f8c49394c9ca8a1cf6505b10314' as `0x${string}`,
-  JBHeldFees: '0x62e77076b6e902e7aec8b2925acc9b46058e3d38' as `0x${string}`,
+  JBController: CONTRACTS.JBController as `0x${string}`,
+  JBMultiTerminal: CONTRACTS.JBMultiTerminal as `0x${string}`,
+  JBRulesets: CONTRACTS.JBRulesets as `0x${string}`,
+  JBTerminalStore: CONTRACTS.JBTerminalStore as `0x${string}`,
+  JBTokens: CONTRACTS.JBTokens as `0x${string}`,
+  JBProjects: CONTRACTS.JBProjects as `0x${string}`,
+  JBDirectory: CONTRACTS.JBDirectory as `0x${string}`,
+  JBSplits: CONTRACTS.JBSplits as `0x${string}`,
+  JBFundAccessLimits: CONTRACTS.JBFundAccessLimits as `0x${string}`,
+  JBPermissions: CONTRACTS.JBPermissions as `0x${string}`,
+  JBPrices: CONTRACTS.JBPrices as `0x${string}`,
+  JBFeelessAddresses: CONTRACTS.JBFeelessAddresses as `0x${string}`,
+  JBHeldFees: CONTRACTS.JBHeldFees as `0x${string}`,
 } as const
 
 // REVDeployer contract address (same on all chains)
 // Deploys revnets. In V6, revnet project NFTs are owned by the singleton
 // REVOwner contract (not the deployer itself).
-export const REV_DEPLOYER = '0xb552eb94284f94b833837d4b2cbb237128415d4e' as `0x${string}`
+export const REV_DEPLOYER = CONTRACTS.REVDeployer as `0x${string}`
 
 // REVOwner - singleton owner of all V6 revnet project NFTs.
 // Exposes tiered721HookOf(revnetId) and operator checks.
-export const REV_OWNER = '0x2ba4705ad0332cdfb299b452068438bcba3faaf3' as `0x${string}`
-
-// 721 Hook Contracts (same address on all chains)
-export const JB721_CONTRACTS = {
-  // JB721TiersHookStore - stores tier data for all 721 hooks
-  JB721TiersHookStore: '0x69913acf79dbba170d9efafe605ee62b42164f9c' as `0x${string}`,
-  // JB721TiersHookDeployer - deploys new 721 hooks
-  JB721TiersHookDeployer: '0xb7b8ec35e2dd84afff04ee769c6189e7a4d44a78' as `0x${string}`,
-  // JB721TiersHookProjectDeployer - launches projects with a 721 hook
-  JB721TiersHookProjectDeployer: '0x3ffdc94e7f1de4b74c52158ec9dd3b965585f451' as `0x${string}`,
-} as const
+export const REV_OWNER = CONTRACTS.REVOwner as `0x${string}`
 
 // Zero address constant
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`
@@ -155,15 +138,15 @@ export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x$
 // accountingContextsToAccept (it delegates per-project); route "pay with a
 // token the project doesn't accept" payments through the registry.
 
-export const JB_ROUTER_TERMINAL = '0x0fbcbb3d10c8f524840d74ef81c1a9f161c418d7' as `0x${string}`
-export const JB_ROUTER_TERMINAL_REGISTRY = '0xe0427f250fdb0379c8e98e884ee4570521208cbc' as `0x${string}`
+export const JB_ROUTER_TERMINAL = CONTRACTS.JBRouterTerminal as `0x${string}`
+export const JB_ROUTER_TERMINAL_REGISTRY = CONTRACTS.JBRouterTerminalRegistry as `0x${string}`
 
 // =============================================================================
 // BUYBACK HOOK (same address on all chains in V6)
 // =============================================================================
 
-export const JB_BUYBACK_HOOK = '0x77bee1ad2ac0ace98a9b5b58d75685c8b4d94948' as `0x${string}`
-export const JB_BUYBACK_HOOK_REGISTRY = '0x72f55a54cd53410a5ff175508a5a384227081788' as `0x${string}`
+export const JB_BUYBACK_HOOK = CONTRACTS.JBBuybackHook as `0x${string}`
+export const JB_BUYBACK_HOOK_REGISTRY = CONTRACTS.JBBuybackHookRegistry as `0x${string}`
 
 // =============================================================================
 // SUCKER CONTRACTS (Cross-Chain Token Bridging)
@@ -198,4 +181,4 @@ export const CHAIN_SUCKER_DEPLOYER: Record<SupportedChainId, `0x${string}`> = {
 // Deploy projects on multiple chains with a single transaction
 
 // JBOmnichainDeployer - deploys projects on all chains at once (same address on all chains)
-export const JB_OMNICHAIN_DEPLOYER = '0xb853758a70a6b4216c09f1d071ea2344aba0a34f' as `0x${string}`
+export const JB_OMNICHAIN_DEPLOYER = CONTRACTS.JBOmnichainDeployer as `0x${string}`

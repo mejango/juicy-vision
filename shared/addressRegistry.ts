@@ -2,7 +2,7 @@ import { type Address, type PublicClient, zeroAddress } from 'viem';
 
 export type RecognizedCloneKind = '721-hook' | 'defifa-hook' | 'lp-split-hook';
 
-export interface RecognizedCloneProvenance {
+interface RecognizedCloneProvenance {
   kind: RecognizedCloneKind;
   deployer: Address;
   registry: Address;
@@ -152,7 +152,7 @@ function registryOf(
     });
 }
 
-export async function requireRecognizedCloneProvenance(params: {
+async function requireRecognizedCloneProvenance(params: {
   client: Pick<PublicClient, 'readContract'>;
   instance: Address;
   allowedKinds: readonly RecognizedCloneKind[];
@@ -204,18 +204,6 @@ export async function requireRecognizedClone(params: {
   label: string;
 }): Promise<RecognizedCloneKind> {
   return (await requireRecognizedCloneProvenance(params)).kind;
-}
-
-export function requireRecognized721Clone(
-  client: Pick<PublicClient, 'readContract'>,
-  hook: Address,
-): Promise<RecognizedCloneKind> {
-  return requireRecognizedClone({
-    client,
-    instance: hook,
-    allowedKinds: ['721-hook', 'defifa-hook'],
-    label: '721 hook',
-  });
 }
 
 export async function requireRecognized721CloneIdentity(params: {

@@ -55,7 +55,7 @@ function saveCache(cache: EnsCache): void {
 }
 
 // In-memory cache backed by localStorage
-let ensCache: EnsCache = loadCache()
+const ensCache: EnsCache = loadCache()
 
 const client = createPublicClient({
   chain: mainnet,
@@ -164,10 +164,4 @@ export async function resolveEnsToAddress(name: string): Promise<string | null> 
 export function truncateAddress(address: string): string {
   if (!address) return ''
   return `${address.slice(0, 6)}...${address.slice(-4)}`
-}
-
-// Clear ENS cache (useful for debugging)
-export function clearEnsCache(): void {
-  ensCache = {}
-  localStorage.removeItem(STORAGE_KEYS.ENS_CACHE)
 }

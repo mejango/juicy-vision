@@ -43,7 +43,7 @@ export function walletDappUrl(href: string): string {
   return href
 }
 
-export interface MobileWalletLink {
+interface MobileWalletLink {
   name: string
   url: string
 }

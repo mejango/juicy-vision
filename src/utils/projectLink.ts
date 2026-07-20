@@ -1,6 +1,6 @@
 // juicebox.money does not yet host V6 project pages. Flip this once it does;
 // every ProjectLink will then use the canonical external URL.
-export const JUICEBOX_MONEY_V6_LIVE = false
+const JUICEBOX_MONEY_V6_LIVE = false
 
 export function juiceboxProjectUrl(
   chainSlug: string,

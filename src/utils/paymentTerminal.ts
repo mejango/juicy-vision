@@ -227,7 +227,7 @@ export async function getProjectController(
   return requireRecognizedController(controller)
 }
 
-export function isRecognizedController(controller: Address): boolean {
+function isRecognizedController(controller: Address): boolean {
   return controller.toLowerCase() === JB_CONTRACTS.JBController.toLowerCase()
 }
 

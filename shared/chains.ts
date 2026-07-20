@@ -188,7 +188,7 @@ export const SUCKER_DEPLOYERS = [
 // Helper Functions
 // =============================================================================
 
-export function getChains(isTestnet: boolean): Record<string, ChainConfig> {
+function getChains(isTestnet: boolean): Record<string, ChainConfig> {
   return isTestnet ? TESTNET_CHAINS : MAINNET_CHAINS;
 }
 

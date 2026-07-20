@@ -20,7 +20,7 @@ const PINATA_API_URL = 'https://api.pinata.cloud'
  * - Events: specific venue or city
  * - Privacy-conscious: country only, or omit entirely
  */
-export interface ProjectLocation {
+interface ProjectLocation {
   /**
    * Human-readable location description
    * Examples: "San Francisco, CA", "Berlin", "Online", "Global", "Southeast Asia"
@@ -75,7 +75,7 @@ export interface ProjectLocation {
  * Maps category integers (0-199) to human-readable names
  * Example: { "0": "Rewards", "1": "Merchandise", "2": "Digital Goods" }
  */
-export type Jb721CategoryMapping = Record<string, string>
+type Jb721CategoryMapping = Record<string, string>
 
 // Full project metadata structure from IPFS
 export interface IpfsProjectMetadata {
@@ -425,13 +425,13 @@ export async function fetchIpfsJson<T>(uri: string): Promise<T | null> {
 // IPFS Pinning Functions (requires Pinata API key)
 // ============================================
 
-export interface PinataResponse {
+interface PinataResponse {
   IpfsHash: string
   PinSize: number
   Timestamp: string
 }
 
-export interface PinataError {
+interface PinataError {
   error: {
     reason: string
     details: string
@@ -514,54 +514,6 @@ export async function pinFile(
 
   const result = (await response.json()) as PinataResponse
   return result.IpfsHash
-}
-
-/**
- * Project metadata format for Juicebox projects
- */
-export interface JBProjectMetadata {
-  name: string
-  description?: string
-  logoUri?: string
-  infoUri?: string
-  twitter?: string
-  discord?: string
-  telegram?: string
-  /**
-   * Project location - PUBLIC DATA
-   * Only include information you're comfortable sharing publicly.
-   * This data will be stored on IPFS and visible to anyone.
-   * Omit this field entirely if you prefer not to share location.
-   */
-  location?: ProjectLocation
-  /**
-   * NFT tier category names
-   * Maps category integers (0-199) to human-readable names
-   * Example: { "0": "Rewards", "1": "Merchandise", "2": "Services" }
-   */
-  '721Categories'?: Jb721CategoryMapping
-  // payButton and payDisclosure for custom pay UI
-  payButton?: string
-  payDisclosure?: string
-}
-
-/**
- * Test if Pinata JWT is valid
- * @param jwt - Pinata JWT token
- * @returns true if valid
- */
-export async function testPinataConnection(jwt: string): Promise<boolean> {
-  try {
-    const response = await fetch(`${PINATA_API_URL}/data/testAuthentication`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${jwt}`,
-      },
-    })
-    return response.ok
-  } catch {
-    return false
-  }
 }
 
 /**

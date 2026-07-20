@@ -1,6 +1,6 @@
 import type { Address, Hex } from 'viem'
 
-export const TXLINK_BASE_URL = 'https://txlink.stupidtech.net/'
+const TXLINK_BASE_URL = 'https://txlink.stupidtech.net/'
 
 export interface TxLinkEntry {
   chainId: number
@@ -9,7 +9,7 @@ export interface TxLinkEntry {
   value: bigint
 }
 
-export interface TxLinkPayload {
+interface TxLinkPayload {
   chainId: number | undefined
   to: string | undefined | null
   data: string | undefined | null

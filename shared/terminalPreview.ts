@@ -140,7 +140,7 @@ function buybackSpecification(
   ) ?? null;
 }
 
-export interface PayPreviewOutcome {
+interface PayPreviewOutcome {
   route: 'issuance' | 'amm';
   beneficiaryTokenCount: bigint;
   reservedTokenCount: bigint;

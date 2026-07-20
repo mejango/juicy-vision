@@ -10,9 +10,7 @@
  */
 
 import { toHex, toBytes, pad } from 'viem'
-
-// Native token address used by Juicebox
-export const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
+import { NATIVE_TOKEN, SUCKER_DEPLOYERS } from '../constants'
 
 // Zero bytes32 - used for the default `peer` (same-address deterministic peer sucker)
 export const ZERO_BYTES32 = '0x0000000000000000000000000000000000000000000000000000000000000000' as const
@@ -117,7 +115,7 @@ export function createSalt(): `0x${string}` {
 /**
  * Left-pad an EVM address to bytes32, as expected by the V6 JBTokenMapping.remoteToken field.
  */
-export function addressToBytes32(address: `0x${string}`): `0x${string}` {
+function addressToBytes32(address: `0x${string}`): `0x${string}` {
   return pad(address, { size: 32 })
 }
 
@@ -164,11 +162,11 @@ export type JBSuckerBridge = 'ccip' | 'native' | 'both'
  * JBBaseSuckerDeployer / JBArbitrumSuckerDeployer — same address on both
  * sides of each pair).
  */
-const NATIVE_OP = '0x298a775c030adcedb641a89d9047ec9972674e1a' as `0x${string}`
-const NATIVE_BASE = '0x54140331902de5c3445eb0c26e15099a5a9d59e6' as `0x${string}`
-const NATIVE_ARB = '0xa12ebfca3d4e0810e4ed174e4c08277c26917acb' as `0x${string}`
+const NATIVE_OP = SUCKER_DEPLOYERS.OPSuckerDeployer
+const NATIVE_BASE = SUCKER_DEPLOYERS.BaseSuckerDeployer
+const NATIVE_ARB = SUCKER_DEPLOYERS.ARBSuckerDeployer
 
-export const NATIVE_SUCKER_DEPLOYER_ADDRESSES: Record<number, Record<number, `0x${string}`>> = {
+const NATIVE_SUCKER_DEPLOYER_ADDRESSES: Record<number, Record<number, `0x${string}`>> = {
   1: { 10: NATIVE_OP, 8453: NATIVE_BASE, 42161: NATIVE_ARB },
   10: { 1: NATIVE_OP },
   8453: { 1: NATIVE_BASE },
@@ -179,7 +177,7 @@ export const NATIVE_SUCKER_DEPLOYER_ADDRESSES: Record<number, Record<number, `0x
   421614: { 11155111: NATIVE_ARB },
 }
 
-export interface ParseSuckerDeployerConfigOptions {
+interface ParseSuckerDeployerConfigOptions {
   /**
    * Per-chain token addresses for bridging.
    * Maps chainId -> token address. Required for ERC20 (e.g., USDC) projects.

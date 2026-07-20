@@ -2,10 +2,7 @@
 // Validates transaction parameters against contract ABIs before display
 
 import { tokenCurrencyId } from '@bananapus/nana-sdk-core/v6'
-import {
-  NATIVE_TOKEN,
-} from '../constants/abis'
-import { ALL_CHAIN_IDS, JB_ROUTER_TERMINAL_REGISTRY } from '../constants'
+import { ALL_CHAIN_IDS, JB_ROUTER_TERMINAL_REGISTRY, NATIVE_TOKEN } from '../constants'
 import { recognizedTerminalType } from './paymentTerminal'
 import {
   requireRecognizedApprovalHook,
@@ -22,7 +19,7 @@ export interface TransactionDoubt {
   technicalNote?: string
 }
 
-export interface VerificationResult {
+interface VerificationResult {
   isValid: boolean
   doubts: TransactionDoubt[]
   warnings: string[]
@@ -31,9 +28,7 @@ export interface VerificationResult {
 
 // Constants
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000'
-const MAX_REASONABLE_ETH = BigInt('1000000000000000000000') // 1000 ETH
 const MAX_REASONABLE_TOKENS = BigInt('1000000000000000000000000000') // 1 billion tokens
-const MIN_REASONABLE_AMOUNT = BigInt('1000000000000') // 0.000001 ETH (1e12 wei)
 
 // Validation helpers
 function isValidAddress(address: string): boolean {
@@ -328,138 +323,12 @@ function validateRulesetConfig(
   })
 }
 
-function formatEthAmount(wei: bigint): string {
-  const eth = Number(wei) / 1e18
-  if (eth >= 1) return `${eth.toFixed(4)} ETH`
-  if (eth >= 0.001) return `${eth.toFixed(6)} ETH`
-  return `${eth.toExponential(4)} ETH`
-}
-
 function formatTokenAmount(amount: bigint, decimals: number = 18): string {
   const value = Number(amount) / Math.pow(10, decimals)
   if (value >= 1e9) return `${(value / 1e9).toFixed(2)}B`
   if (value >= 1e6) return `${(value / 1e6).toFixed(2)}M`
   if (value >= 1e3) return `${(value / 1e3).toFixed(2)}K`
   return value.toFixed(2)
-}
-
-// Pay transaction verification
-export function verifyPayParams(params: {
-  projectId: bigint | string | number
-  token: string
-  amount: bigint | string
-  beneficiary: string
-  minReturnedTokens: bigint | string
-  memo: string
-  metadata?: string
-}): VerificationResult {
-  const doubts: TransactionDoubt[] = []
-  const warnings: string[] = []
-
-  // Normalize values
-  const projectId = parseBigIntParam(params.projectId, 'projectId', doubts)
-  const amount = parseBigIntParam(params.amount, 'amount', doubts)
-  const minReturnedTokens = parseBigIntParam(params.minReturnedTokens, 'minReturnedTokens', doubts)
-  validateUnsigned(amount, 'amount', doubts)
-  validateUnsigned(minReturnedTokens, 'minReturnedTokens', doubts)
-
-  // Validate project ID
-  if (projectId <= 0n) {
-    doubts.push({
-      severity: 'critical',
-      field: 'projectId',
-      message: 'Invalid project ID',
-      technicalNote: 'Project ID must be a positive integer',
-    })
-  }
-
-  // Validate token address
-  if (!isValidAddress(params.token)) {
-    doubts.push({
-      severity: 'critical',
-      field: 'token',
-      message: 'Invalid token address format',
-      technicalNote: `Token address "${params.token}" is not a valid Ethereum address`,
-    })
-  } else if (!isRecognizedAccountingToken(params.token)) {
-    doubts.push({
-      severity: 'critical',
-      field: 'token',
-      message: `Payment token not recognized: ${params.token}`,
-    })
-  }
-
-  // Validate beneficiary address
-  if (!isValidAddress(params.beneficiary)) {
-    doubts.push({
-      severity: 'critical',
-      field: 'beneficiary',
-      message: 'Invalid beneficiary address format',
-      technicalNote: `Beneficiary address is not a valid Ethereum address`,
-    })
-  } else if (isZeroAddress(params.beneficiary)) {
-    doubts.push({
-      severity: 'critical',
-      field: 'beneficiary',
-      message: 'Beneficiary is zero address',
-      technicalNote: 'Tokens would be sent to the burn address (0x0)',
-    })
-  }
-
-  // Validate amount
-  if (amount === 0n) {
-    doubts.push({
-      severity: 'critical',
-      field: 'amount',
-      message: 'Payment amount is zero',
-      technicalNote: 'Zero payments may fail or have no effect',
-    })
-  } else if (amount < MIN_REASONABLE_AMOUNT) {
-    warnings.push(`Very small payment amount: ${formatEthAmount(amount)}`)
-  } else if (amount > MAX_REASONABLE_ETH) {
-    doubts.push({
-      severity: 'warning',
-      field: 'amount',
-      message: `Large payment amount: ${formatEthAmount(amount)}`,
-      technicalNote: 'Please double-check this amount is correct',
-    })
-  }
-
-  // Check for uint256 overflow
-  if (isBigIntOverflow(amount)) {
-    doubts.push({
-      severity: 'critical',
-      field: 'amount',
-      message: 'Amount exceeds maximum value',
-      technicalNote: 'Value exceeds uint256 maximum',
-    })
-  }
-
-  if (amount > 0n && minReturnedTokens === 0n) {
-    doubts.push({
-      severity: 'critical',
-      field: 'minReturnedTokens',
-      message: 'Payment minimum token return must be greater than zero',
-      technicalNote: 'A zero minimum provides no protection against an adverse quote change',
-    })
-  }
-
-  const verifiedParams: Record<string, unknown> = {
-    projectId: projectId.toString(),
-    token: params.token,
-    amount: amount.toString(),
-    beneficiary: params.beneficiary,
-    minReturnedTokens: minReturnedTokens.toString(),
-    memo: params.memo,
-    metadata: params.metadata || '0x',
-  }
-
-  return {
-    isValid: doubts.filter(d => d.severity === 'critical').length === 0,
-    doubts,
-    warnings,
-    verifiedParams,
-  }
 }
 
 // Cash out transaction verification

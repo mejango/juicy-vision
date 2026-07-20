@@ -47,28 +47,11 @@ export const SCROLL_THRESHOLDS = {
   SNAP_THRESHOLD: 5,
 } as const
 
-// =============================================================================
-// Pagination Defaults
-// =============================================================================
-export const PAGINATION = {
-  /** Default chat history page size */
-  CHATS_PAGE_SIZE: 20,
-  /** Default messages page size */
-  MESSAGES_PAGE_SIZE: 50,
-  /** Default project search results limit */
-  PROJECTS_PAGE_SIZE: 20,
-  /** Top projects display limit */
-  TOP_PROJECTS_LIMIT: 10,
-  /** Activity feed default page size */
-  ACTIVITY_PAGE_SIZE: 15,
-} as const
-
 // IPFS Gateways
 export const IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs/'
 
-// Legacy pagination exports (use PAGINATION object above)
-// Kept for backwards compatibility
-export const ACTIVITY_PAGE_SIZE = PAGINATION.ACTIVITY_PAGE_SIZE
+// Activity feed pagination
+export const ACTIVITY_PAGE_SIZE = 15
 export const ACTIVITY_POLL_INTERVAL = 30000 // 30 seconds
 
 // Chain config type
@@ -160,7 +143,6 @@ export const CHAINS: Record<number, ChainConfig> = IS_TESTNET ? TESTNET_CHAINS :
 
 // All supported chain IDs as array (environment-aware)
 export const ALL_CHAIN_IDS = SUPPORTED_CHAIN_IDS
-export type SupportedChainIdType = typeof ALL_CHAIN_IDS[number]
 
 // Explorer transaction URLs (derived from environment-aware CHAINS)
 export const EXPLORER_URLS: Record<number, string> = Object.fromEntries(
@@ -170,8 +152,8 @@ export const EXPLORER_URLS: Record<number, string> = Object.fromEntries(
 // Native token address used by JB protocol
 export const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
 
-// Unlimited value threshold for fund access limits
-export const UNLIMITED_THRESHOLD = BigInt('1000000000000000000000000000000')
+// Maximum uint224 value as a decimal string (used as the "unlimited" fund access amount)
+export const UINT224_MAX = '26959946667150639794667015087019630673637144422540572481103610249215'
 
 // LocalStorage keys
 export const STORAGE_KEYS = {

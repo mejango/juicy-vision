@@ -3,7 +3,7 @@ import { useOmnichainTransaction } from './useOmnichainTransaction'
 import type { JBRulesetConfig } from '../../services/relayr'
 import type { UseOmnichainTransactionOptions, UseOmnichainTransactionReturn } from './types'
 
-export interface OmnichainQueueParams {
+interface OmnichainQueueParams {
   chainIds: number[]
   projectIds: Record<number, number>  // chainId -> projectId
   rulesetConfigurations?: JBRulesetConfig[]
@@ -13,7 +13,7 @@ export interface OmnichainQueueParams {
   mustStartAtOrAfter?: number
 }
 
-export interface UseOmnichainQueueRulesetReturn extends Omit<UseOmnichainTransactionReturn, 'execute'> {
+interface UseOmnichainQueueRulesetReturn extends Omit<UseOmnichainTransactionReturn, 'execute'> {
   queue: (params: OmnichainQueueParams) => Promise<void>
   synchronizedStartTime: number | undefined
 }

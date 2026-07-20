@@ -9,19 +9,6 @@
 export const JB_721_TIERS_HOOK_ABI = [
   {
     "type": "function",
-    "name": "STORE",
-    "inputs": [],
-    "outputs": [
-      {
-        "name": "",
-        "type": "address",
-        "internalType": "contract IJB721TiersHookStore"
-      }
-    ],
-    "stateMutability": "view"
-  },
-  {
-    "type": "function",
     "name": "adjustTiers",
     "inputs": [
       {

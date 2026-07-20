@@ -145,7 +145,7 @@ export function useComponentState<T extends ComponentState = ComponentState>(
 /**
  * State for ProjectCard payment component
  */
-export interface ProjectCardPaymentState extends ComponentState {
+interface ProjectCardPaymentState extends ComponentState {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
   // Payment details
   amount?: string
@@ -186,7 +186,7 @@ export function useProjectCardPaymentState(
 /**
  * State for SendPayoutsForm component
  */
-export interface SendPayoutsFormState extends ComponentState {
+interface SendPayoutsFormState extends ComponentState {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
   amount?: string
   selectedChainId?: number
@@ -210,7 +210,7 @@ export function useSendPayoutsFormState(
 /**
  * State for SendReservedTokensForm component
  */
-export interface SendReservedTokensFormState extends ComponentState {
+interface SendReservedTokensFormState extends ComponentState {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
   selectedChainId?: number
   txHash?: string
@@ -232,7 +232,7 @@ export function useSendReservedTokensFormState(
 /**
  * State for UseSurplusAllowanceForm component
  */
-export interface UseSurplusAllowanceFormState extends ComponentState {
+interface UseSurplusAllowanceFormState extends ComponentState {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
   amount?: string
   selectedChainId?: number
@@ -256,7 +256,7 @@ export function useUseSurplusAllowanceFormState(
 /**
  * State for CashOutForm component
  */
-export interface CashOutFormState extends ComponentState {
+interface CashOutFormState extends ComponentState {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
   tokenAmount?: string
   selectedChainId?: number
@@ -280,7 +280,7 @@ export function useCashOutFormState(
 /**
  * State for DeployERC20Form component
  */
-export interface DeployERC20FormState extends ComponentState {
+interface DeployERC20FormState extends ComponentState {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
   tokenName?: string
   tokenSymbol?: string
@@ -304,7 +304,7 @@ export function useDeployERC20FormState(
 /**
  * State for QueueRulesetForm component
  */
-export interface QueueRulesetFormState extends ComponentState {
+interface QueueRulesetFormState extends ComponentState {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
   // Ruleset configuration
   duration?: string
@@ -334,7 +334,7 @@ export function useQueueRulesetFormState(
 /**
  * State for ManageTiersForm component
  */
-export interface ManageTiersFormState extends ComponentState {
+interface ManageTiersFormState extends ComponentState {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
   // Pending changes summary
   tiersToAddCount?: number
@@ -360,7 +360,7 @@ export function useManageTiersFormState(
 /**
  * State for SetSplitsForm component
  */
-export interface SetSplitsFormState extends ComponentState {
+interface SetSplitsFormState extends ComponentState {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
   // Split changes summary
   splitType?: 'payout' | 'reserved' | 'both'
@@ -388,7 +388,7 @@ export function useSetSplitsFormState(
 /**
  * State for SetUriForm component
  */
-export interface SetUriFormState extends ComponentState {
+interface SetUriFormState extends ComponentState {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
   // URI being set
   uri?: string

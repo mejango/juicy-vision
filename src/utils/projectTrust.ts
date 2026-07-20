@@ -297,7 +297,7 @@ export async function assertCurrentRulesetId(params: {
   }
 }
 
-export interface RulesetQueueRoute {
+interface RulesetQueueRoute {
   target: Address
   dataHook: Address
   useDataHookForPay: boolean

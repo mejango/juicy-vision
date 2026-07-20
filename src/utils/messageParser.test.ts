@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseMessageContent, stripComponents, extractComponents } from './messageParser'
+import { parseMessageContent, stripComponents } from './messageParser'
 
 describe('messageParser', () => {
   describe('parseMessageContent', () => {
@@ -103,35 +103,6 @@ Then continue.`
       const content = 'Hello <component type="project-card" projectId="123" /> world'
       const result = stripComponents(content)
       expect(result).toBe('Hello [Project card with payment form] world')
-    })
-  })
-
-  describe('extractComponents', () => {
-    it('extracts juice-component tags', () => {
-      const content = 'Text <juice-component type="project-card" projectId="1" /> more <juice-component type="balance-chart" projectId="2" />'
-      const result = extractComponents(content)
-
-      expect(result).toHaveLength(2)
-      expect(result[0].type).toBe('project-card')
-      expect(result[1].type).toBe('balance-chart')
-    })
-
-    it('extracts short <component> tags', () => {
-      const content = 'Text <component type="project-card" projectId="1" /> more <component type="balance-chart" projectId="2" />'
-      const result = extractComponents(content)
-
-      expect(result).toHaveLength(2)
-      expect(result[0].type).toBe('project-card')
-      expect(result[1].type).toBe('balance-chart')
-    })
-
-    it('extracts mixed format tags', () => {
-      const content = 'Text <juice-component type="project-card" projectId="1" /> more <component type="balance-chart" projectId="2" />'
-      const result = extractComponents(content)
-
-      expect(result).toHaveLength(2)
-      expect(result[0].type).toBe('project-card')
-      expect(result[1].type).toBe('balance-chart')
     })
   })
 })

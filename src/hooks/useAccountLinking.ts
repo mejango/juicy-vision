@@ -25,7 +25,7 @@ export interface LinkedAddress {
   createdAt: string
 }
 
-export interface LinkCheckResult {
+interface LinkCheckResult {
   address: string
   canBeLinkTarget: boolean
   canBeLinkTargetReason?: string

@@ -1,10 +1,21 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Address, PublicClient } from 'viem'
 import {
-  requireRecognized721Clone,
+  requireRecognizedClone,
   requireRecognized721CloneIdentity,
   requireRecognizedLpSplitHookClone,
 } from './addressRegistry'
+
+// Exercise the generic clone-recognition path with the 721 kinds the app uses.
+const requireRecognized721Clone = (
+  client: Pick<PublicClient, 'readContract'>,
+  hook: Address,
+) => requireRecognizedClone({
+  client,
+  instance: hook,
+  allowedKinds: ['721-hook', 'defifa-hook'],
+  label: '721 hook',
+})
 
 const INSTANCE = '0x1111111111111111111111111111111111111111' as Address
 const REGISTRY = '0x581bfd1ead279e0a27b736e49494db3a7d85993c' as Address

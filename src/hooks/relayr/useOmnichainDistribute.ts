@@ -2,16 +2,16 @@ import { useCallback, useMemo } from 'react'
 import { useOmnichainTransaction } from './useOmnichainTransaction'
 import type { UseOmnichainTransactionOptions, UseOmnichainTransactionReturn } from './types'
 
-export type DistributeType = 'reserves'
+type DistributeType = 'reserves'
 
-export interface OmnichainDistributeParams {
+interface OmnichainDistributeParams {
   chainIds: number[]
   projectIds: Record<number, number>  // chainId -> projectId
   type: DistributeType
   controllerAddresses?: Record<number, string>
 }
 
-export interface UseOmnichainDistributeReturn extends Omit<UseOmnichainTransactionReturn, 'execute'> {
+interface UseOmnichainDistributeReturn extends Omit<UseOmnichainTransactionReturn, 'execute'> {
   distribute: (params: OmnichainDistributeParams) => Promise<void>
 }
 

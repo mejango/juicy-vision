@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { isAddress } from 'viem'
 
-export type TransactionAccountMode = 'self_custody' | 'managed'
+type TransactionAccountMode = 'self_custody' | 'managed'
 
 interface ReviewedAccount {
   address: `0x${string}`

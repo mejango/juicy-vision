@@ -1,4 +1,4 @@
-export type MediaKind = 'image' | 'video' | 'audio' | 'link'
+type MediaKind = 'image' | 'video' | 'audio' | 'link'
 
 /** Classify media from declared metadata first, then from a URI extension. */
 export function inferMediaKind(

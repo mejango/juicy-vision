@@ -29,7 +29,7 @@ export interface RemoteTyping {
   text: string
 }
 
-export interface RemoteHover {
+interface RemoteHover {
   address: string
   emoji: string
 }

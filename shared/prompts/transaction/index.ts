@@ -57,7 +57,7 @@ import {
 /**
  * Sub-module registry for dynamic loading
  */
-export interface SubModule {
+interface SubModule {
   id: string;
   content: string;
   hints: string[];
@@ -156,15 +156,8 @@ export const TRANSACTION_SUB_MODULES: SubModule[] = [
 /**
  * Get sub-module by ID
  */
-export function getSubModule(id: string): SubModule | undefined {
+function getSubModule(id: string): SubModule | undefined {
   return TRANSACTION_SUB_MODULES.find((m) => m.id === id);
-}
-
-/**
- * Get all sub-module IDs
- */
-export function getSubModuleIds(): string[] {
-  return TRANSACTION_SUB_MODULES.map((m) => m.id);
 }
 
 /**

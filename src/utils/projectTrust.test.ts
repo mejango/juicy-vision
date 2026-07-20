@@ -2,13 +2,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { type Address, type PublicClient, zeroAddress } from 'viem'
 import {
   JB_CONTRACTS,
-  JB721_CONTRACTS,
   JB_BUYBACK_HOOK,
   JB_BUYBACK_HOOK_REGISTRY,
   JB_OMNICHAIN_DEPLOYER,
   REV_DEPLOYER,
   REV_OWNER,
 } from '../constants'
+import { CONTRACTS } from '../../shared/chains'
 import {
   assertCurrentProjectCashOutConfigurationTrusted,
   assertCurrentProjectPayConfigurationTrusted,
@@ -88,8 +88,8 @@ describe('resolveRulesetQueueRoute', () => {
       }
       if (functionName === 'tiered721HookOf') return [TIERED_HOOK, true] as const
       if (functionName === 'ADDRESS_REGISTRY') return ADDRESS_REGISTRY
-      if (functionName === 'deployerOf') return JB721_CONTRACTS.JB721TiersHookDeployer
-      if (functionName === 'STORE') return JB721_CONTRACTS.JB721TiersHookStore
+      if (functionName === 'deployerOf') return CONTRACTS.JB721TiersHookDeployer
+      if (functionName === 'STORE') return CONTRACTS.JB721TiersHookStore
       if (functionName === 'HOOK' || functionName === 'METADATA_ID_TARGET') return HOOK_IMPLEMENTATION
       if (functionName === 'projectId') return PROJECT_ID
       throw new Error(`Unexpected read: ${functionName}`)
@@ -154,9 +154,9 @@ describe('current project operation safety', () => {
       if (functionName === 'controllerOf') return JB_CONTRACTS.JBController
       if (functionName === 'currentRulesetOf') return currentRuleset(CT_DEPLOYER, true, true)
       if (functionName === 'dataHookOf') return TIERED_HOOK
-      if (functionName === 'deployerOf') return JB721_CONTRACTS.JB721TiersHookDeployer
+      if (functionName === 'deployerOf') return CONTRACTS.JB721TiersHookDeployer
       if (functionName === 'ADDRESS_REGISTRY') return ADDRESS_REGISTRY
-      if (functionName === 'STORE') return JB721_CONTRACTS.JB721TiersHookStore
+      if (functionName === 'STORE') return CONTRACTS.JB721TiersHookStore
       if (functionName === 'HOOK' || functionName === 'METADATA_ID_TARGET') return HOOK_IMPLEMENTATION
       if (functionName === 'projectId') return PROJECT_ID
       throw new Error(`Unexpected read: ${functionName}`)
