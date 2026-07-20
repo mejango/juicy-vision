@@ -36,8 +36,9 @@ import {
   createSalt,
   shouldConfigureSuckers,
   CCIP_SUCKER_DEPLOYER_ADDRESSES,
-  ZERO_BYTES32,
+  NATIVE_SUCKER_DEPLOYER_ADDRESSES,
   type JBSuckerBridge,
+  ZERO_BYTES32,
 } from '../utils/suckerConfig'
 import {
   requireRecognizedApprovalHook,
@@ -172,6 +173,13 @@ function getKnownSuckerDeployers(): Set<string> {
 
   // CCIP pair sucker deployers (same addresses on mainnet and testnet families)
   for (const targetChain of Object.values(CCIP_SUCKER_DEPLOYER_ADDRESSES)) {
+    for (const deployerAddress of Object.values(targetChain)) {
+      addresses.add(deployerAddress.toLowerCase())
+    }
+  }
+
+  // Native-bridge sucker deployers (Ethereum<->L2 standard bridges)
+  for (const targetChain of Object.values(NATIVE_SUCKER_DEPLOYER_ADDRESSES)) {
     for (const deployerAddress of Object.values(targetChain)) {
       addresses.add(deployerAddress.toLowerCase())
     }
@@ -547,6 +555,8 @@ export function buildOmnichainLaunchTransactions(params: {
   chainConfigs?: ChainConfigOverride[]  // Per-chain overrides for terminal configs
   /** V6 creation fee (wei) per chain; must equal JBProjects.creationFee() on each chain. */
   creationFeesWei: Record<number, string>
+  /** Bridge infrastructure for auto-generated suckers ("ccip" default). */
+  suckerBridge?: JBSuckerBridge
 }): Array<{
   chainId: number
   to: `0x${string}`
@@ -588,7 +598,13 @@ export function buildOmnichainLaunchTransactions(params: {
       suckerConfig = params.suckerDeploymentConfiguration!
     } else if (shouldConfigureSuckers(chainIds)) {
       // Auto-generate sucker config for this chain connecting to other chains
-      suckerConfig = perChainSuckerConfig({ chainId, chainIds, sharedSalt, tokenAddresses })
+      suckerConfig = perChainSuckerConfig({
+        chainId,
+        chainIds,
+        sharedSalt,
+        tokenAddresses,
+        bridge: params.suckerBridge,
+      })
     } else {
       // Single chain deployment - no suckers needed
       suckerConfig = {
@@ -1398,6 +1414,8 @@ export function buildOmnichainLaunch721Transactions(params: {
   chainConfigs?: ChainConfigOverride[]  // Per-chain overrides for terminal configs and tiers
   /** V6 creation fee (wei) per chain; must equal JBProjects.creationFee() on each chain. */
   creationFeesWei: Record<number, string>
+  /** Bridge infrastructure for auto-generated suckers ("ccip" default). */
+  suckerBridge?: JBSuckerBridge
 }): Array<{
   chainId: number
   to: `0x${string}`
@@ -1447,7 +1465,13 @@ export function buildOmnichainLaunch721Transactions(params: {
     if (hasProvidedConfig) {
       suckerConfig = params.suckerDeploymentConfiguration!
     } else if (shouldConfigureSuckers(chainIds)) {
-      suckerConfig = perChainSuckerConfig({ chainId, chainIds, sharedSalt, tokenAddresses })
+      suckerConfig = perChainSuckerConfig({
+        chainId,
+        chainIds,
+        sharedSalt,
+        tokenAddresses,
+        bridge: params.suckerBridge,
+      })
     } else {
       // Single chain deployment - no suckers needed
       suckerConfig = {

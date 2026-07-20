@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
 import { encodeFunctionData, keccak256, toBytes, createPublicClient, http, type Chain } from 'viem'
@@ -83,6 +83,11 @@ export default function DeployERC20Modal({
 
   // Fetch the project's controller from JBDirectory
   const { controllerAddress, controllerLoading } = useProjectController(isOpen, projectId, chainId, setError)
+  // Ref-based in-flight lock: the mutex that stops two same-tick clicks (a
+  // state flag alone can't — both reads see the stale `false`). `submitting`
+  // only mirrors it into the button's disabled state for the UI.
+  const inFlightRef = useRef(false)
+  const [submitting, setSubmitting] = useState(false)
 
   // Omnichain mode
   const [useAllChains, setUseAllChains] = useState(false)
@@ -122,7 +127,7 @@ export default function DeployERC20Modal({
 
   const hasWarnings = verificationResult.doubts.length > 0
   const hasCriticalDoubts = verificationResult.doubts.some(d => d.severity === 'critical')
-  const canProceed = hasGasBalance && !hasCriticalDoubts && (!hasWarnings || warningsAcknowledged) && !!controllerAddress && !controllerLoading
+  const canProceed = hasGasBalance && !hasCriticalDoubts && (!hasWarnings || warningsAcknowledged) && !!controllerAddress && !controllerLoading && !submitting && !isExecuting
 
   // Reset state when modal opens
   useEffect(() => {
@@ -132,6 +137,8 @@ export default function DeployERC20Modal({
       setError(null)
       setUseAllChains(false)
       setWarningsAcknowledged(false)
+      inFlightRef.current = false
+      setSubmitting(false)
       resetOmnichain()
     }
   }, [isOpen, resetOmnichain])
@@ -140,6 +147,13 @@ export default function DeployERC20Modal({
   useStatusCallbacks(status, txHash, error, onConfirmed, onError)
 
   const handleConfirm = useCallback(async () => {
+    // Acquire the in-flight lock before any await. A second concurrent click
+    // returns here (outside the try below) without resetting the lock, so
+    // only one deployment flow can ever reach send.
+    if (inFlightRef.current) return
+    inFlightRef.current = true
+    setSubmitting(true)
+    try {
     try {
       assertSafeErc20TokenMetadata(tokenName, tokenSymbol)
     } catch (err) {
@@ -283,6 +297,10 @@ export default function DeployERC20Modal({
       console.error('Deploy ERC20 failed:', err)
       setError(txErrorMessage(err, 'Transaction failed'))
       setStatus('failed')
+    }
+    } finally {
+      inFlightRef.current = false
+      setSubmitting(false)
     }
   }, [walletClient, address, activeAddress, chainId, projectId, tokenName, tokenSymbol, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, useAllChains, allChainProjects, deploy, onSubmitted, assertCurrentAccount])
 

@@ -31,6 +31,8 @@ interface PayEventDetail {
   memo: string
   action?: 'pay' | 'addToBalance'
   token?: string
+  /** The on-chain token address for the selected currency (advisory; the executor still validates). */
+  tokenAddress?: string
   tierIds?: number[]
   tierSelections?: Array<{ tierId: number; quantity: number; name: string }>
   /** Legacy single-tier event shape. */

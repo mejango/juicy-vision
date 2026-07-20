@@ -9,6 +9,8 @@
 import { useCallback, useState } from 'react'
 
 import { pinFileToBackend } from '../../../services/ipfsPinning'
+import { mediaTypeForFile } from '../../../utils/ipfsMedia'
+import { PerChainNumControl } from './pickers'
 import {
   customAccounting, customAcctSym, itemDraft, lockedCurrencySym, round2, surplusTokenLabel,
   type CreateFlowState, type ItemState,
@@ -191,7 +193,6 @@ function ItemEditor({ state, nft, idx, update }: {
   idx: number
   update: (fn: (s: CreateFlowState) => void) => void
 }) {
-  const [mediaBusy, setMediaBusy] = useState(false)
   const [catAdding, setCatAdding] = useState(false)
   const [catName, setCatName] = useState('')
   const [resolvedBenef, setResolvedBenef] = useState<string | null>(null)
@@ -206,22 +207,26 @@ function ItemEditor({ state, nft, idx, update }: {
   // imageUri + mediaType.
   const onPickMedia = (f: File) => {
     if (f.size > ITEM_MAX_MEDIA_BYTES) {
-      alert('That file is ' + itemFileSize(f.size) + ' — over the ' + ITEM_MAX_MEDIA_MB + ' MB max.')
+      const over = 'That file is ' + itemFileSize(f.size) + ' — over the ' + ITEM_MAX_MEDIA_MB + ' MB max.'
+      upd((n) => { n._mediaError = over })
+      alert(over)
       return
     }
-    setMediaBusy(true)
+    // The upload state lives in the draft (not local component state) so the deploy step can block launch
+    // while a pin is in flight or after it fails — otherwise the item ships as a permanent name-only tier.
+    upd((n) => { n._mediaUploading = true; n._mediaError = '' })
     pinFileToBackend(f, nft.name || f.name)
       .then((uri) => {
-        upd((n) => { n.imageUri = uri; n.mediaType = (f.type || '').toLowerCase() })
-        setMediaBusy(false)
+        upd((n) => { n.imageUri = uri; n.mediaType = mediaTypeForFile(f); n._mediaUploading = false; n._mediaError = '' })
       })
       .catch((e: unknown) => {
-        setMediaBusy(false)
-        alert('Could not upload: ' + (e instanceof Error ? e.message : String(e)))
+        const msg = 'Could not upload: ' + (e instanceof Error ? e.message : String(e))
+        upd((n) => { n._mediaUploading = false; n._mediaError = msg })
+        alert(msg)
       })
   }
 
-  const clearMedia = () => upd((n) => { n.imageUri = ''; n.mediaType = '' })
+  const clearMedia = () => upd((n) => { n.imageUri = ''; n.mediaType = ''; n._mediaError = '' })
   const mediaIsImage = !nft.imageUri || (nft.mediaType || '').indexOf('image') === 0
 
   const minter = state.projectType === 'revnet' ? 'revnet operator' : 'project owner'
@@ -239,18 +244,19 @@ function ItemEditor({ state, nft, idx, update }: {
         {mediaIsImage ? (
           <ImagePicker
             uri={nft.imageUri}
-            busy={mediaBusy}
+            busy={nft._mediaUploading}
             accept={ITEM_MEDIA_ACCEPT}
             onPick={onPickMedia}
             onClear={nft.imageUri ? clearMedia : undefined}
           />
         ) : (
           <div className="flex items-center gap-3">
-            <ImagePicker uri="" busy={mediaBusy} accept={ITEM_MEDIA_ACCEPT} onPick={onPickMedia} />
+            <ImagePicker uri="" busy={nft._mediaUploading} accept={ITEM_MEDIA_ACCEPT} onPick={onPickMedia} />
             <span className="text-xs text-gray-500">{(nft.mediaType || 'file') + ' | pinned'}</span>
             <button type="button" title="Remove" onClick={clearMedia} className="text-xs text-gray-500 hover:text-red-400">✕</button>
           </div>
         )}
+        {nft._mediaError && <p className="text-xs text-red-400 mt-1">{nft._mediaError}</p>}
         <Hint>Image, gif, video, audio, PDF, text… up to {ITEM_MAX_MEDIA_MB} MB.</Hint>
       </FieldBlock>
 
@@ -333,6 +339,14 @@ function ItemEditor({ state, nft, idx, update }: {
       {nft.limited && (
         <FieldBlock label="Quantity">
           <TextInput value={nft.supply} placeholder="100" onChange={(v) => upd((n) => { n.supply = v.trim() })} />
+          {/* Each chain's shop carries its own inventory — the quantity can differ per chain. */}
+          <PerChainNumControl
+            state={state}
+            update={update}
+            fieldKey={`isup:${idx}`}
+            placeholder={nft.supply || '100'}
+            linkLabel="Set quantity per chain"
+          />
         </FieldBlock>
       )}
 

@@ -46,15 +46,18 @@ export default function StepBasics({ state, update }: StepProps) {
         />
       </FieldBlock>
 
-      {/* Token ticker — required for revnets (it names the ERC-20 deployed for the token). Optional otherwise. */}
-      <FieldBlock label="Token symbol" optional={state.projectType !== 'revnet'}>
-        <TextInput
-          value={d.ticker}
-          placeholder="TOKEN"
-          className="w-1/4 min-w-[120px]"
-          onChange={(v) => update((s) => { s.details.ticker = v.trim().toUpperCase().slice(0, 11) })}
-        />
-      </FieldBlock>
+      {/* Token ticker — revnets only (it names the ERC-20 REVDeployer deploys). A custom
+          project's ERC-20 is deployed later from the Owner tab, which asks for the symbol then. */}
+      {state.projectType === 'revnet' && (
+        <FieldBlock label="Token symbol">
+          <TextInput
+            value={d.ticker}
+            placeholder="TOKEN"
+            className="w-1/4 min-w-[120px]"
+            onChange={(v) => update((s) => { s.details.ticker = v.trim().toUpperCase().slice(0, 11) })}
+          />
+        </FieldBlock>
+      )}
 
       <FieldBlock label="Tagline" optional>
         <TextInput

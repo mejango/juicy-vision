@@ -77,6 +77,34 @@ describe('splitSafety', () => {
     })
   })
 
+  it('encodes a new fund-market / custom hook split as pass-through', () => {
+    const HOOK = '0xe9493bc776699714a89aa982cf828d843f040d2a'
+    // Fund-market hook with no project and a pass-through beneficiary.
+    expect(buildSplit(split({ hook: HOOK, projectId: '', beneficiary: RECIPIENT }), 'Split', {
+      kind: 'reserved',
+      sourceProjectId: 1,
+    })).toEqual({
+      percent: 500_000_000,
+      projectId: 0n,
+      beneficiary: RECIPIENT,
+      preferAddToBalance: false,
+      lockedUntil: 0,
+      hook: HOOK,
+    })
+    // Custom hook may carry a "with project" id and omit the beneficiary entirely.
+    expect(buildSplit(split({ hook: HOOK, projectId: '11', beneficiary: '' }), 'Split', {
+      kind: 'reserved',
+      sourceProjectId: 1,
+    })).toMatchObject({ projectId: 11n, beneficiary: zeroAddress, hook: HOOK, preferAddToBalance: false })
+  })
+
+  it('rejects a malformed hook address', () => {
+    expect(() => buildSplit(split({ hook: '0xnothex' }), 'Split', {
+      kind: 'reserved',
+      sourceProjectId: 1,
+    })).toThrow('invalid split hook')
+  })
+
   it('blocks same-project routes and irrelevant reserved add-to-balance flags', () => {
     expect(() => buildSplit(split({ projectId: '1' }), 'Split', {
       kind: 'payout',

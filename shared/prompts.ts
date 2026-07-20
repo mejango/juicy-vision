@@ -59,7 +59,7 @@ export const BASE_PROMPT =
 - The rate affects the SHAPE of the redemption curve, not a flat tax
 - 0 = linear redemption (full proportional share)
 - Rates from 0 to less than 1 curve partial cash outs below their proportional share
-- 1 = cash outs disabled; the contract returns zero, including for the full supply
+- 1 = cash outs return zero, including for the full supply — the call still executes and BURNS the tokens, so warn before anyone cashes out at the max rate. (Revnets reject a rate of 1 at deploy, so revnet cash outs are never fully disabled)
 - When reporting: just state the rate (e.g., "Cash out tax rate: 0.1") without incorrect explanations
 - If asked what it means: "It's a bonding curve parameter. Larger fractions of the supply get closer to a proportional return; small partial exits get less per token. A rate of 1 disables cash outs."
 
@@ -83,7 +83,11 @@ Key insight: Return depends on HOW MUCH of supply is cashed out. For rates below
 - \`scopeCashOutsToLocalBalances=true\` uses only the selected chain's balances/supply
 - Read the active ruleset before describing or previewing a cash out; never assume either mode
 
-## ⛔ Transaction Safety (Top 5 Rules)
+**Revnet loans (REVLoans).** Revnet token holders can borrow against their tokens instead of cashing out:
+- Borrow amount = the collateral's cash-out value, capped at the source terminal's live surplus. There is NO interest rate — never describe "X% annual interest"
+- Collateral tokens are BURNED at origination and re-minted on repayment; loans are transferable ERC-721s
+- Fees at borrow: 2.5% protocol + 1% REV + a prepaid source fee the borrower chooses (2.5%–50%, paid back into the source revnet). The prepaid percent buys a fee-free repayment window (\`prepaid/500 × 10 years\`); after it, the remaining fee ramps linearly to 100% of the unprepaid portion
+- After 10 years an unpaid loan is liquidated and the collateral is permanently destroyed
 
 These are the most common sources of broken transactions. The guarded form verifies them before every review:
 
@@ -486,7 +490,7 @@ It covers Basics (name, ticker, tagline, description, logo, chains) → Ruleset 
 
 **When user picks "Autonomous operation", show \`<juice-component type="create-revnet-form" />\`.**
 
-**Revnet destination safety:** Default to one low-cost chain. Deploy to multiple chains only when the user explicitly selects each destination in the create form; never infer extra chains from the project type.
+**Revnet destination safety:** Revnets are designed for network effects — recommend all supported chains (Ethereum, Optimism, Base, Arbitrum, bridged by suckers) unless the user asks for single-chain. The user still explicitly confirms each destination in the create form; never silently add chains they didn't confirm. Non-revnet projects default to one low-cost chain.
 
 **NEVER default to autonomous** without explicit confirmation. Most projects should start with owner control.
 
@@ -684,11 +688,11 @@ When users want to offer perks at different support levels, use NFT tiers. Each 
 | Action | Permission ID |
 |--------|--------------|
 | QUEUE_RULESETS | 2 |
-| CASH_OUT_TOKENS | 3 |
-| SEND_PAYOUTS | 4 |
-| SET_PROJECT_URI | 6 |
-| MINT_TOKENS | 9 |
-| USE_ALLOWANCE | 16 |
+| CASH_OUT_TOKENS | 4 |
+| SEND_PAYOUTS | 5 |
+| SET_PROJECT_URI | 7 |
+| MINT_TOKENS | 10 |
+| USE_ALLOWANCE | 18 |
 
 **Exception:** If ownerMustSendPayouts = false, anyone can sendPayouts.
 
@@ -733,36 +737,45 @@ export const DATA_QUERY_CONTEXT = `
 
 ### Bendystraw (Read) - GraphQL
 
-**Endpoint:** \`https://bendystraw.up.railway.app/graphql\`
+**Endpoints:** mainnets \`https://bendystraw.xyz/{API_KEY}/graphql\`, testnets \`https://testnet.bendystraw.xyz/{API_KEY}/graphql\` (always the keyed route; the runtime injects the key).
+
+**Non-negotiable rules (Ponder, not TheGraph):**
+- Every query MUST filter \`version: 6\`. The same database holds v4/v5/v6 rows — one project row exists PER VERSION at the same projectId+chainId, so an unversioned query returns garbage.
+- Singular lookups take the full primary key: \`projectId + chainId + version\`.
+- Plural queries use \`limit\`/\`after\` (not \`first\`/\`skip\`), string \`orderBy: "field"\` (not bare enums), flat \`where\` filters (no \`project_:\` nesting), and return page objects — select \`items { ... }\`.
+- \`metadata\` is a JSON scalar (not sub-selectable); \`name\`, \`description\`, \`logoUri\` are top-level project columns.
+- Amounts are in the project's accounting-token decimals (\`project.decimals\` — never assume 18); \`*Usd\` fields are 18-decimal fixed-point strings. \`tokenSymbol\` is the accounting token, not the project's ERC-20.
+- Event \`id\`s are regenerated on reindex — never store them.
+- For omnichain aggregates, filter by \`suckerGroupId\` or read the pre-aggregated \`suckerGroup\` entity.
 
 \`\`\`graphql
 # Single project
 query Project($projectId: Float!, $chainId: Float!) {
-  project(projectId: $projectId, chainId: $chainId) {
+  project(projectId: $projectId, chainId: $chainId, version: 6) {
     id, projectId, chainId, handle, owner, metadataUri
-    metadata  # JSON: name, description, logoUri
+    name, description, logoUri
     volume, volumeUsd, balance, contributorsCount, paymentsCount, createdAt
-    currentRuleset { weight, weightCutPercent, duration, pausePay, allowOwnerMinting, reservedPercent, cashOutTaxRate }
+    isRevnet, suckerGroupId, token, tokenSymbol, decimals, currency
   }
 }
 
-# Search
-query SearchProjects($text: String!, $first: Int) {
-  projectSearch(text: $text, first: $first) {
-    projectId, chainId, handle, metadata { name, description, logoUri }, volume, balance
+# Search by name
+query SearchProjects($text: String!, $limit: Int) {
+  projects(where: { version: 6, name_contains_nocase: $text }, limit: $limit, orderBy: "volume", orderDirection: "desc") {
+    items { projectId, chainId, name, description, logoUri, volume, balance }
   }
 }
 
-# Participants
-query Participants($projectId: Int!, $chainId: Int, $first: Int) {
-  participants(where: { project_: { projectId: $projectId, chainId: $chainId } }, first: $first, orderBy: balance, orderDirection: desc) {
-    wallet, balance, volume, stakedBalance, lastPaidTimestamp
+# Participants (token holders)
+query Participants($projectId: Float!, $chainId: Float!, $limit: Int) {
+  participants(where: { projectId: $projectId, chainId: $chainId, version: 6 }, limit: $limit, orderBy: "balance", orderDirection: "desc") {
+    items { address, balance, volume, creditBalance, erc20Balance, lastPaidTimestamp }
   }
 }
 
 # Activity
 query ActivityEvents($limit: Int, $offset: Int) {
-  activityEvents(limit: $limit, offset: $offset, orderBy: "timestamp", orderDirection: "desc") {
+  activityEvents(where: { version: 6 }, limit: $limit, offset: $offset, orderBy: "timestamp", orderDirection: "desc") {
     items { id, chainId, timestamp, from, txHash, project { name, handle, logoUri }
       payEvent { amount, amountUsd, from }
       cashOutTokensEvent { reclaimAmount, from }
@@ -773,6 +786,10 @@ query ActivityEvents($limit: Int, $offset: Int) {
   }
 }
 \`\`\`
+
+**Revnet detection:** use the project's \`isRevnet\` flag — never infer from the owner address.
+
+**Ruleset state** is not a project relation — read it on-chain via \`JBController.currentRulesetOf\` or from \`rulesetQueuedEvent\` rows.
 
 ### Writes Are Runtime-Owned
 
@@ -815,6 +832,8 @@ export const HOOK_DEVELOPER_CONTEXT = `
 ### Fee Structure
 
 - **Protocol fee:** The standard 2.5% fee can apply to payouts, surplus allowances, and cash outs depending on the exact path and feeless status
+- **Fee destination:** Fees are not skimmed away — they are \`pay\`s into NANA (project 1), so the fee payer's beneficiary receives NANA tokens. Revnet cash-out and loan fees instead mint REV (project 3) tokens
+- **Fail-open:** If the fee payment reverts, the fee is forgiven (\`FeeReverted\`); payouts to another project in the same terminal are fee-free
 - **Cash-out preview:** \`previewCashOutFrom\` reports the reclaim before the terminal applies any protocol fee; the executable form uses a 97.5% minimum and allows no additional client-side slippage beyond the stated fee ceiling
 - **Exceptions and held fees:** Read live feeless and held-fee state before claiming a fee or refund outcome
 
@@ -822,7 +841,7 @@ export const HOOK_DEVELOPER_CONTEXT = `
 
 - **Tiered Rewards Hook** - NFT rewards at contribution levels
 - **Buyback Hook** - Route payments through Uniswap when swap yields more tokens
-- **Swap Terminal** - Accept any ERC-20, auto-swap to project token
+- **Router Terminal (JBRouterTerminal)** - Accept any ERC-20, auto-swap into what the destination project accepts (its accounting token)
 
 ## Developer Reference: Custom Hooks
 
@@ -849,8 +868,8 @@ export const HOOK_DEVELOPER_CONTEXT = `
 | Token buybacks via Uniswap | Deploy **nana-buyback-hook-v6** |
 | Tiered NFT rewards | Deploy **nana-721-hook-v6** |
 | Autonomous tokenized treasury | Deploy a **Revnet** |
-| Revnet with NFT tiers | Use **Tiered721RevnetDeployer** |
-| Fee extraction on cash outs | Deploy a **Revnet** (2.5% fees) |
+| Revnet with NFT tiers | Use the **REVDeployer.deployFor** overload that takes a \`tiered721HookConfiguration\` |
+| Cash-out fee on exits | Set a non-zero \`cashOutTaxRate\` — note revnets add a 2.5%-of-token-count fee on taxed cash outs whose value goes to REV (project 3), not to the revnet owner |
 | Burn NFTs to reclaim funds | Deploy **nana-721-hook-v6** |
 | Phase-based games/competitions | Reference **defifa** |
 | Automated LP from splits | Reference **nana-univ4-lp-split-hook-v6** |
@@ -951,10 +970,11 @@ interface IJBRulesetDataHook is IERC165 {
             uint256 cashOutTaxRate,
             uint256 cashOutCount,
             uint256 totalSupply,
+            uint256 effectiveSurplusValue,
             JBCashOutHookSpecification[] memory hookSpecifications
         );
 
-    function hasMintPermissionFor(uint256 projectId) external view returns (bool);
+    function hasMintPermissionFor(uint256 projectId, JBRuleset memory ruleset, address addr) external view returns (bool);
 }
 \`\`\`
 
@@ -965,7 +985,7 @@ contract FullHook is IJBRulesetDataHook, IJBPayHook, IJBCashOutHook, ERC165 {
     function afterPayRecordedWith(...) external payable { /* mint NFTs, update state */ }
     function beforeCashOutRecordedWith(...) external view returns (...) { /* modify redemption */ }
     function afterCashOutRecordedWith(...) external payable { /* burn NFTs, distribute */ }
-    function hasMintPermissionFor(uint256) external pure returns (bool) { return false; }
+    function hasMintPermissionFor(uint256, JBRuleset memory, address) external pure returns (bool) { return false; }
 }
 \`\`\`
 
@@ -1013,13 +1033,13 @@ Queue ruleset → approvalHook.approvalStatusOf() called
 **Hooks vs Wrappers:**
 - Hooks: Project-configured, applies to ALL payments/cashouts
 - Wrappers: Permissionless, users opt-in for benefits
-- **Revnets limitation:** Revnets have a data hook baked in (buyback hook), so use terminal wrappers for custom revnet integrations.
+- **Revnets limitation:** Revnets have a data hook baked in (REVOwner, which applies the REV fee and delegates to the buyback hook), so use terminal wrappers for custom revnet integrations.
 
 ### Hook Development Guidelines
 
 1. **Validate msg.sender** is authorized terminal
 2. **Handle both native tokens and ERC20** - check token address
-3. **Consider reentrancy** - hooks receive funds before execution
+3. **Pull forwarded ERC-20s** - hooks get a temporary allowance during the call, not a pre-pushed balance; \`transferFrom\` the full forwarded amount or the whole operation reverts (\`JBMultiTerminal_TemporaryAllowanceNotConsumed\`)
 4. **Keep data hooks light** - they run on every payment
 5. **Handle failures gracefully** - don't lock user funds
 
@@ -1720,10 +1740,10 @@ export const INTENT_HINTS = {
 // =============================================================================
 
 export const MODULE_TOKENS = {
-  BASE_PROMPT: 6000,
-  DATA_QUERY_CONTEXT: 2000,
-  HOOK_DEVELOPER_CONTEXT: 3000,
+  BASE_PROMPT: 6300,
+  DATA_QUERY_CONTEXT: 2400,
+  HOOK_DEVELOPER_CONTEXT: 3100,
   TRANSACTION_CONTEXT: 450,
   EXAMPLE_INTERACTIONS: 500,
-  FULL_SYSTEM_PROMPT: 11500,
+  FULL_SYSTEM_PROMPT: 12300,
 };

@@ -1,20 +1,21 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount } from 'wagmi'
-import { createPublicClient, http, formatEther, formatUnits, parseUnits, erc20Abi, type Address, type Hex } from 'viem'
+import { createPublicClient, http, formatEther, formatUnits, parseUnits, erc20Abi, type Address, type Hex, type PublicClient } from 'viem'
+import { NATIVE_TOKEN, type JBChainId } from '@bananapus/nana-sdk-core'
+import { getAccountingContexts } from '@bananapus/nana-sdk-core/v6'
 import {
   fetchProject,
   fetchSuckerGroupBalance,
   fetchOwnersCount,
   fetchEthPrice,
   fetchProjectTokenSymbol,
-  fetchProjectAccountingContexts,
   type Project,
   type ConnectedChain,
   type SuckerGroupBalance,
 } from '../../services/bendystraw'
 import type { IpfsProjectMetadata } from '../../utils/ipfs'
-import { getProjectDataHook, fetchResolvedNFTTiers, fetchHookFlags, getEffectiveTierPrice, requireRecognized721HookIdentity, resolveTierUri, type ResolvedNFTTier, type JB721HookFlags } from '../../services/nft'
+import { getProjectDataHook, fetchResolvedNFTTiers, fetchHookFlags, getEffectiveTierPrice, requireRecognized721HookIdentity, resolveTierUri, fetchPayCredits, type ResolvedNFTTier, type JB721HookFlags } from '../../services/nft'
 import { inlineSvgImages } from '../../utils/ipfs'
 import { useThemeStore, useTransactionStore, type PaymentStage, type TransactionStatus } from '../../stores'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, CHAINS, type SupportedChainId } from '../../constants'
@@ -25,13 +26,30 @@ import { useManagedWallet } from '../../hooks'
 import { useProjectCardPaymentState } from '../../hooks/useComponentState'
 import BuyJuiceModal from '../juice/BuyJuiceModal'
 import { ProjectLink } from './ProjectLink'
-import { getPaymentTerminal, getPaymentTokenAddress } from '../../utils/paymentTerminal'
+import { getPaymentTerminal } from '../../utils/paymentTerminal'
 import { assertCurrentProjectPayConfigurationTrusted } from '../../utils/projectTrust'
 import { resolveProjectChains } from '../../utils/projectChains'
+import { fetchProjectBalanceBreakdown, type ProjectBalanceBreakdown } from '../../services/projectBalanceBreakdown'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { IpfsImage } from '../ui/IpfsMedia'
+import { ExplainerMessage } from '../ui/ExplainerMessage'
 import { resolvePayPreviewOutcome, TERMINAL_PREVIEW_PAY_ABI } from '../../utils/terminalPreview'
 import { buildNftPayMetadata } from '../../utils/nftPayMetadata'
+import {
+  computeNftCheckout,
+  fmtCountdown,
+  formatExactTokenEstimate,
+  formatRoutingTag,
+  isVerifiedZeroIssuance,
+  landedAcceptedAfterSwap,
+  probeRouterPayRoute,
+  readPayScheduleGate,
+  resolveDirectSwapOffer,
+  shortHex,
+  tierDiscountLabel,
+  uniswapPoolLink,
+} from '../../services/payPreviewCard'
+import { quoteDirectBuy } from '../../services/ammMarket'
 
 // Metadata extracted from on-chain resolver
 interface OnChainTierMetadata {
@@ -51,26 +69,11 @@ function isSupportedTierCurrency(currency: number): boolean {
   return isEthTierCurrency(currency) || isUsdTierCurrency(currency)
 }
 
-function formatTierPrice(tier: ResolvedNFTTier, symbolByCurrency?: Record<number, string>): string {
+function formatTierPrice(tier: ResolvedNFTTier): string {
   const amount = formatUnits(getEffectiveTierPrice(tier), tier.pricingDecimals)
   if (isUsdTierCurrency(tier.currency)) return `$${amount}`
   if (isEthTierCurrency(tier.currency)) return `${amount} ETH`
-  // Custom accounting-token pricing: the price is known even when in-app purchase is unsupported.
-  const symbol = symbolByCurrency?.[tier.currency]
-  return symbol ? `${amount} ${symbol}` : 'Pricing unavailable'
-}
-
-// Tier names like "Tier 3" are placeholders that on-chain metadata may override.
-function isPlaceholderTierName(name: string): boolean {
-  return /^Tier \d+$/.test(name)
-}
-
-// Total price across all selected tier quantities.
-function computeTierTotal(quantities: Record<number, number>, tiers: ResolvedNFTTier[]): bigint {
-  return Object.entries(quantities).reduce((sum, [id, qty]) => {
-    const t = tiers.find((t) => t.tierId === Number(id))
-    return sum + (t ? getEffectiveTierPrice(t) * BigInt(qty) : 0n)
-  }, 0n)
+  return 'Pricing unavailable'
 }
 
 // Small component for tier preview images with on-chain fallback
@@ -146,11 +149,11 @@ function TierPreviewImage({
   }
 
   if (hasIpfsImage && tier.imageUri) {
-    return <IpfsImage uri={tier.imageUri} alt="" className={`${sizeClass} object-cover`} onError={() => setIpfsUnavailable(true)} />
+    return <IpfsImage uri={tier.imageUri} alt="" className={`${sizeClass} object-contain bg-white`} onError={() => setIpfsUnavailable(true)} />
   }
 
   if (onChainImage) {
-    return <IpfsImage uri={onChainImage} alt="" className={`${sizeClass} object-cover`} />
+    return <IpfsImage uri={onChainImage} alt="" className={`${sizeClass} object-contain bg-white`} />
   }
 
   return (
@@ -166,6 +169,9 @@ interface ProjectCardProps {
   messageId?: string // For persisting payment state to server (visible to all chat users)
   embedded?: boolean // For sidebar display mode - removes outer container styling
   children?: React.ReactNode // For embedded mode - content to render inside scrollable area (e.g., Activity)
+  // Flavor for the pay explainer: revnets have locked terms, custom projects have
+  // owner-configured rulesets. Falls back to the indexed isRevnet flag when omitted.
+  isRevnet?: boolean
 }
 
 const CHAIN_INFO: Record<string, { name: string; slug: string }> = {
@@ -190,33 +196,41 @@ type PayCardPreview =
       beneficiaryTokenCount: bigint
       reservedTokenCount: bigint
       route: 'issuance' | 'amm'
+      // The exact minReturnedTokens the executor submits: equal to the quote on
+      // the issuance route, slippage-floored on the AMM route. Displayed value
+      // and submitted parameter must always match.
+      minReturnedTokens: bigint
+      // Buyback pool the AMM route filled through, when applicable.
+      buybackPoolId: Hex | null
+      // On-chain V4 Quoter probe of buying straight from the buyback pool with
+      // this pay amount (plain pair-token buys only; null when gated off / no
+      // pool / no verified Quoter). Lets the direct-swap offer fire even on the
+      // ISSUANCE route when a pool swap beats what pay would mint.
+      directSwapQuote: { poolId: Hex; out: bigint } | null
+      // A verified zero/zero quote (weight-0 ruleset): legitimate, but the
+      // "0 tokens" output is hidden instead of shown as a broken quote.
+      zeroIssuance: boolean
+      // Gross issuance the ruleset would mint WITHOUT the buyback hook (from
+      // tokenCountWithoutHook), used to explain why the AMM route won.
+      grossIssuance: bigint
     }
 
-function formatExactTokenEstimate(value: bigint, maximumFractionDigits = 2): string {
-  const tokenScale = 10n ** 18n
-  const displayScale = 10n ** BigInt(maximumFractionDigits)
-  const rounded = (value * displayScale + tokenScale / 2n) / tokenScale
-  const whole = rounded / displayScale
-  const hadFraction = value % tokenScale !== 0n
-  const fraction = (rounded % displayScale).toString().padStart(maximumFractionDigits, '0')
-  if (hadFraction) return `${whole.toLocaleString('en-US')}.${fraction}`
-  return whole.toLocaleString('en-US')
-}
-
-type PaymentToken = 'ETH' | 'USDC' | 'PAY_CREDITS'
+// ETH/USDC/PAY_CREDITS keep their canonical string ids; a custom accounting-token
+// option carries its own token address as the id (with an ERC-20 symbol label).
+export type PaymentToken = string
 
 interface PaymentTokenOption {
+  // Selection id: 'ETH' | 'USDC' | 'PAY_CREDITS' | <custom token address>.
   symbol: PaymentToken
+  // Human label shown in the dropdown (ERC-20 symbol for custom tokens).
+  label: string
   name: string
+  // The on-chain token address the pay flow submits (NATIVE for ETH; empty for credits).
+  tokenAddress: Address
   decimals: number
   currency: number
   route: 'direct' | 'routed' | 'credits'
 }
-
-const ONCHAIN_PAYMENT_CANDIDATES = [
-  { symbol: 'ETH' as const, name: 'Ether', decimals: 18 },
-  { symbol: 'USDC' as const, name: 'USD Coin', decimals: 6 },
-]
 
 const PREVIEW_BENEFICIARY = '0x000000000000000000000000000000000000dEaD' as Address
 
@@ -361,7 +375,7 @@ function PaymentProgress({
   )
 }
 
-export default function ProjectCard({ projectId, chainId: initialChainId = '1', messageId, embedded = false, children }: ProjectCardProps) {
+export default function ProjectCard({ projectId, chainId: initialChainId = '1', messageId, embedded = false, children, isRevnet }: ProjectCardProps) {
   // Persistent payment state (visible to all chat users)
   const { state: persistedPayment, updateState: updatePersistedPayment } = useProjectCardPaymentState(messageId)
 
@@ -378,11 +392,19 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const [chainDropdownOpen, setChainDropdownOpen] = useState(false)
   const [tokenDropdownOpen, setTokenDropdownOpen] = useState(false)
   const [showBuyJuiceModal, setShowBuyJuiceModal] = useState(false)
+  const buyMoreButtonRef = useRef<HTMLButtonElement>(null)
   const amountInputRef = useRef<HTMLInputElement>(null)
   // Connected chains with their project IDs (may differ per chain)
   const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>([])
+  // On-chain, all-accounting-tokens balance priced through JBPrices. Supersedes the indexed single-token
+  // sucker-group figure once it resolves; balanceRefreshTick re-runs it after a balance-changing tx.
+  const [balanceBreakdown, setBalanceBreakdown] = useState<ProjectBalanceBreakdown | null>(null)
+  const [balanceRefreshTick, setBalanceRefreshTick] = useState(0)
   const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
   const [payPreview, setPayPreview] = useState<PayCardPreview>({ status: 'idle' })
+  // Unix start of the first ruleset when it is still in the future ("Starts in" gate).
+  const [payStartsAt, setPayStartsAt] = useState<number | null>(null)
+  const [countdownNow, setCountdownNow] = useState(() => Math.floor(Date.now() / 1000))
   // Full metadata from IPFS (has complete description)
   const [fullMetadata, setFullMetadata] = useState<IpfsProjectMetadata | null>(null)
   // Sucker group balance (total + per-chain breakdown)
@@ -411,7 +433,12 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const [paymentSafetyError, setPaymentSafetyError] = useState<string | null>(null)
   const [paymentSafetyLoading, setPaymentSafetyLoading] = useState(true)
   const [paymentTokenOptions, setPaymentTokenOptions] = useState<PaymentTokenOption[]>([])
-  const [accountingSymbolByCurrency, setAccountingSymbolByCurrency] = useState<Record<number, string>>({})
+  // Shop credit (payCreditsOf) for the connected beneficiary, offsets NFT checkout.
+  const [nftCredits, setNftCredits] = useState<bigint>(0n)
+  const [nftCreditsLoading, setNftCreditsLoading] = useState(false)
+  // "≈ X ACC lands after the swap" note for a swap-via-router add-to-balance top-up.
+  const [routedConversion, setRoutedConversion] = useState<{ landed: bigint; decimals: number; label: string } | null>(null)
+  const [routedConversionLoading, setRoutedConversionLoading] = useState(false)
   // Track quantity for each selected tier: { tierId: quantity }
   const [tierQuantities, setTierQuantities] = useState<Record<number, number>>({})
   // Derived: array of tier IDs (each ID repeated by quantity) for payment encoding
@@ -420,8 +447,19 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     [tierQuantities],
   )
   const selectedPaymentOption = paymentTokenOptions.find((option) => option.symbol === selectedToken)
-  const canContributeOnly = selectedToken !== 'PAY_CREDITS' && selectedPaymentOption?.route === 'direct' && selectedTierIds.length === 0
+  // Add-to-balance works for any onchain currency — including a swap-via-router token
+  // (the router swaps it into the accepted token, then adds it to the balance).
+  // Add-to-balance is direct-token-only: juicy's executor rejects routed
+  // add-to-balance (executeAddToBalanceTransaction requires a directly accepted
+  // accounting token). Offering it for routed tokens would be a broken button —
+  // TODO(parity): enable once the executor supports routed add-to-balance.
+  const canContributeOnly =
+    selectedToken !== 'PAY_CREDITS' &&
+    selectedPaymentOption?.route === 'direct' &&
+    selectedTierIds.length === 0
   const addsToBalance = contributionOnly && canContributeOnly
+  // First directly-accepted token — the currency a swap-via-router top-up lands in.
+  const acceptedDirectOption = paymentTokenOptions.find((option) => option.route === 'direct')
   useEffect(() => {
     if (!canContributeOnly) {
       setContributionOnly(false)
@@ -515,6 +553,42 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     }
   }, [persistedPayment])
 
+  // Read whether the project's first ruleset has started. Paying before the start
+  // reverts in the terminal, so the Pay button idles behind a live countdown.
+  useEffect(() => {
+    let cancelled = false
+    async function loadScheduleGate() {
+      try {
+        const chainIdNum = parseInt(selectedChainId)
+        const chain = VIEM_CHAINS[chainIdNum as SupportedChainId]
+        const rpcUrl = RPC_ENDPOINTS[chainIdNum]?.[0]
+        if (!chain || !rpcUrl) return
+        const client = createPublicClient({ chain, transport: http(rpcUrl) })
+        const gate = await readPayScheduleGate(client, BigInt(currentProjectId))
+        if (!cancelled) setPayStartsAt(gate.startsAt)
+      } catch {
+        if (!cancelled) setPayStartsAt(null)
+      }
+    }
+    setPayStartsAt(null)
+    loadScheduleGate()
+    return () => {
+      cancelled = true
+    }
+  }, [currentProjectId, selectedChainId])
+
+  const notStarted = payStartsAt !== null && payStartsAt > countdownNow
+
+  // Tick the countdown once per second while the start is in the future; when it
+  // passes, the gate clears itself and the Pay button wakes up.
+  useEffect(() => {
+    if (!notStarted) return
+    const timer = setInterval(() => {
+      setCountdownNow(Math.floor(Date.now() / 1000))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [notStarted])
+
   // Fetch NFT tiers when chain changes
   useEffect(() => {
     async function loadNFTTiers() {
@@ -590,6 +664,36 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     load()
   }, [currentProjectId, selectedChainId])
 
+  // Refresh only the treasury total after a confirmed balance-changing tx (pay / cash out / payout /
+  // surplus allowance), so the header USD figure never lags the Funds panel until a reload. Balance-only
+  // (no full reload → no loading flash); the emitting forms fire `juice:project-data-invalidated`, and the
+  // pay flow below dispatches it too. Keeps the prior figure on a transient read failure.
+  useEffect(() => {
+    const refetchBalance = () => {
+      fetchSuckerGroupBalance(currentProjectId, parseInt(selectedChainId))
+        .then(setSuckerBalance)
+        .catch(() => {})
+      setBalanceRefreshTick(tick => tick + 1)
+    }
+    window.addEventListener('juice:project-data-invalidated', refetchBalance)
+    return () => window.removeEventListener('juice:project-data-invalidated', refetchBalance)
+  }, [currentProjectId, selectedChainId])
+
+  // Price every accounting token this project holds (across its chains) through JBPrices. Fail-closed: a chain
+  // that can't be verified marks the whole aggregate unpriced, and an unpriceable token falls back to a raw
+  // per-token summary rather than a guessed dollar figure.
+  useEffect(() => {
+    let cancelled = false
+    const chains = (connectedChains.length > 0
+      ? connectedChains
+      : [{ chainId: parseInt(initialChainId), projectId: parseInt(projectId) }]
+    ).map(chain => ({ chainId: chain.chainId, projectId: chain.projectId }))
+    fetchProjectBalanceBreakdown(chains)
+      .then(breakdown => { if (!cancelled) setBalanceBreakdown(breakdown) })
+      .catch(() => { if (!cancelled) setBalanceBreakdown(null) })
+    return () => { cancelled = true }
+  }, [connectedChains, projectId, initialChainId, balanceRefreshTick])
+
   // Fetch wallet balances when connected and chain changes
   const fetchWalletBalances = useCallback(async () => {
     if (!activeWalletAddress) {
@@ -654,51 +758,102 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         const rpcUrl = RPC_ENDPOINTS[chainIdNum]?.[0]
         if (!chain || !rpcUrl) throw new Error('Unsupported payment chain')
         const client = createPublicClient({ chain, transport: http(rpcUrl) })
-        const accountingContexts = await fetchProjectAccountingContexts(currentProjectId, chainIdNum)
+        // Direct-pay currencies come from the project's ACTUAL accounting contexts,
+        // not a hardcoded ETH/USDC probe — a custom-ERC-20-denominated project must
+        // surface its own token as a direct pay currency.
+        const accountingContexts = await getAccountingContexts(client as PublicClient, {
+          chainId: chainIdNum as JBChainId,
+          projectId: BigInt(currentProjectId),
+        })
         await assertCurrentProjectPayConfigurationTrusted({
           client,
           projectId: BigInt(currentProjectId),
         })
 
-        const paymentCandidates = isManagedMode ? ONCHAIN_PAYMENT_CANDIDATES.filter((candidate) => candidate.symbol === 'ETH') : ONCHAIN_PAYMENT_CANDIDATES
-        const routes = await Promise.all(
-          paymentCandidates.map(async (candidate) => {
-            const tokenAddress = getPaymentTokenAddress(candidate.symbol, chainIdNum)
-            try {
-              const terminal = await getPaymentTerminal(client, chainIdNum, BigInt(currentProjectId), tokenAddress, 'pay')
-              const directContext = accountingContexts.find((context) => context.symbol === candidate.symbol)
-              if (terminal.type === 'multi' && !directContext) {
-                throw new Error(`${candidate.symbol} is not a live accounting context`)
-              }
-              if (terminal.type === 'router') {
-                // The router registry answers primaryTerminalOf even for tokens it cannot
-                // actually swap-route; only a previewPayFor probe proves a live route.
-                const probeAmount = 10n ** BigInt(candidate.decimals)
-                await client.readContract({
-                  address: terminal.address,
-                  abi: TERMINAL_PREVIEW_PAY_ABI,
-                  functionName: 'previewPayFor',
-                  args: [BigInt(currentProjectId), tokenAddress, probeAmount, PREVIEW_BENEFICIARY, '0x'],
-                }).catch(() => {
-                  throw new Error('This project does not accept the selected payment token')
-                })
-              }
-              return {
-                symbol: candidate.symbol,
-                name: candidate.name,
-                decimals: directContext?.decimals ?? candidate.decimals,
-                currency: directContext?.currency ?? Number(BigInt(tokenAddress) & 0xffff_ffffn),
-                route: terminal.type === 'multi' ? ('direct' as const) : ('routed' as const),
-              }
-            } catch (err) {
-              if (err instanceof Error && err.message === 'This project does not accept the selected payment token') {
-                return null
-              }
-              throw err
+        const nativeLower = NATIVE_TOKEN.toLowerCase()
+        const usdcAddress = USDC_ADDRESSES[chainIdNum as SupportedChainId]
+        const usdcLower = usdcAddress?.toLowerCase()
+
+        // Every accounting-context token is a direct pay option (correct decimals /
+        // currency from the context). Managed accounts pay only in ETH.
+        const directContexts = isManagedMode
+          ? accountingContexts.filter((context) => context.token.toLowerCase() === nativeLower)
+          : accountingContexts
+        const directOptions: PaymentTokenOption[] = await Promise.all(
+          directContexts.map(async (context) => {
+            const tokenLower = context.token.toLowerCase()
+            let symbol: string
+            let label: string
+            let name: string
+            if (tokenLower === nativeLower) {
+              symbol = 'ETH'; label = 'ETH'; name = 'Ether'
+            } else if (usdcLower && tokenLower === usdcLower) {
+              symbol = 'USDC'; label = 'USDC'; name = 'USD Coin'
+            } else {
+              // Custom accounting token: the id is its address, the label its ERC-20 symbol.
+              const resolved = await client
+                .readContract({ address: context.token as Address, abi: erc20Abi, functionName: 'symbol' })
+                .catch(() => shortHex(context.token))
+              symbol = context.token
+              label = resolved || shortHex(context.token)
+              name = label
             }
-          })
+            return {
+              symbol,
+              label,
+              name,
+              tokenAddress: context.token as Address,
+              decimals: Number(context.decimals),
+              currency: Number(context.currency),
+              route: 'direct' as const,
+            }
+          }),
         )
-        const verified = routes.filter((route): route is NonNullable<typeof route> => route !== null)
+
+        const directlyAccepts = (token: Address) =>
+          directOptions.some((option) => option.tokenAddress.toLowerCase() === token.toLowerCase())
+
+        // ETH / USDC the project does NOT accept directly are appended as swap-via-router
+        // options — but only when the router can actually route them right now (a listed
+        // router with no pool/feed path reverts at pay time; offering it is a trap).
+        const routerCandidates: Array<{ symbol: string; name: string; tokenAddress: Address; decimals: number }> = []
+        if (!directlyAccepts(NATIVE_TOKEN)) {
+          routerCandidates.push({ symbol: 'ETH', name: 'Ether', tokenAddress: NATIVE_TOKEN, decimals: 18 })
+        }
+        if (!isManagedMode && usdcAddress && !directlyAccepts(usdcAddress)) {
+          routerCandidates.push({ symbol: 'USDC', name: 'USD Coin', tokenAddress: usdcAddress, decimals: 6 })
+        }
+        const routedOptions = (
+          await Promise.all(
+            routerCandidates.map(async (candidate): Promise<PaymentTokenOption | null> => {
+              try {
+                const terminal = await getPaymentTerminal(client, chainIdNum, BigInt(currentProjectId), candidate.tokenAddress, 'pay')
+                // Directory says the project accepts it directly after all → 'direct',
+                // otherwise a live router route → 'routed'.
+                if (terminal.type !== 'multi') {
+                  const routable = await probeRouterPayRoute(client, terminal.address, BigInt(currentProjectId), candidate.tokenAddress, candidate.decimals)
+                  if (!routable) return null
+                }
+                return {
+                  symbol: candidate.symbol,
+                  label: candidate.symbol,
+                  name: candidate.name,
+                  tokenAddress: candidate.tokenAddress,
+                  decimals: candidate.decimals,
+                  currency: Number(BigInt(candidate.tokenAddress) & 0xffff_ffffn),
+                  route: terminal.type === 'multi' ? 'direct' : 'routed',
+                }
+              } catch (err) {
+                if (err instanceof Error && err.message === 'This project does not accept the selected payment token') {
+                  return null
+                }
+                throw err
+              }
+            }),
+          )
+        ).filter((option): option is PaymentTokenOption => option !== null)
+
+        const verified = [...directOptions, ...routedOptions]
         if (verified.length === 0) throw new Error('This project has no recognized payment route')
 
         const nativeRoute = verified.find((route) => route.symbol === 'ETH')
@@ -708,7 +863,9 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             ? [
                 {
                   symbol: 'PAY_CREDITS' as const,
+                  label: 'Credits',
                   name: 'Pay Credits',
+                  tokenAddress: NATIVE_TOKEN,
                   decimals: nativeRoute.decimals,
                   currency: nativeRoute.currency,
                   route: 'credits' as const,
@@ -719,7 +876,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         if (!cancelled) {
           setPaymentTokenOptions(options)
           setSelectedToken((current) => (options.some((option) => option.symbol === current) ? current : options[0].symbol))
-          setAccountingSymbolByCurrency(Object.fromEntries(accountingContexts.map((context) => [context.currency, context.symbol])))
         }
       } catch (err) {
         if (!cancelled) {
@@ -801,7 +957,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         if (!chain || !rpcUrl) throw new Error('Unsupported payment chain')
 
         const client = createPublicClient({ chain, transport: http(rpcUrl) })
-        const tokenAddress = getPaymentTokenAddress(selectedToken, chainIdNum)
+        const tokenAddress = selectedPaymentOption.tokenAddress
         const terminal = await getPaymentTerminal(
           client,
           chainIdNum,
@@ -837,12 +993,34 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           reservedTokenCount: preview[2],
           hookSpecifications: preview[3],
         })
+        // A verified zero/zero quote is a legitimate pay (weight-0 ruleset): keep it
+        // submittable and hide the meaningless "0 tokens" line instead of blocking.
+        const zeroIssuance = selectedTierIds.length === 0 &&
+          isVerifiedZeroIssuance(outcome.beneficiaryTokenCount, outcome.reservedTokenCount)
+        // Probe the buyback pool with the V4 Quoter so the direct-swap offer can
+        // fire even on the ISSUANCE route (a pool swap that beats what pay would
+        // mint). Plain pair-token buys only; quoteDirectBuy null-gates everything
+        // else (tiers/router/no pool/no verified Quoter/quote revert).
+        let directSwapQuote: { poolId: Hex; out: bigint } | null = null
+        if (selectedTierIds.length === 0 && selectedPaymentOption.route === 'direct') {
+          directSwapQuote = await quoteDirectBuy(
+            chainIdNum,
+            BigInt(currentProjectId),
+            tokenAddress,
+            paymentAmount,
+          ).catch(() => null)
+        }
         if (!cancelled) {
           setPayPreview({
             status: 'ready',
             beneficiaryTokenCount: outcome.beneficiaryTokenCount,
             reservedTokenCount: outcome.reservedTokenCount,
             route: outcome.route,
+            minReturnedTokens: outcome.minReturnedTokens,
+            buybackPoolId: outcome.buyback?.poolId ?? null,
+            zeroIssuance,
+            grossIssuance: outcome.buyback?.tokenCountWithoutHook ?? 0n,
+            directSwapQuote,
           })
         }
       } catch (err) {
@@ -853,7 +1031,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           setPayPreview({ status: 'unavailable', reason })
         }
       }
-    }, 250)
+    }, 400)
 
     return () => {
       cancelled = true
@@ -873,8 +1051,135 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     selectedToken,
   ])
 
+  // Load the connected beneficiary's shop credit for the NFT checkout summary.
+  useEffect(() => {
+    let cancelled = false
+    if (!nftHookAddress || selectedTierIds.length === 0 || !activeWalletAddress) {
+      setNftCredits(0n)
+      setNftCreditsLoading(false)
+      return
+    }
+    setNftCreditsLoading(true)
+    fetchPayCredits(nftHookAddress, activeWalletAddress as Address, parseInt(selectedChainId))
+      .then((credits) => { if (!cancelled) setNftCredits(credits) })
+      .catch(() => { if (!cancelled) setNftCredits(0n) })
+      .finally(() => { if (!cancelled) setNftCreditsLoading(false) })
+    return () => { cancelled = true }
+  }, [nftHookAddress, activeWalletAddress, selectedChainId, selectedTierIds.length])
+
+  // For a swap-via-router add-to-balance top-up, back out how much of the project's
+  // accepted token lands onchain after the swap (same issuance curve on both legs).
+  useEffect(() => {
+    let cancelled = false
+    if (
+      !addsToBalance ||
+      selectedPaymentOption?.route !== 'routed' ||
+      !acceptedDirectOption ||
+      !amount
+    ) {
+      setRoutedConversion(null)
+      setRoutedConversionLoading(false)
+      return
+    }
+    let inputAmount: bigint
+    try {
+      inputAmount = parseUnits(amount, selectedPaymentOption.decimals)
+    } catch {
+      setRoutedConversion(null)
+      return
+    }
+    if (inputAmount <= 0n) {
+      setRoutedConversion(null)
+      return
+    }
+    const routedToken = selectedPaymentOption.tokenAddress
+    const acceptedToken = acceptedDirectOption.tokenAddress
+    const acceptedDecimals = acceptedDirectOption.decimals
+    const acceptedLabel = acceptedDirectOption.label
+    setRoutedConversionLoading(true)
+    const timer = setTimeout(async () => {
+      try {
+        const chainIdNum = parseInt(selectedChainId)
+        const chain = VIEM_CHAINS[chainIdNum as SupportedChainId]
+        const rpcUrl = RPC_ENDPOINTS[chainIdNum]?.[0]
+        if (!chain || !rpcUrl) throw new Error('Unsupported payment chain')
+        const client = createPublicClient({ chain, transport: http(rpcUrl) })
+        const beneficiary = (activeWalletAddress ?? PREVIEW_BENEFICIARY) as Address
+
+        const routedTerminal = await getPaymentTerminal(client, chainIdNum, BigInt(currentProjectId), routedToken)
+        const routedPreview = await client.readContract({
+          account: beneficiary,
+          address: routedTerminal.address,
+          abi: TERMINAL_PREVIEW_PAY_ABI,
+          functionName: 'previewPayFor',
+          args: [BigInt(currentProjectId), routedToken, inputAmount, beneficiary, '0x'],
+        })
+        const routedOutcome = resolvePayPreviewOutcome({
+          beneficiaryTokenCount: routedPreview[1],
+          reservedTokenCount: routedPreview[2],
+          hookSpecifications: routedPreview[3],
+        })
+        const routedIssuance = routedOutcome.beneficiaryTokenCount + routedOutcome.reservedTokenCount
+
+        const unit = 10n ** BigInt(acceptedDecimals)
+        const acceptedTerminal = await getPaymentTerminal(client, chainIdNum, BigInt(currentProjectId), acceptedToken)
+        const unitPreview = await client.readContract({
+          account: beneficiary,
+          address: acceptedTerminal.address,
+          abi: TERMINAL_PREVIEW_PAY_ABI,
+          functionName: 'previewPayFor',
+          args: [BigInt(currentProjectId), acceptedToken, unit, beneficiary, '0x'],
+        })
+        const unitOutcome = resolvePayPreviewOutcome({
+          beneficiaryTokenCount: unitPreview[1],
+          reservedTokenCount: unitPreview[2],
+          hookSpecifications: unitPreview[3],
+        })
+        const unitIssuance = unitOutcome.beneficiaryTokenCount + unitOutcome.reservedTokenCount
+
+        const landed = landedAcceptedAfterSwap({ routedIssuance, unitIssuance, acceptedDecimals })
+        if (!cancelled) {
+          setRoutedConversion(landed != null ? { landed, decimals: acceptedDecimals, label: acceptedLabel } : null)
+        }
+      } catch {
+        if (!cancelled) setRoutedConversion(null)
+      } finally {
+        if (!cancelled) setRoutedConversionLoading(false)
+      }
+    }, 400)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [
+    addsToBalance,
+    amount,
+    selectedChainId,
+    currentProjectId,
+    activeWalletAddress,
+    selectedPaymentOption,
+    acceptedDirectOption,
+  ])
+
   const requiresLivePayPreview = selectedToken !== 'PAY_CREDITS' && !addsToBalance
   const livePayPreviewReady = payPreview.status === 'ready'
+
+  // Direct AMM swap offer: when the buyback hook already routes this pay through the
+  // pool, buying straight from the pool keeps the reserved share too. Only for plain
+  // buys — no NFT mints, not add-to-balance, and only directly accepted pair tokens.
+  const directSwapOffer = useMemo(() => {
+    if (payPreview.status !== 'ready') return null
+    return resolveDirectSwapOffer({
+      route: payPreview.route,
+      beneficiaryTokenCount: payPreview.beneficiaryTokenCount,
+      reservedTokenCount: payPreview.reservedTokenCount,
+      ammPoolId: payPreview.buybackPoolId,
+      quote: payPreview.directSwapQuote,
+      hasTiers: selectedTierIds.length > 0,
+      addsToBalance,
+      viaRouter: selectedPaymentOption?.route !== 'direct',
+    })
+  }, [payPreview, selectedTierIds.length, addsToBalance, selectedPaymentOption?.route])
 
   // Check if form should be locked due to active/completed payment
   const isPaymentLocked = persistedPayment?.status && persistedPayment.status !== 'pending'
@@ -883,6 +1188,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     paymentSafetyError ||
     paymentSafetyLoading ||
     paying ||
+    notStarted ||
     !amount ||
     parseFloat(amount) <= 0 ||
     isPaymentLocked ||
@@ -971,7 +1277,10 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         const newQuantities = { ...prev, [tier.tierId]: newQty }
 
         // Calculate total price from all selected tiers and quantities
-        const totalPrice = computeTierTotal(newQuantities, nftTiers)
+        const totalPrice = Object.entries(newQuantities).reduce((sum, [id, qty]) => {
+          const t = nftTiers.find((t) => t.tierId === Number(id))
+          return sum + (t ? getEffectiveTierPrice(t) * BigInt(qty) : 0n)
+        }, 0n)
 
         setAmount(formatUnits(totalPrice, tier.pricingDecimals))
 
@@ -998,7 +1307,10 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         }
 
         // Recalculate total price
-        const totalPrice = computeTierTotal(newQuantities, nftTiers)
+        const totalPrice = Object.entries(newQuantities).reduce((sum, [id, qty]) => {
+          const t = nftTiers.find((t) => t.tierId === Number(id))
+          return sum + (t ? getEffectiveTierPrice(t) * BigInt(qty) : 0n)
+        }, 0n)
 
         if (totalPrice === 0n) {
           setAmount('')
@@ -1028,7 +1340,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const getTierDisplayName = useCallback(
     (tier: ResolvedNFTTier) => {
       // If tier.name is not a placeholder "Tier X", use it directly
-      if (!isPlaceholderTierName(tier.name)) {
+      if (!/^Tier \d+$/.test(tier.name)) {
         return tier.name
       }
       // Otherwise, check for productName from on-chain metadata
@@ -1045,7 +1357,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       const tier = nftTiers.find((t) => t.tierId === tierId)
       if (tier) {
         // Store the tier name in metadata if provided (so it displays correctly in "You get")
-        if (name && isPlaceholderTierName(tier.name)) {
+        if (name && /^Tier \d+$/.test(tier.name)) {
           setTierMetadata((prev) => ({
             ...prev,
             [tierId]: { ...prev[tierId], productName: name },
@@ -1066,7 +1378,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       // Store the tier name in metadata if provided
       if (name) {
         const tier = nftTiers.find((t) => t.tierId === tierId)
-        if (tier && isPlaceholderTierName(tier.name)) {
+        if (tier && /^Tier \d+$/.test(tier.name)) {
           setTierMetadata((prev) => ({
             ...prev,
             [tierId]: { ...prev[tierId], productName: name },
@@ -1097,6 +1409,11 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         txHash: activePayment.hash,
         confirmedAt: new Date().toISOString(),
       })
+      // A confirmed pay grew the treasury — tell the header refetch above and the Funds panel to refresh
+      // (the cash out / payout / allowance forms already emit this; the pay flow otherwise did not).
+      window.dispatchEvent(new CustomEvent('juice:project-data-invalidated', {
+        detail: { chainId: parseInt(selectedChainId), projectId: Number(currentProjectId) },
+      }))
     } else if (activePayment?.status === 'queued') {
       setPaying(false)
       refetchJuiceBalance()
@@ -1120,15 +1437,132 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         error: activePayment.error || 'Transaction failed',
       })
     }
-  }, [activePayment?.status, activePayment?.hash, activePayment?.error, refetchJuiceBalance, updatePersistedPayment])
+  }, [activePayment?.status, activePayment?.hash, activePayment?.error, refetchJuiceBalance, updatePersistedPayment, selectedChainId, currentProjectId])
+
+  // Format a shop pricing amount ($ for USD tiers, ETH otherwise).
+  const formatPricingAmount = (raw: bigint, decimals: number, currency: number) => {
+    const value = formatUnits(raw, decimals)
+    return isUsdTierCurrency(currency) ? `$${value}` : `${value} ETH`
+  }
+
+  const renderSelectedTierList = () => {
+    const entries = Object.entries(tierQuantities)
+    if (entries.length === 0) return null
+    const muted = isDark ? 'text-gray-400' : 'text-gray-500'
+
+    // Shop-credit checkout math, in the first selected tier's pricing units.
+    const selectedTiers = entries
+      .map(([tierId, qty]) => ({ tier: nftTiers.find((candidate) => candidate.tierId === Number(tierId)), qty }))
+      .filter((entry): entry is { tier: ResolvedNFTTier; qty: number } => Boolean(entry.tier))
+    const pricingTier = selectedTiers[0]?.tier
+    const pricingDecimals = pricingTier?.pricingDecimals ?? 18
+    const pricingCurrency = pricingTier?.currency ?? 1
+    const fmt = (raw: bigint) => formatPricingAmount(raw, pricingDecimals, pricingCurrency)
+    const subtotal = selectedTiers.reduce((sum, { tier, qty }) => sum + getEffectiveTierPrice(tier) * BigInt(qty), 0n)
+    const restrictedCost = selectedTiers.reduce(
+      (sum, { tier, qty }) => (tier.cannotBuyWithCredits ? sum + getEffectiveTierPrice(tier) * BigInt(qty) : sum),
+      0n,
+    )
+    const breakdown = computeNftCheckout({ subtotal, restrictedCost, credits: nftCredits })
+    let entered: bigint | null = null
+    try {
+      if (amount) entered = parseUnits(amount, pricingDecimals)
+    } catch {
+      entered = null
+    }
+    const shortfall = entered != null && breakdown.due > entered ? breakdown.due - entered : 0n
+
+    return (
+      <div className="mt-2">
+        <div className="space-y-1">
+          {selectedTiers.map(({ tier, qty }) => {
+            const exceedsSupply = qty > tier.remainingSupply
+            return (
+              <div key={tier.tierId} className={`flex items-center gap-2 ${exceedsSupply ? 'text-orange-400' : ''}`}>
+                <span className={muted}>+</span>
+                <TierPreviewImage tier={tier} hookAddress={nftHookAddress} chainId={parseInt(selectedChainId)} isDark={isDark} size="small" onMetadataLoaded={handleTierMetadataLoaded} />
+                <span>
+                  {getTierDisplayName(tier)}
+                  {qty > 1 ? ` ×${qty}` : ''}
+                </span>
+                {exceedsSupply && <span className="text-xs">(only {tier.remainingSupply} left)</span>}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Shop-credit checkout summary */}
+        <div className={`mt-2 space-y-0.5 border-t pt-2 text-xs ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <div className="flex justify-between gap-4">
+            <span className={muted}>Items</span>
+            <span>{fmt(breakdown.subtotal)}</span>
+          </div>
+          {!activeWalletAddress ? (
+            <div className="flex justify-between gap-4">
+              <span className={muted}>Shop credit</span>
+              <span className={muted}>Connect wallet to check</span>
+            </div>
+          ) : nftCreditsLoading ? (
+            <div className="flex justify-between gap-4">
+              <span className={muted}>Shop credit</span>
+              <span className={muted}>Checking…</span>
+            </div>
+          ) : breakdown.applied > 0n ? (
+            <div className={`flex justify-between gap-4 ${isDark ? 'text-green-400' : 'text-green-600'}`}>
+              <span>Shop credit applied</span>
+              <span>−{fmt(breakdown.applied)}</span>
+            </div>
+          ) : nftCredits > 0n ? (
+            <div className="flex justify-between gap-4">
+              <span className={muted}>Shop credit</span>
+              <span className={muted}>{fmt(nftCredits)}</span>
+            </div>
+          ) : null}
+          {breakdown.restrictedCost > 0n && (
+            <div className="flex justify-between gap-4">
+              <span className={muted}>Fresh payment required</span>
+              <span className={muted}>{fmt(breakdown.restrictedCost)}</span>
+            </div>
+          )}
+          <div className={`flex justify-between gap-4 font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            <span>Amount due</span>
+            <span>{fmt(breakdown.due)}</span>
+          </div>
+          {entered != null && (
+            <div className={`flex justify-between gap-4 ${shortfall > 0n ? 'text-orange-400' : ''}`}>
+              <span className={muted}>Entered value</span>
+              <span>{fmt(entered)}</span>
+            </div>
+          )}
+          {shortfall > 0n && (
+            <div className="flex justify-between gap-4 text-orange-400">
+              <span>Still needed</span>
+              <span>{fmt(shortfall)}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   const renderPayOutcomePreview = () => {
     const muted = isDark ? 'text-gray-400' : 'text-gray-500'
 
     if (addsToBalance) {
+      const routedTopUp = selectedPaymentOption?.route === 'routed'
+      const acceptedLabel = acceptedDirectOption?.label || 'the project token'
       return (
         <div className={`mt-3 text-xs ${muted}`}>
-          Add to Balance does not issue project tokens. Choose Pay to receive them.
+          {routedTopUp && (
+            <div className="mb-1">
+              {routedConversionLoading
+                ? 'Estimating swap…'
+                : routedConversion
+                ? `≈ ${formatUnits(routedConversion.landed, routedConversion.decimals)} ${routedConversion.label} lands onchain after the swap`
+                : `Swaps into ${acceptedLabel} onchain`}
+            </div>
+          )}
+          Adds to the project balance — nothing else. It does not issue project tokens; choose Pay to receive them.
         </div>
       )
     }
@@ -1145,70 +1579,192 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     }
 
     const tokenSymbol = projectTokenSymbol || project?.name.split(' ')[0].toUpperCase().slice(0, 6) || 'TOKENS'
-    // A verified zero-issuance quote is a valid payment; skip the "0 tokens" output.
-    const issuesTokens = payPreview.beneficiaryTokenCount > 0n || payPreview.reservedTokenCount > 0n
+
+    // Direct AMM swap beats paying: the buyback hook skims the reserved % even on
+    // its swap route, while a straight pool swap keeps 100% of the output.
+    // TODO(parity): UniversalRouter execution — juicy has no Universal Router
+    // plumbing yet, so the offer links out to the pool on Uniswap instead of
+    // executing the swap in place. Never ship a half-guarded swap execution.
+    if (directSwapOffer) {
+      const poolLink = uniswapPoolLink(parseInt(selectedChainId), directSwapOffer.poolId)
+      return (
+        <div className={`mt-4 min-w-0 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`} aria-live="polite">
+          <div className={`text-xs ${muted}`}>You get at least</div>
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+            <span className={`min-w-0 break-all text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              {formatExactTokenEstimate(directSwapOffer.minOut)} {tokenSymbol}
+            </span>
+            <span
+              className={`shrink-0 border px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                isDark ? 'border-juice-cyan/50 text-juice-cyan' : 'border-cyan-400 text-cyan-700'
+              }`}
+              title="Bought straight from the Uniswap pool, bypassing pay — so the reserved % / splits take nothing"
+            >
+              swap
+            </span>
+          </div>
+          <div className={`mt-1 break-all text-xs font-medium ${muted}`}>
+            Swapping the pool directly beats paying by {formatExactTokenEstimate(directSwapOffer.advantage)} {tokenSymbol} — splits take 0 {tokenSymbol}.
+          </div>
+          {poolLink && (
+            <a
+              href={poolLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`mt-1 inline-block text-xs underline ${isDark ? 'text-juice-cyan hover:text-white' : 'text-cyan-700 hover:text-gray-900'}`}
+            >
+              Swap via Uniswap ↗
+            </a>
+          )}
+          <div className={`mt-1 text-[10px] ${muted}`}>
+            Paying below still works — it fills through the same pool, but splits keep their share.
+          </div>
+        </div>
+      )
+    }
+
+    // A verified payment can intentionally mint no tokens (weight-0 ruleset). Keep
+    // selected NFT receipts, but omit "0 tokens" and "Splits get 0 tokens" entirely.
+    if (payPreview.zeroIssuance) {
+      return (
+        <div className={`mt-3 text-xs ${muted}`} aria-live="polite">
+          This project currently issues no tokens for payments — a payment simply funds the project.
+          {renderSelectedTierList()}
+        </div>
+      )
+    }
+
     return (
       <div className={`mt-4 min-w-0 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`} aria-live="polite">
-        {issuesTokens ? (
-          <>
-            <div className={`text-xs ${muted}`}>You get</div>
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() =>
-                  window.dispatchEvent(
-                    new CustomEvent('juice:switch-tab', {
-                      detail: { tab: 'tokens' },
-                    }),
-                  )
-                }
-                className={`min-w-0 break-all text-left text-lg font-semibold hover:underline ${
-                  isDark ? 'text-white hover:text-juice-cyan' : 'text-gray-900 hover:text-juice-orange'
-                }`}
-              >
-                {formatExactTokenEstimate(payPreview.beneficiaryTokenCount)} {tokenSymbol}
-              </button>
-              <span className={`shrink-0 border px-2 py-0.5 text-[10px] font-semibold uppercase ${
-                payPreview.route === 'amm'
-                  ? isDark
-                    ? 'border-purple-400/40 text-purple-300'
-                    : 'border-purple-300 text-purple-700'
-                  : isDark
-                    ? 'border-gray-500 text-gray-300'
-                    : 'border-gray-300 text-gray-700'
-              }`}>
-                {payPreview.route}
-              </span>
-            </div>
-            {payPreview.reservedTokenCount > 0n && (
-              <div className={`mt-1 break-all text-xs font-medium ${muted}`}>
-                Splits get {formatExactTokenEstimate(payPreview.reservedTokenCount)} {tokenSymbol}
-              </div>
-            )}
-          </>
-        ) : (
-          <div className={`text-xs ${muted}`}>
-            This payment supports the project{Object.keys(tierQuantities).length > 0 ? ' and mints your items' : ''} without issuing project tokens.
-          </div>
-        )}
-        <div className={`mt-1 text-[10px] ${muted}`}>Live preview · exact minimum checked before signing.</div>
-        {Object.keys(tierQuantities).length > 0 && (
-          <div className="mt-2">
-            {Object.entries(tierQuantities).map(([tierId, qty]) => {
-              const tier = nftTiers.find((candidate) => candidate.tierId === Number(tierId))
-              if (!tier) return null
-              const exceedsSupply = qty > tier.remainingSupply
-              return (
-                <div key={tierId} className={exceedsSupply ? 'text-orange-400' : ''}>
-                  {qty > 1 ? `${qty}x ` : ''}
-                  {getTierDisplayName(tier)}
-                  {exceedsSupply && <span className="ml-1 text-xs">(only {tier.remainingSupply} left)</span>}
-                </div>
+        <div className={`text-xs ${muted}`}>{payPreview.route === 'amm' ? 'You get at least' : 'You get'}</div>
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              window.dispatchEvent(
+                new CustomEvent('juice:switch-tab', {
+                  detail: { tab: 'tokens' },
+                }),
               )
-            })}
+            }
+            className={`min-w-0 break-all text-left text-lg font-semibold hover:underline ${
+              isDark ? 'text-white hover:text-juice-cyan' : 'text-gray-900 hover:text-juice-orange'
+            }`}
+          >
+            {formatExactTokenEstimate(payPreview.minReturnedTokens)} {tokenSymbol}
+          </button>
+          <span className={`shrink-0 border px-2 py-0.5 text-[10px] font-semibold uppercase ${
+            payPreview.route === 'amm'
+              ? isDark
+                ? 'border-purple-400/40 text-purple-300'
+                : 'border-purple-300 text-purple-700'
+              : isDark
+                ? 'border-gray-500 text-gray-300'
+                : 'border-gray-300 text-gray-700'
+          }`}>
+            {formatRoutingTag(payPreview.route)}
+          </span>
+        </div>
+        {payPreview.reservedTokenCount > 0n && (
+          <div className={`mt-1 break-all text-xs font-medium ${muted}`}>
+            Splits get {formatExactTokenEstimate(payPreview.reservedTokenCount)} {tokenSymbol}
           </div>
         )}
+        {payPreview.route === 'amm' && payPreview.buybackPoolId && (() => {
+          const poolLink = uniswapPoolLink(parseInt(selectedChainId), payPreview.buybackPoolId)
+          // Beneficiary-share comparison (excludes splits): scale gross issuance by the
+          // same beneficiary fraction the swap output exposes, so the two lines compare
+          // like for like and explain why the AMM route won.
+          const benef = payPreview.beneficiaryTokenCount
+          const reserved = payPreview.reservedTokenCount
+          const swapTotal = benef + reserved
+          const issuanceBenef = swapTotal > 0n ? (payPreview.grossIssuance * benef) / swapTotal : payPreview.grossIssuance
+          return (
+            <div className="mt-1 text-xs">
+              <div className={muted}>
+                Filled via Uniswap pool{' '}
+                {poolLink ? (
+                  <a href={poolLink} target="_blank" rel="noopener noreferrer" className={`underline ${isDark ? 'text-juice-cyan hover:text-white' : 'text-cyan-700 hover:text-gray-900'}`}>
+                    {shortHex(payPreview.buybackPoolId)}
+                  </a>
+                ) : (
+                  <span className="font-mono">{shortHex(payPreview.buybackPoolId)}</span>
+                )}
+              </div>
+              {payPreview.grossIssuance > 0n && (
+                <div className={`mt-0.5 ${muted}`}>
+                  AMM: {formatExactTokenEstimate(payPreview.minReturnedTokens)} {tokenSymbol} vs. Issuance: {formatExactTokenEstimate(issuanceBenef)} {tokenSymbol}
+                </div>
+              )}
+            </div>
+          )
+        })()}
+        {renderSelectedTierList()}
       </div>
+    )
+  }
+
+  // Natural-language intro above the pay controls — juicy's signature is more
+  // explainer text than the website, same structure.
+  const projectIsRevnet = isRevnet ?? Boolean(project?.isRevnet)
+  const renderPayExplainer = () => {
+    const tokenSymbol = projectTokenSymbol || 'its token'
+    return (
+      <div className="mb-3">
+        <ExplainerMessage>
+          {projectIsRevnet
+            ? `Paying this revnet routes your payment into its treasury and issues ${tokenSymbol} at the current stage rate. Revnet terms are locked onchain — nobody can change the issuance schedule or take a special cut.`
+            : `Paying this project routes your payment into its treasury and issues ${tokenSymbol} under its current ruleset. The project's owner configures issuance and reserved splits, so check the quote below before paying.`}
+        </ExplainerMessage>
+      </div>
+    )
+  }
+
+  // Inline caveat near the Pay button: the minimum shown is the exact minimum the
+  // transaction enforces (issuance quotes are exact; AMM routes allow 1% slippage).
+  const renderPayCaveat = () => {
+    if (!requiresLivePayPreview || payPreview.status !== 'ready' || payPreview.zeroIssuance) return null
+    return (
+      <p className={`mt-2 text-[11px] leading-relaxed ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+        {payPreview.route === 'amm'
+          ? 'The minimum shown is enforced onchain when you sign — AMM fills allow up to 1% slippage, and payments take no protocol fee.'
+          : 'The minimum shown is enforced onchain when you sign — issuance quotes are exact, and payments take no protocol fee.'}
+      </p>
+    )
+  }
+
+  // "Starts in" countdown — the first ruleset hasn't started, so paying reverts.
+  const renderCountdownBanner = () => {
+    if (!notStarted || payStartsAt === null) return null
+    return (
+      <div
+        className={`mb-3 flex items-center justify-between gap-2 border px-3 py-2 text-sm ${
+          isDark ? 'border-juice-cyan/40 bg-juice-cyan/10 text-juice-cyan' : 'border-cyan-300 bg-cyan-50 text-cyan-700'
+        }`}
+        role="status"
+      >
+        <span className="font-medium">Starts in</span>
+        <span className="font-mono">{fmtCountdown(payStartsAt - countdownNow)}</span>
+      </div>
+    )
+  }
+
+  // Terminal-surface warnings live at the bottom of the card, mirroring the website.
+  const renderSafetyNotices = () => {
+    if (!nftSafetyError && !paymentSafetyError) return null
+    return (
+      <>
+        {nftSafetyError && (
+          <div className={`mt-3 border p-3 text-xs ${isDark ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
+            {nftSafetyError}. Payments are unavailable until this project uses a recognized hook configuration.
+          </div>
+        )}
+        {paymentSafetyError && (
+          <div className={`mt-3 border p-3 text-xs ${isDark ? 'border-red-500/40 bg-red-500/10 text-red-300' : 'border-red-300 bg-red-50 text-red-800'}`}>
+            {paymentSafetyError}. Payments are blocked until the live project route is recognized.
+          </div>
+        )}
+      </>
     )
   }
 
@@ -1437,8 +1993,47 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   // Calculate total balance USD value using currency/decimals from suckerBalance
   const totalBalanceUsd = balanceAvailable ? formatUsd(displayedBalance, suckerBalance.currency, suckerBalance.decimals) : null
 
+  // Prefer the on-chain, JBPrices-priced breakdown (all accounting tokens) once it resolves; until then show the
+  // faster indexed single-token figure. When a total can't be summed honestly, show the raw per-token summary.
+  const usdFigure = (value: number) => `$${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const balanceHeadline = balanceBreakdown
+    ? (!balanceBreakdown.verified
+      ? 'Unavailable'
+      : balanceBreakdown.priced
+      ? usdFigure(balanceBreakdown.totalUsd)
+      : balanceBreakdown.rawSummary)
+    : (!balanceAvailable
+      ? 'Unavailable'
+      : totalBalanceUsd
+      ? `$${totalBalanceUsd}`
+      : suckerBalance
+      ? `${formatBalance(displayedBalance, suckerBalance.decimals)} ${suckerBalance.currency === 2 ? 'USDC' : 'ETH'}`
+      : 'Unavailable')
+
+  const balanceTooltipRows: Array<{ key: string; label: string; value: string }> = balanceBreakdown
+    ? balanceBreakdown.rows.filter(row => row.balance > 0n).map((row, index) => ({
+      key: `${row.chainId}-${row.token}-${index}`,
+      label: CHAIN_INFO[row.chainId.toString()]?.name ?? `Chain ${row.chainId}`,
+      value: `${formatBalance(row.balance.toString(), row.decimals)}${row.symbol ? ` ${row.symbol}` : ''}`,
+    }))
+    : (suckerBalance?.projectBalances ?? [])
+      .filter(pb => !!CHAIN_INFO[pb.chainId.toString()])
+      .map(pb => {
+        const pbCurrency = pb.currency ?? suckerBalance!.currency
+        const pbDecimals = pb.decimals ?? suckerBalance!.decimals
+        return {
+          key: String(pb.chainId),
+          label: CHAIN_INFO[pb.chainId.toString()]!.name,
+          value: pbCurrency === 2 ? `$${formatBalance(pb.balance, pbDecimals)}` : `${formatBalance(pb.balance, pbDecimals)} ETH`,
+        }
+      })
+
+  const showBalanceTooltipContent = (balanceBreakdown ? balanceBreakdown.verified : balanceAvailable) && balanceTooltipRows.length > 0
+
   const handlePay = async (event?: React.MouseEvent<HTMLButtonElement>) => {
     if (nftSafetyError || paymentSafetyError || paymentSafetyLoading) return
+    // Paying before the first ruleset starts reverts in the terminal.
+    if (notStarted) return
     if (!amount || parseFloat(amount) <= 0) return
     const tierSelections = Object.entries(tierQuantities).map(([tierId, quantity]) => {
       const tier = nftTiers.find((candidate) => candidate.tierId === Number(tierId))
@@ -1522,6 +2117,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             chainId: parseInt(selectedChainId),
             amount,
             token: selectedToken,
+            tokenAddress: selectedPaymentOption?.tokenAddress,
             memo,
             action: 'pay',
             tierIds: selectedTierIds,
@@ -1582,6 +2178,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           chainId: parseInt(selectedChainId),
           amount,
           token: selectedToken,
+          tokenAddress: selectedPaymentOption?.tokenAddress,
           memo,
           action: addsToBalance ? 'addToBalance' : 'pay',
           tierIds: selectedTierIds,
@@ -1593,375 +2190,257 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     // Don't clear form here - wait for transaction result
   }
 
-  // Shared blocks between the embedded and non-embedded layouts, parameterized
-  // only by the classes that differ per layout.
-
-  const renderSafetyBanners = (spacingClass: string, chainWarningWrapperClass?: string) => (
-    <>
-      {!chainMappingAvailable &&
-        (chainWarningWrapperClass ? (
-          <div className={chainWarningWrapperClass}>
-            <ChainMappingWarning isDark={isDark} />
-          </div>
-        ) : (
-          <ChainMappingWarning isDark={isDark} />
-        ))}
-      {nftSafetyError && (
-        <div className={`${spacingClass} border p-3 text-xs ${isDark ? 'border-amber-500/40 bg-amber-500/10 text-amber-300' : 'border-amber-300 bg-amber-50 text-amber-800'}`}>
-          {nftSafetyError}. Payments are unavailable until this project uses a recognized hook configuration.
-        </div>
-      )}
-      {paymentSafetyError && (
-        <div className={`${spacingClass} border p-3 text-xs ${isDark ? 'border-red-500/40 bg-red-500/10 text-red-300' : 'border-red-300 bg-red-50 text-red-800'}`}>
-          {paymentSafetyError}. Payments are blocked until the live project route is recognized.
-        </div>
-      )}
-    </>
-  )
-
-  const renderTierCarousel = (containerClass: string, scrollEdgeClass: string) =>
-    nftTiers.length > 0 && (
-      <div className={containerClass}>
-        <div className={`text-xs mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Shop</div>
-        <div className={`flex gap-3 overflow-x-auto pt-3 pb-2 ${scrollEdgeClass}`} style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-          {nftTiers.slice(0, 6).map((tier) => {
-            const quantity = tierQuantities[tier.tierId] || 0
-            const isSelected = quantity > 0
-            const exceedsSupply = quantity > tier.remainingSupply
-            const currencyRecognized = isSupportedTierCurrency(tier.currency)
-            const tierToken = isEthTierCurrency(tier.currency) ? 'ETH' : 'USDC'
-            const currencySupported = currencyRecognized && paymentTokenOptions.some((option) => option.symbol === tierToken)
-            return (
-              <div
-                key={tier.tierId}
-                title={currencySupported ? undefined : currencyRecognized ? `This project does not accept ${tierToken}` : `Pricing currency not recognized: ${tier.currency}`}
-                className={`relative flex-shrink-0 w-24 border transition-colors ${
-                  isSelected
-                    ? exceedsSupply
-                      ? 'border-orange-500 bg-orange-500/10'
-                      : 'border-green-500 bg-green-500/10'
-                    : isDark
-                    ? 'border-white/10 hover:border-juice-orange'
-                    : 'border-gray-200 hover:border-juice-orange'
-                } ${isPaymentLocked || !currencySupported ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
-                onClick={() => {
-                  if (isPaymentLocked || !currencySupported) return
-                  handleTierSelect(tier)
-                  window.dispatchEvent(
-                    new CustomEvent('juice:open-shop', {
-                      detail: { tierId: tier.tierId },
-                    })
-                  )
-                }}
-              >
-                {/* Quantity badge */}
-                {isSelected && (
-                  <div
-                    className={`absolute -top-2 -right-2 z-10 min-w-[20px] h-5 px-1 flex items-center justify-center text-xs font-bold rounded-full ${
-                      exceedsSupply ? 'bg-orange-500 text-white' : 'bg-green-500 text-white'
-                    }`}
-                  >
-                    {quantity}
-                  </div>
-                )}
-                <div className="w-full aspect-square overflow-hidden bg-white">
-                  <TierPreviewImage tier={tier} hookAddress={nftHookAddress} chainId={parseInt(selectedChainId)} isDark={isDark} size="large" onMetadataLoaded={handleTierMetadataLoaded} />
-                </div>
-                <div className="p-1.5 text-left">
-                  <div className={`text-[10px] font-medium truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>{getTierDisplayName(tier)}</div>
-                  <div className={`truncate text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{formatTierPrice(tier, accountingSymbolByCurrency)}</div>
-                </div>
-                {/* Quantity controls when selected */}
-                {isSelected && (
-                  <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-1 py-0.5 bg-black/60" onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => adjustTierQuantity(tier.tierId, -1)} className="w-5 h-5 flex items-center justify-center text-white hover:bg-white/20 rounded">
-                      −
-                    </button>
-                    <span className="text-xs text-white font-medium">{quantity}</span>
-                    <button onClick={() => adjustTierQuantity(tier.tierId, 1)} className="w-5 h-5 flex items-center justify-center text-white hover:bg-white/20 rounded">
-                      +
-                    </button>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-          {nftTiers.length > 6 && (
-            <button
-              onClick={() => window.dispatchEvent(new CustomEvent('juice:open-shop'))}
-              className={`flex-shrink-0 w-24 flex items-center justify-center text-xs ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'}`}
-            >
-              +{nftTiers.length - 6} more
-            </button>
-          )}
-        </div>
-      </div>
-    )
-
-  const renderPayInputRow = (inputContainerBg: string) => (
-    <div className="flex gap-2">
-      <div className="flex-1">
-        <div
-          onClick={(e) => {
-            // Focus input when clicking anywhere in the container (except the dropdown button)
-            if (!(e.target as HTMLElement).closest('button')) {
-              amountInputRef.current?.focus()
-            }
-          }}
-          className={`flex items-center cursor-text border border-green-500 ${inputContainerBg}`}
-        >
-          <input
-            ref={amountInputRef}
-            type="number"
-            step="0.001"
-            min="0"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            onFocus={() => {
-              setActionDropdownOpen(false)
-              setChainDropdownOpen(false)
-              setTokenDropdownOpen(false)
-            }}
-            placeholder="0.00"
-            disabled={isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0)}
-            style={{
-              width: `${Math.max(5, (amount || '0.00').toString().length + 2)}ch`,
-            }}
-            className={`min-w-[4ch] pl-3 py-2 text-sm bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
-              isDark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'
-            } ${isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0) ? 'cursor-not-allowed opacity-60' : ''}`}
-          />
-          {/* Token selector - inline after input */}
-          <div className="relative ml-auto flex-shrink-0">
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                if (!isPaymentLocked) {
-                  setTokenDropdownOpen(!tokenDropdownOpen)
-                  setActionDropdownOpen(false)
-                  setChainDropdownOpen(false)
-                }
-              }}
-              disabled={isPaymentLocked}
-              className={`flex items-center gap-1 py-2 pl-2 pr-3 text-sm font-medium ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'} ${
-                isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''
-              }`}
-            >
-              <span>{selectedToken === 'PAY_CREDITS' ? 'Credits' : selectedToken}</span>
-              <svg className={`w-3 h-3 transition-transform ${tokenDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-              </svg>
-            </button>
-            {tokenDropdownOpen && (
-              <div className={`absolute top-full right-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'}`}>
-                {paymentTokenOptions.map((token) => (
-                  <button
-                    key={token.symbol}
-                    onClick={() => {
-                      setSelectedToken(token.symbol as PaymentToken)
-                      setTokenDropdownOpen(false)
-                    }}
-                    className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
-                      token.symbol === selectedToken
-                        ? isDark
-                          ? 'bg-white/10 text-white'
-                          : 'bg-gray-100 text-gray-900'
-                        : isDark
-                        ? 'text-gray-300 hover:bg-white/5'
-                        : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    <span className="flex justify-between items-center gap-2">
-                      <span>{token.symbol === 'PAY_CREDITS' ? 'Credits' : token.symbol}</span>
-                      {token.symbol === 'PAY_CREDITS' && juiceBalance && <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>${juiceBalance.balance.toFixed(2)}</span>}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-      <div className="relative">
-        <button
-          onClick={(e) => handlePay(e)}
-          disabled={paymentButtonDisabled}
-          className={`px-4 py-2 text-sm font-medium transition-colors border border-transparent ${
-            paymentButtonDisabled
-              ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
-              : 'bg-green-500 hover:bg-green-600 text-black'
-          }`}
-        >
-          {paymentSafetyLoading
-            ? 'Checking...'
-            : requiresLivePayPreview && payPreview.status === 'loading'
-            ? 'Quoting...'
-            : paying
-            ? '...'
-            : persistedPayment?.status === 'completed'
-            ? addsToBalance
-              ? 'Added'
-              : 'Paid'
-            : persistedPayment?.status === 'in_progress'
-            ? 'Pending...'
-            : addsToBalance
-            ? 'Add'
-            : 'Pay'}
-        </button>
-      </div>
-    </div>
-  )
-
-  const renderPaymentProgress = () =>
-    (activePayment || (persistedPayment && persistedPayment.status !== 'pending')) && (
-      <PaymentProgress
-        stage={activePayment?.stage}
-        status={activePayment?.status || ((persistedPayment?.status === 'completed' ? 'confirmed' : persistedPayment?.status === 'failed' ? 'failed' : 'submitted') as TransactionStatus)}
-        error={activePayment?.error || persistedPayment?.error}
-        hash={activePayment?.hash || persistedPayment?.txHash}
-        chainId={activePayment?.chainId || parseInt(selectedChainId)}
-        isDark={isDark}
-        onRetry={() => setActivePaymentId(null)}
-      />
-    )
-
-  const renderMemoInput = (marginTopClass: string) => (
-    <input
-      type="text"
-      value={memo}
-      onChange={(e) => setMemo(e.target.value)}
-      placeholder="Add a memo (optional)"
-      disabled={isPaymentLocked}
-      className={`w-full ${marginTopClass} py-2 text-sm outline-none ${isDark ? 'bg-transparent text-white placeholder-gray-500' : 'bg-transparent text-gray-900 placeholder-gray-400'} ${
-        isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''
-      }`}
-    />
-  )
-
-  const renderFundingOptionsPopover = () =>
-    showFundingOptions &&
-    fundingOptionsAnchor &&
-    createPortal(
-      <>
-        {/* Backdrop */}
-        <div className="fixed inset-0 z-[99]" onClick={() => setShowFundingOptions(false)} />
-        {/* Popover */}
-        <div
-          className={`fixed z-[100] w-80 p-4 border shadow-xl ${isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'}`}
-          style={{
-            top: fundingOptionsAnchor.top - 8,
-            left: fundingOptionsAnchor.left,
-            transform: 'translate(-50%, -100%)',
-          }}
-        >
-          {/* Close button */}
-          <button
-            onClick={() => setShowFundingOptions(false)}
-            className={`absolute top-3 right-3 p-1 transition-colors ${isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'}`}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-
-          <h3 className={`text-sm font-semibold mb-1 pr-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>How would you like to pay?</h3>
-          <p className={`text-xs mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>You don't have any funds yet. Choose how to add some.</p>
-
-          <div className="space-y-2">
-            {/* Credit Card option */}
-            <button
-              onClick={() => {
-                setShowFundingOptions(false)
-                setShowBuyJuiceModal(true)
-              }}
-              className={`w-full p-3 text-left transition-colors border ${
-                isDark ? 'border-white/20 hover:border-juice-cyan hover:bg-juice-cyan/10' : 'border-gray-200 hover:border-cyan-500 hover:bg-cyan-50'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Credit Card</div>
-                  <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>5% markup · available after verification</div>
-                </div>
-                <svg className={`w-4 h-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-              </div>
-            </button>
-
-            {/* Crypto option */}
-            <div className={`w-full p-3 text-left border ${isDark ? 'border-white/20' : 'border-gray-200'}`}>
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>ETH or USDC</div>
-                  <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Network fees and confirmation time vary</div>
-                </div>
-              </div>
-              {managedAddress ? (
-                <div className="mt-2">
-                  <div className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Send to your wallet on any chain:</div>
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(managedAddress)
-                      setCopiedAddress(true)
-                      setTimeout(() => setCopiedAddress(false), 2000)
-                    }}
-                    className={`w-full p-2 font-mono text-xs text-left transition-colors ${isDark ? 'bg-white/5 hover:bg-white/10 text-gray-300' : 'bg-gray-50 hover:bg-gray-100 text-gray-600'}`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="truncate">{managedAddress}</span>
-                      <span className={`ml-2 text-xs ${copiedAddress ? 'text-green-500' : isDark ? 'text-gray-500' : 'text-gray-400'}`}>{copiedAddress ? '✓' : 'Copy'}</span>
-                    </div>
-                  </button>
-                  <div className={`text-xs mt-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Works on Ethereum, Base, Optimism, Arbitrum</div>
-                </div>
-              ) : (
-                <button
-                  onClick={() => {
-                    setShowFundingOptions(false)
-                    openWalletPanel()
-                  }}
-                  className={`w-full mt-2 p-2 text-xs font-medium transition-colors border ${
-                    isDark ? 'border-juice-cyan text-juice-cyan hover:bg-juice-cyan/10' : 'border-cyan-600 text-cyan-600 hover:bg-cyan-50'
-                  }`}
-                >
-                  Connect to get your deposit address
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      </>,
-      document.body
-    )
-
   // Embedded mode: render sticky header + scrollable content for sidebar layout
   if (embedded) {
     return (
       <>
         {/* Single scrollable container */}
         <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-          {renderSafetyBanners('mx-4 mt-3', 'mx-4 mt-3')}
+          {!chainMappingAvailable && (
+            <div className="mx-4 mt-3">
+              <ChainMappingWarning isDark={isDark} />
+            </div>
+          )}
+          {/* Starts-in countdown sits at the top of the card, above everything else. */}
+          {notStarted && <div className={`px-4 pt-3 ${isDark ? 'bg-[#222]' : 'bg-gray-50'}`}>{renderCountdownBanner()}</div>}
+          {/* Intro explainer for this pay flavor */}
+          <div className={`px-4 pt-3 ${isDark ? 'bg-[#222]' : 'bg-gray-50'}`}>{renderPayExplainer()}</div>
           {/* NFT Shop - scrolls away */}
-          {renderTierCarousel(`px-4 pt-3 ${isDark ? 'bg-[#222]' : 'bg-gray-50'}`, '-mx-4 px-4')}
+          {nftTiers.length > 0 && (
+            <div className={`px-4 pt-3 ${isDark ? 'bg-[#222]' : 'bg-gray-50'}`}>
+              <div className={`text-xs mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Shop</div>
+              <div className="flex gap-3 overflow-x-auto pt-3 pb-2 -mx-4 px-4" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                {nftTiers.slice(0, 12).map((tier) => {
+                  const quantity = tierQuantities[tier.tierId] || 0
+                  const isSelected = quantity > 0
+                  const exceedsSupply = quantity > tier.remainingSupply
+                  const currencyRecognized = isSupportedTierCurrency(tier.currency)
+                  const tierToken = isEthTierCurrency(tier.currency) ? 'ETH' : 'USDC'
+                  const currencySupported = currencyRecognized && paymentTokenOptions.some((option) => option.symbol === tierToken)
+                  return (
+                    <div
+                      key={tier.tierId}
+                      title={currencySupported ? undefined : currencyRecognized ? `This project does not accept ${tierToken}` : `Pricing currency not recognized: ${tier.currency}`}
+                      className={`relative flex-shrink-0 w-24 border transition-colors ${
+                        isSelected
+                          ? exceedsSupply
+                            ? 'border-orange-500 bg-orange-500/10'
+                            : 'border-green-500 bg-green-500/10'
+                          : isDark
+                          ? 'border-white/10 hover:border-juice-orange'
+                          : 'border-gray-200 hover:border-juice-orange'
+                      } ${isPaymentLocked || !currencySupported ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                      onClick={() => {
+                        if (isPaymentLocked || !currencySupported) return
+                        handleTierSelect(tier)
+                        window.dispatchEvent(
+                          new CustomEvent('juice:open-shop', {
+                            detail: { tierId: tier.tierId },
+                          })
+                        )
+                      }}
+                    >
+                      {/* Quantity badge */}
+                      {isSelected && (
+                        <div
+                          className={`absolute -top-2 -right-2 z-10 min-w-[20px] h-5 px-1 flex items-center justify-center text-xs font-bold rounded-full ${
+                            exceedsSupply ? 'bg-orange-500 text-white' : 'bg-green-500 text-white'
+                          }`}
+                        >
+                          {quantity}
+                        </div>
+                      )}
+                      <div className="relative w-full aspect-square overflow-hidden bg-white">
+                        <TierPreviewImage tier={tier} hookAddress={nftHookAddress} chainId={parseInt(selectedChainId)} isDark={isDark} size="large" onMetadataLoaded={handleTierMetadataLoaded} />
+                        {tierDiscountLabel(tier.discountPercent) && (
+                          <span className="absolute bottom-0 left-0 z-10 bg-juice-orange px-1 py-0.5 text-[9px] font-bold text-black">
+                            {tierDiscountLabel(tier.discountPercent)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="p-1.5 text-left">
+                        <div className={`text-[10px] font-medium truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>{getTierDisplayName(tier)}</div>
+                        <div className={`text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{formatTierPrice(tier)}</div>
+                      </div>
+                      {/* Quantity controls when selected */}
+                      {isSelected && (
+                        <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-1 py-0.5 bg-black/60" onClick={(e) => e.stopPropagation()}>
+                          <button onClick={() => adjustTierQuantity(tier.tierId, -1)} className="w-5 h-5 flex items-center justify-center text-white hover:bg-white/20 rounded">
+                            −
+                          </button>
+                          <span className="text-xs text-white font-medium">{quantity}</span>
+                          <button onClick={() => adjustTierQuantity(tier.tierId, 1)} className="w-5 h-5 flex items-center justify-center text-white hover:bg-white/20 rounded">
+                            +
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+                {nftTiers.length > 12 && (
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('juice:open-shop'))}
+                    className={`flex-shrink-0 w-24 flex items-center justify-center text-xs ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    +{nftTiers.length - 12} more
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Sticky pay controls - sticks to top when scrolling */}
           <div className={`sticky top-0 z-20 px-4 ${nftTiers.length > 0 ? 'py-3' : 'pt-4 pb-3'} ${isDark ? 'bg-[#222]' : 'bg-gray-50/80 backdrop-blur-sm'}`}>
             {renderPaymentModeAndChainSelector()}
-            {renderPayInputRow(isDark ? 'bg-[#222]' : 'bg-gray-50')}
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <div
+                  onClick={(e) => {
+                    if (!(e.target as HTMLElement).closest('button')) {
+                      amountInputRef.current?.focus()
+                    }
+                  }}
+                  className={`flex items-center cursor-text border border-green-500 ${isDark ? 'bg-[#222]' : 'bg-gray-50'}`}
+                >
+                  <input
+                    ref={amountInputRef}
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    onFocus={() => {
+                      setActionDropdownOpen(false)
+                      setChainDropdownOpen(false)
+                      setTokenDropdownOpen(false)
+                    }}
+                    placeholder="0.00"
+                    disabled={isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0)}
+                    style={{
+                      width: `${Math.max(5, (amount || '0.00').toString().length + 2)}ch`,
+                    }}
+                    className={`min-w-[4ch] pl-3 py-2 text-sm bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                      isDark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'
+                    } ${isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0) ? 'cursor-not-allowed opacity-60' : ''}`}
+                  />
+                  {/* Token selector - inline after input */}
+                  <div className="relative ml-auto flex-shrink-0">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (!isPaymentLocked) {
+                          setTokenDropdownOpen(!tokenDropdownOpen)
+                          setActionDropdownOpen(false)
+                          setChainDropdownOpen(false)
+                        }
+                      }}
+                      disabled={isPaymentLocked}
+                      className={`flex items-center gap-1 py-2 pl-2 pr-3 text-sm font-medium ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'} ${
+                        isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''
+                      }`}
+                    >
+                      <span>{selectedPaymentOption?.label ?? selectedToken}</span>
+                      <svg className={`w-3 h-3 transition-transform ${tokenDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+                    {tokenDropdownOpen && (
+                      <div className={`absolute top-full right-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'}`}>
+                        {paymentTokenOptions.map((token) => (
+                          <button
+                            key={token.symbol}
+                            onClick={() => {
+                              setSelectedToken(token.symbol as PaymentToken)
+                              setTokenDropdownOpen(false)
+                            }}
+                            className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
+                              token.symbol === selectedToken
+                                ? isDark
+                                  ? 'bg-white/10 text-white'
+                                  : 'bg-gray-100 text-gray-900'
+                                : isDark
+                                ? 'text-gray-300 hover:bg-white/5'
+                                : 'text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            <span className="flex justify-between items-center gap-2">
+                              <span>{token.label}</span>
+                              {token.symbol === 'PAY_CREDITS' && juiceBalance && <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>${juiceBalance.balance.toFixed(2)}</span>}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="relative">
+                <button
+                  onClick={(e) => handlePay(e)}
+                  disabled={paymentButtonDisabled}
+                  className={`px-4 py-2 text-sm font-medium transition-colors border border-transparent ${
+                    paymentButtonDisabled
+                      ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
+                      : 'bg-green-500 hover:bg-green-600 text-black'
+                  }`}
+                >
+                  {notStarted
+                    ? 'Not started'
+                    : paymentSafetyLoading
+                    ? 'Checking...'
+                    : requiresLivePayPreview && payPreview.status === 'loading'
+                    ? 'Quoting...'
+                    : paying
+                    ? '...'
+                    : persistedPayment?.status === 'completed'
+                    ? addsToBalance
+                      ? 'Added'
+                      : 'Paid'
+                    : persistedPayment?.status === 'in_progress'
+                    ? 'Pending...'
+                    : addsToBalance
+                    ? 'Add'
+                    : 'Pay'}
+                </button>
+              </div>
+            </div>
           </div>
 
-          {/* Content below sticky with lighter background */}
+          {/* Content below sticky with lighter background.
+              Website pay-card order: memo → feedback → status line → terminal warning. */}
           <div className={`flow-root ${isDark ? 'bg-[#222]' : 'bg-gray-50'}`}>
             <div className="px-4">
-              {renderPayOutcomePreview()}
+              {renderPayCaveat()}
 
               {/* Memo input */}
-              {renderMemoInput('mt-3')}
-              <div className="pb-10" />
+              <input
+                type="text"
+                value={memo}
+                onChange={(e) => setMemo(e.target.value)}
+                placeholder="Add a memo (optional)"
+                disabled={isPaymentLocked}
+                className={`w-full mt-1 py-2 text-sm outline-none ${isDark ? 'bg-transparent text-white placeholder-gray-500' : 'bg-transparent text-gray-900 placeholder-gray-400'} ${
+                  isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''
+                }`}
+              />
 
-              {/* Payment progress indicator */}
-              {renderPaymentProgress()}
+              {renderPayOutcomePreview()}
+
+              {/* Payment progress indicator (the status line) */}
+              {(activePayment || (persistedPayment && persistedPayment.status !== 'pending')) && (
+                <PaymentProgress
+                  stage={activePayment?.stage}
+                  status={activePayment?.status || ((persistedPayment?.status === 'completed' ? 'confirmed' : persistedPayment?.status === 'failed' ? 'failed' : 'submitted') as TransactionStatus)}
+                  error={activePayment?.error || persistedPayment?.error}
+                  hash={activePayment?.hash || persistedPayment?.txHash}
+                  chainId={activePayment?.chainId || parseInt(selectedChainId)}
+                  isDark={isDark}
+                  onRetry={() => setActivePaymentId(null)}
+                />
+              )}
+
+              {renderSafetyNotices()}
+              <div className="pb-10" />
             </div>
           </div>
 
@@ -1982,9 +2461,96 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             refetchJuiceBalance()
             setShowBuyJuiceModal(false)
           }}
+          anchorRef={buyMoreButtonRef}
         />
 
-        {renderFundingOptionsPopover()}
+        {showFundingOptions &&
+          fundingOptionsAnchor &&
+          createPortal(
+            <>
+              <div className="fixed inset-0 z-[99]" onClick={() => setShowFundingOptions(false)} />
+              <div
+                className={`fixed z-[100] w-80 p-4 border shadow-xl ${isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'}`}
+                style={{
+                  top: fundingOptionsAnchor.top - 8,
+                  left: fundingOptionsAnchor.left,
+                  transform: 'translate(-50%, -100%)',
+                }}
+              >
+                <button
+                  onClick={() => setShowFundingOptions(false)}
+                  className={`absolute top-3 right-3 p-1 transition-colors ${isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'}`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                <h3 className={`text-sm font-semibold mb-1 pr-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>How would you like to pay?</h3>
+                <p className={`text-xs mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>You don't have any funds yet. Choose how to add some.</p>
+                <div className="space-y-2">
+                  <button
+                    onClick={() => {
+                      setShowFundingOptions(false)
+                      setShowBuyJuiceModal(true)
+                    }}
+                    className={`w-full p-3 text-left transition-colors border ${
+                      isDark ? 'border-white/20 hover:border-juice-cyan hover:bg-juice-cyan/10' : 'border-gray-200 hover:border-cyan-500 hover:bg-cyan-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Credit Card</div>
+                        <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>5% markup · available after verification</div>
+                      </div>
+                      <svg className={`w-4 h-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </button>
+                  <div className={`w-full p-3 text-left border ${isDark ? 'border-white/20' : 'border-gray-200'}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>ETH or USDC</div>
+                        <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Network fees and confirmation time vary</div>
+                      </div>
+                    </div>
+                    {managedAddress ? (
+                      <div className="mt-2">
+                        <div className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Send to your wallet on any chain:</div>
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(managedAddress)
+                            setCopiedAddress(true)
+                            setTimeout(() => setCopiedAddress(false), 2000)
+                          }}
+                          className={`w-full p-2 font-mono text-xs text-left transition-colors ${isDark ? 'bg-white/5 hover:bg-white/10 text-gray-300' : 'bg-gray-50 hover:bg-gray-100 text-gray-600'}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="truncate">{managedAddress}</span>
+                            <span className={`ml-2 text-xs ${copiedAddress ? 'text-green-500' : isDark ? 'text-gray-500' : 'text-gray-400'}`}>{copiedAddress ? '✓' : 'Copy'}</span>
+                          </div>
+                        </button>
+                        <div className={`text-xs mt-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Works on Ethereum, Base, Optimism, Arbitrum</div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setShowFundingOptions(false)
+                          openWalletPanel()
+                        }}
+                        className={`w-full mt-2 p-2 text-xs font-medium transition-colors border ${
+                          isDark ? 'border-juice-cyan text-juice-cyan hover:bg-juice-cyan/10' : 'border-cyan-600 text-cyan-600 hover:bg-cyan-50'
+                        }`}
+                      >
+                        Connect to get your deposit address
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>,
+            document.body
+          )}
       </>
     )
   }
@@ -1994,6 +2560,8 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     <div className="w-full">
       {/* Card with border - constrained width */}
       <div className={`max-w-md border p-4 ${isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'}`}>
+        {/* Starts-in countdown sits at the very top of the card. */}
+        {renderCountdownBanner()}
         {/* Header */}
         <div className="flex items-center gap-3 mb-2">
           {project.logoUri ? (
@@ -2033,37 +2601,23 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         <div className="flex gap-6 mb-3 text-sm">
           <div className="relative" onMouseEnter={() => setShowBalanceTooltip(true)} onMouseLeave={() => setShowBalanceTooltip(false)} onClick={() => setShowBalanceTooltip((prev) => !prev)}>
             <span className={`font-mono cursor-pointer ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {!balanceAvailable
-                ? 'Unavailable'
-                : totalBalanceUsd
-                ? `$${totalBalanceUsd}`
-                : `${formatBalance(displayedBalance, suckerBalance.decimals)} ${suckerBalance.currency === 2 ? 'USDC' : 'ETH'}`}
+              {balanceHeadline}
             </span>
             <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{balanceScope}</span>
 
-            {/* Per-chain breakdown tooltip */}
-            {showBalanceTooltip && balanceAvailable && suckerBalance.projectBalances.length > 0 && (
+            {/* Per-chain / per-token breakdown tooltip */}
+            {showBalanceTooltip && showBalanceTooltipContent && (
               <div className={`absolute top-full left-0 mt-1 p-2 shadow-lg z-20 min-w-[180px] text-xs ${isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'}`}>
-                {suckerBalance.projectBalances.map((pb) => {
-                  const chainInfo = CHAIN_INFO[pb.chainId.toString()]
-                  if (!chainInfo) return null
-                  const pbCurrency = pb.currency ?? suckerBalance.currency
-                  const pbDecimals = pb.decimals ?? suckerBalance.decimals
-                  return (
-                    <div key={pb.chainId} className="flex justify-between gap-4 py-0.5">
-                      <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{chainInfo.name}</span>
-                      <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                        {pbCurrency === 2 ? `$${formatBalance(pb.balance, pbDecimals)}` : `${formatBalance(pb.balance, pbDecimals)} ETH`}
-                      </span>
-                    </div>
-                  )
-                })}
+                {balanceTooltipRows.map((row) => (
+                  <div key={row.key} className="flex justify-between gap-4 py-0.5">
+                    <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{row.label}</span>
+                    <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>{row.value}</span>
+                  </div>
+                ))}
                 <div className={`flex justify-between gap-4 pt-1 mt-1 border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
                   <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Total</span>
                   <span className={`font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {suckerBalance.currency === 2
-                      ? `$${formatBalance(suckerBalance.totalBalance, suckerBalance.decimals)}`
-                      : `${formatBalance(suckerBalance.totalBalance, suckerBalance.decimals)} ETH`}
+                    {balanceHeadline}
                   </span>
                 </div>
               </div>
@@ -2103,24 +2657,242 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           </div>
         </div>
 
-        {/* Pay form */}
+        {/* Pay form — website pay-card order: shop strip → countdown → mode/chain →
+            amount/currency/Pay → memo → feedback → status → terminal warnings. */}
         <div className={`mb-3 px-3 pb-3 ${nftTiers.length > 0 ? 'pt-3' : 'pt-4'} ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
-          {renderSafetyBanners('mb-3')}
+          {!chainMappingAvailable && <ChainMappingWarning isDark={isDark} />}
+          {renderPayExplainer()}
           {/* NFT Tier selector - horizontal carousel */}
-          {renderTierCarousel('mb-3', '-mx-3 px-3')}
+          {nftTiers.length > 0 && (
+            <div className="mb-3">
+              <div className={`text-xs mb-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Shop</div>
+              <div className="flex gap-3 overflow-x-auto pt-3 pb-2 -mx-3 px-3" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                {nftTiers.slice(0, 12).map((tier) => {
+                  const quantity = tierQuantities[tier.tierId] || 0
+                  const isSelected = quantity > 0
+                  const exceedsSupply = quantity > tier.remainingSupply
+                  const currencyRecognized = isSupportedTierCurrency(tier.currency)
+                  const tierToken = isEthTierCurrency(tier.currency) ? 'ETH' : 'USDC'
+                  const currencySupported = currencyRecognized && paymentTokenOptions.some((option) => option.symbol === tierToken)
+                  return (
+                    <div
+                      key={tier.tierId}
+                      title={currencySupported ? undefined : currencyRecognized ? `This project does not accept ${tierToken}` : `Pricing currency not recognized: ${tier.currency}`}
+                      className={`relative flex-shrink-0 w-24 border transition-colors ${
+                        isSelected
+                          ? exceedsSupply
+                            ? 'border-orange-500 bg-orange-500/10'
+                            : 'border-green-500 bg-green-500/10'
+                          : isDark
+                          ? 'border-white/10 hover:border-juice-orange'
+                          : 'border-gray-200 hover:border-juice-orange'
+                      } ${isPaymentLocked || !currencySupported ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                      onClick={() => {
+                        if (isPaymentLocked || !currencySupported) return
+                        handleTierSelect(tier)
+                        window.dispatchEvent(
+                          new CustomEvent('juice:open-shop', {
+                            detail: { tierId: tier.tierId },
+                          })
+                        )
+                      }}
+                    >
+                      {/* Quantity badge */}
+                      {isSelected && (
+                        <div
+                          className={`absolute -top-2 -right-2 z-10 min-w-[20px] h-5 px-1 flex items-center justify-center text-xs font-bold rounded-full ${
+                            exceedsSupply ? 'bg-orange-500 text-white' : 'bg-green-500 text-white'
+                          }`}
+                        >
+                          {quantity}
+                        </div>
+                      )}
+                      <div className="relative w-full aspect-square overflow-hidden bg-white">
+                        <TierPreviewImage tier={tier} hookAddress={nftHookAddress} chainId={parseInt(selectedChainId)} isDark={isDark} size="large" onMetadataLoaded={handleTierMetadataLoaded} />
+                        {tierDiscountLabel(tier.discountPercent) && (
+                          <span className="absolute bottom-0 left-0 z-10 bg-juice-orange px-1 py-0.5 text-[9px] font-bold text-black">
+                            {tierDiscountLabel(tier.discountPercent)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="p-1.5 text-left">
+                        <div className={`text-[10px] font-medium truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>{getTierDisplayName(tier)}</div>
+                        <div className={`text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{formatTierPrice(tier)}</div>
+                      </div>
+                      {/* Quantity controls when selected */}
+                      {isSelected && (
+                        <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between px-1 py-0.5 bg-black/60" onClick={(e) => e.stopPropagation()}>
+                          <button onClick={() => adjustTierQuantity(tier.tierId, -1)} className="w-5 h-5 flex items-center justify-center text-white hover:bg-white/20 rounded">
+                            −
+                          </button>
+                          <span className="text-xs text-white font-medium">{quantity}</span>
+                          <button onClick={() => adjustTierQuantity(tier.tierId, 1)} className="w-5 h-5 flex items-center justify-center text-white hover:bg-white/20 rounded">
+                            +
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+                {nftTiers.length > 12 && (
+                  <button
+                    onClick={() => window.dispatchEvent(new CustomEvent('juice:open-shop'))}
+                    className={`flex-shrink-0 w-24 flex items-center justify-center text-xs ${isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                    +{nftTiers.length - 12} more
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {renderPaymentModeAndChainSelector()}
 
           {/* Amount input with token selector and pay button */}
-          {renderPayInputRow(isDark ? 'bg-juice-dark' : 'bg-white')}
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <div
+                onClick={(e) => {
+                  // Focus input when clicking anywhere in the container (except the dropdown button)
+                  if (!(e.target as HTMLElement).closest('button')) {
+                    amountInputRef.current?.focus()
+                  }
+                }}
+                className={`flex items-center cursor-text border border-green-500 ${isDark ? 'bg-juice-dark' : 'bg-white'}`}
+              >
+                <input
+                  ref={amountInputRef}
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  onFocus={() => {
+                    setActionDropdownOpen(false)
+                    setChainDropdownOpen(false)
+                    setTokenDropdownOpen(false)
+                  }}
+                  placeholder="0.00"
+                  disabled={isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0)}
+                  style={{
+                    width: `${Math.max(5, (amount || '0.00').toString().length + 2)}ch`,
+                  }}
+                  className={`min-w-[4ch] pl-3 py-2 text-sm bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${
+                    isDark ? 'text-white placeholder-gray-500' : 'text-gray-900 placeholder-gray-400'
+                  } ${isPaymentLocked || (nftHookFlags?.preventOverspending && nftTiers.length > 0) ? 'cursor-not-allowed opacity-60' : ''}`}
+                />
+                {/* Token selector - inline after input */}
+                <div className="relative ml-auto flex-shrink-0">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (!isPaymentLocked) {
+                        setTokenDropdownOpen(!tokenDropdownOpen)
+                        setActionDropdownOpen(false)
+                        setChainDropdownOpen(false)
+                      }
+                    }}
+                    disabled={isPaymentLocked}
+                    className={`flex items-center gap-1 py-2 pl-2 pr-3 text-sm font-medium ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'} ${
+                      isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''
+                    }`}
+                  >
+                    <span>{selectedPaymentOption?.label ?? selectedToken}</span>
+                    <svg className={`w-3 h-3 transition-transform ${tokenDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {tokenDropdownOpen && (
+                    <div className={`absolute top-full right-0 mt-1 py-1 shadow-lg z-10 min-w-[140px] ${isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'}`}>
+                      {paymentTokenOptions.map((token) => (
+                        <button
+                          key={token.symbol}
+                          onClick={() => {
+                            setSelectedToken(token.symbol as PaymentToken)
+                            setTokenDropdownOpen(false)
+                          }}
+                          className={`w-full px-3 py-1.5 text-left text-sm transition-colors ${
+                            token.symbol === selectedToken
+                              ? isDark
+                                ? 'bg-white/10 text-white'
+                                : 'bg-gray-100 text-gray-900'
+                              : isDark
+                              ? 'text-gray-300 hover:bg-white/5'
+                              : 'text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          <span className="flex justify-between items-center gap-2">
+                            <span>{token.label}</span>
+                            {token.symbol === 'PAY_CREDITS' && juiceBalance && <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>${juiceBalance.balance.toFixed(2)}</span>}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="relative">
+              <button
+                onClick={(e) => handlePay(e)}
+                disabled={paymentButtonDisabled}
+                className={`px-4 py-2 text-sm font-medium transition-colors border border-transparent ${
+                  paymentButtonDisabled
+                    ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
+                    : 'bg-green-500 hover:bg-green-600 text-black'
+                }`}
+              >
+                {notStarted
+                  ? 'Not started'
+                  : paymentSafetyLoading
+                  ? 'Checking...'
+                  : requiresLivePayPreview && payPreview.status === 'loading'
+                  ? 'Quoting...'
+                  : paying
+                  ? '...'
+                  : persistedPayment?.status === 'completed'
+                  ? addsToBalance
+                    ? 'Added'
+                    : 'Paid'
+                  : persistedPayment?.status === 'in_progress'
+                  ? 'Pending...'
+                  : addsToBalance
+                  ? 'Add'
+                  : 'Pay'}
+              </button>
+            </div>
+          </div>
 
-          {/* Payment progress indicator - show from local state or persisted state */}
-          {renderPaymentProgress()}
+          {renderPayCaveat()}
+
+          {/* Memo input */}
+          <input
+            type="text"
+            value={memo}
+            onChange={(e) => setMemo(e.target.value)}
+            placeholder="Add a memo (optional)"
+            disabled={isPaymentLocked}
+            className={`w-full mt-1 py-2 text-sm outline-none ${isDark ? 'bg-transparent text-white placeholder-gray-500' : 'bg-transparent text-gray-900 placeholder-gray-400'} ${
+              isPaymentLocked ? 'cursor-not-allowed opacity-60' : ''
+            }`}
+          />
 
           {renderPayOutcomePreview()}
 
-          {/* Memo input */}
-          {renderMemoInput('mt-4')}
+          {/* Payment progress indicator (the status line) */}
+          {(activePayment || (persistedPayment && persistedPayment.status !== 'pending')) && (
+            <PaymentProgress
+              stage={activePayment?.stage}
+              status={activePayment?.status || ((persistedPayment?.status === 'completed' ? 'confirmed' : persistedPayment?.status === 'failed' ? 'failed' : 'submitted') as TransactionStatus)}
+              error={activePayment?.error || persistedPayment?.error}
+              hash={activePayment?.hash || persistedPayment?.txHash}
+              chainId={activePayment?.chainId || parseInt(selectedChainId)}
+              isDark={isDark}
+              onRetry={() => setActivePaymentId(null)}
+            />
+          )}
+
+          {renderSafetyNotices()}
         </div>
       </div>
 
@@ -2132,10 +2904,105 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           refetchJuiceBalance()
           setShowBuyJuiceModal(false)
         }}
+        anchorRef={buyMoreButtonRef}
       />
 
       {/* Funding Options Popover - shown when user has zero balance */}
-      {renderFundingOptionsPopover()}
+      {showFundingOptions &&
+        fundingOptionsAnchor &&
+        createPortal(
+          <>
+            {/* Backdrop */}
+            <div className="fixed inset-0 z-[99]" onClick={() => setShowFundingOptions(false)} />
+            {/* Popover */}
+            <div
+              className={`fixed z-[100] w-80 p-4 border shadow-xl ${isDark ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'}`}
+              style={{
+                top: fundingOptionsAnchor.top - 8,
+                left: fundingOptionsAnchor.left,
+                transform: 'translate(-50%, -100%)',
+              }}
+            >
+              {/* Close button */}
+              <button
+                onClick={() => setShowFundingOptions(false)}
+                className={`absolute top-3 right-3 p-1 transition-colors ${isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'}`}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+
+              <h3 className={`text-sm font-semibold mb-1 pr-6 ${isDark ? 'text-white' : 'text-gray-900'}`}>How would you like to pay?</h3>
+              <p className={`text-xs mb-4 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>You don't have any funds yet. Choose how to add some.</p>
+
+              <div className="space-y-2">
+                {/* Credit Card option */}
+                <button
+                  onClick={() => {
+                    setShowFundingOptions(false)
+                    setShowBuyJuiceModal(true)
+                  }}
+                  className={`w-full p-3 text-left transition-colors border ${
+                    isDark ? 'border-white/20 hover:border-juice-cyan hover:bg-juice-cyan/10' : 'border-gray-200 hover:border-cyan-500 hover:bg-cyan-50'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>Credit Card</div>
+                      <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>5% markup · available after verification</div>
+                    </div>
+                    <svg className={`w-4 h-4 ${isDark ? 'text-gray-500' : 'text-gray-400'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </button>
+
+                {/* Crypto option */}
+                <div className={`w-full p-3 text-left border ${isDark ? 'border-white/20' : 'border-gray-200'}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <div className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>ETH or USDC</div>
+                      <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Network fees and confirmation time vary</div>
+                    </div>
+                  </div>
+                  {managedAddress ? (
+                    <div className="mt-2">
+                      <div className={`text-xs mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Send to your wallet on any chain:</div>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(managedAddress)
+                          setCopiedAddress(true)
+                          setTimeout(() => setCopiedAddress(false), 2000)
+                        }}
+                        className={`w-full p-2 font-mono text-xs text-left transition-colors ${isDark ? 'bg-white/5 hover:bg-white/10 text-gray-300' : 'bg-gray-50 hover:bg-gray-100 text-gray-600'}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="truncate">{managedAddress}</span>
+                          <span className={`ml-2 text-xs ${copiedAddress ? 'text-green-500' : isDark ? 'text-gray-500' : 'text-gray-400'}`}>{copiedAddress ? '✓' : 'Copy'}</span>
+                        </div>
+                      </button>
+                      <div className={`text-xs mt-2 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Works on Ethereum, Base, Optimism, Arbitrum</div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setShowFundingOptions(false)
+                        openWalletPanel()
+                      }}
+                      className={`w-full mt-2 p-2 text-xs font-medium transition-colors border ${
+                        isDark ? 'border-juice-cyan text-juice-cyan hover:bg-juice-cyan/10' : 'border-cyan-600 text-cyan-600 hover:bg-cyan-50'
+                      }`}
+                    >
+                      Connect to get your deposit address
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>,
+          document.body
+        )}
     </div>
   )
 }

@@ -64,11 +64,24 @@ export function buildSplit(split: SplitInput, field: string, options: BuildSplit
   const isMissingBeneficiary = normalizedBeneficiary === zeroAddress || normalizedBeneficiary === DEAD_ADDRESS
 
   if (!isAddress(split.hook)) throw new Error(`${field} has an invalid split hook`)
-  if (split.hook.toLowerCase() !== zeroAddress && split.isNew !== false) {
-    throw new Error(`${field} cannot introduce a new split hook in this flow`)
-  }
+  const hasHook = split.hook.toLowerCase() !== zeroAddress
   if (!Number.isSafeInteger(split.lockedUntil) || split.lockedUntil < 0 || split.lockedUntil > MAX_LOCKED_UNTIL) {
     throw new Error(`${field} has an invalid lock time`)
+  }
+
+  // Split-hook route: the hook receives the funds/tokens and decides where they go, so `projectId`
+  // ("with project") and `beneficiary` ("and beneficiary") are pass-through context for the hook, not a
+  // wallet/project route — they aren't validated as one, and both may be absent. Applies to the shared
+  // "Fund market" LP hook and any custom hook the owner enters.
+  if (hasHook) {
+    return {
+      percent: toContractPercent(split.percent, `${field} percentage`),
+      projectId,
+      beneficiary,
+      preferAddToBalance: false,
+      lockedUntil: split.lockedUntil,
+      hook: split.hook as `0x${string}`,
+    }
   }
 
   if (projectId === 0n) {

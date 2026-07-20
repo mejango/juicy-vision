@@ -10,7 +10,11 @@
  */
 
 import { toHex, toBytes, pad } from 'viem'
-import { NATIVE_TOKEN, SUCKER_DEPLOYERS } from '../constants'
+import { NATIVE_SUCKER_DEPLOYER_ADDRESSES as SDK_NATIVE_SUCKER_DEPLOYER_ADDRESSES } from '@bananapus/nana-sdk-core'
+import type { JBSuckerBridge } from '@bananapus/nana-sdk-core'
+import { NATIVE_TOKEN } from '../constants'
+
+export { NATIVE_TOKEN }
 
 // Zero bytes32 - used for the default `peer` (same-address deterministic peer sucker)
 export const ZERO_BYTES32 = '0x0000000000000000000000000000000000000000000000000000000000000000' as const
@@ -140,9 +144,7 @@ export interface JBSuckerDeploymentConfig {
 }
 
 /**
- * The bridge infrastructure to deploy v6 suckers on (mirrors the SDK's
- * JBSuckerBridge — nana-sdk-core 91c2361 — so this call site is a drop-in
- * swap once that release ships):
+ * The bridge infrastructure to deploy v6 suckers on — the SDK's type:
  *
  * - `"ccip"`: Chainlink CCIP suckers. Connect any pair of supported chains and
  *   can map any supported asset (USDC bridges as canonical USDC via CCTP).
@@ -152,32 +154,18 @@ export interface JBSuckerDeploymentConfig {
  * - `"both"`: one native sucker AND one CCIP sucker per pair, for redundancy.
  *   Pairs or assets native bridges can't serve are covered by CCIP alone.
  */
-export type JBSuckerBridge = 'ccip' | 'native' | 'both'
+export type { JBSuckerBridge } from '@bananapus/nana-sdk-core'
 
 /**
- * Native-bridge sucker deployer addresses, keyed by local chain then remote
- * chain. Native bridges only connect Ethereum with an L2, so only L1<->L2
- * edges exist. Addresses from the v6 SDK registry (nana-sdk-core 91c2361),
- * cross-verified against deploy-all-v6/deployments (JBOptimismSuckerDeployer /
- * JBBaseSuckerDeployer / JBArbitrumSuckerDeployer — same address on both
- * sides of each pair).
+ * Native-bridge sucker deployer addresses from the v6 SDK registry (keyed by
+ * local chain then remote chain; only Ethereum<->L2 edges exist), flattened to
+ * v6. Cross-verified against deploy-all-v6/deployments — same address on both
+ * sides of each pair, mainnet and sepolia families alike.
  */
-const NATIVE_OP = SUCKER_DEPLOYERS.OPSuckerDeployer
-const NATIVE_BASE = SUCKER_DEPLOYERS.BaseSuckerDeployer
-const NATIVE_ARB = SUCKER_DEPLOYERS.ARBSuckerDeployer
+export const NATIVE_SUCKER_DEPLOYER_ADDRESSES: Record<number, Record<number, `0x${string}`>> =
+  SDK_NATIVE_SUCKER_DEPLOYER_ADDRESSES[6] as Record<number, Record<number, `0x${string}`>>
 
-const NATIVE_SUCKER_DEPLOYER_ADDRESSES: Record<number, Record<number, `0x${string}`>> = {
-  1: { 10: NATIVE_OP, 8453: NATIVE_BASE, 42161: NATIVE_ARB },
-  10: { 1: NATIVE_OP },
-  8453: { 1: NATIVE_BASE },
-  42161: { 1: NATIVE_ARB },
-  11155111: { 11155420: NATIVE_OP, 84532: NATIVE_BASE, 421614: NATIVE_ARB },
-  11155420: { 11155111: NATIVE_OP },
-  84532: { 11155111: NATIVE_BASE },
-  421614: { 11155111: NATIVE_ARB },
-}
-
-interface ParseSuckerDeployerConfigOptions {
+export interface ParseSuckerDeployerConfigOptions {
   /**
    * Per-chain token addresses for bridging.
    * Maps chainId -> token address. Required for ERC20 (e.g., USDC) projects.

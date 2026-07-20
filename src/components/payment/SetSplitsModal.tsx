@@ -40,7 +40,6 @@ interface EditableSplit {
   preferAddToBalance: boolean
   lockedUntil: number
   hook: string
-  routeMode: 'wallet' | 'project'
   isLocked: boolean
   isNew: boolean
 }

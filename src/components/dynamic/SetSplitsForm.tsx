@@ -16,6 +16,7 @@ import { ProjectLink } from './ProjectLink'
 import { ZERO_ADDRESS, MAINNET_CHAINS } from '../../constants'
 import { useManagedWallet } from '../../hooks'
 import { buildSplit } from '../../utils/splitSafety'
+import { JBP6_FEE_LP_SPLIT_HOOK } from './create-flow/builders'
 import { resolveProjectChains } from '../../utils/projectChains'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { IpfsImage } from '../ui/IpfsMedia'
@@ -37,6 +38,8 @@ interface ChainSplitsData {
   payoutSplits: JBSplitData[]
   reservedSplits: JBSplitData[]
   baseCurrency: number
+  rulesetDuration: number // 0 = flexible ruleset; >0 = fixed-duration (locks are meaningful)
+  owner: string // project owner — the fund-market hook's pass-through beneficiary fallback
   payoutGroupId: string | null
   payoutToken: string | null
   configurationComplete: boolean
@@ -44,19 +47,29 @@ interface ChainSplitsData {
   selected: boolean
 }
 
+// Recipient type mirrors the create flow: a wallet Address, a Project route, or a split Hook.
+type RecipientType = 'address' | 'project' | 'hook'
+// A Hook split is either the shared "Fund market" LP hook (reserved groups only) or a custom hook.
+type HookMode = 'fundmarket' | 'custom'
+
 // Editable split for the form
 interface EditableSplit {
   id: string // unique key for React
   percent: string // user input as string (0-100)
-  beneficiary: string
-  projectId: string
+  recipientType: RecipientType
+  beneficiary: string // Address recipient, Project token beneficiary, or Hook "and beneficiary"
+  projectId: string // Project route id, or a custom Hook's "with project" id
   preferAddToBalance: boolean
   lockedUntil: number
-  hook: string
-  routeMode: 'wallet' | 'project'
-  isLocked: boolean // computed from lockedUntil
+  hook: string // stored/derived hook address (encode value)
+  hookMode: HookMode
+  hookAddress: string // custom-hook contract input (kept separate so Fund market ↔ Custom survives a switch)
+  isLocked: boolean // computed from lockedUntil — an actively locked row is frozen
   isNew: boolean // true if added in this session
 }
+
+const isLpHookAddr = (hook: string): boolean =>
+  !!hook && hook.toLowerCase() === JBP6_FEE_LP_SPLIT_HOOK.toLowerCase()
 
 // Convert JBSplitData percent (0-1_000_000_000) to display percent (0-100)
 function toDisplayPercent(basisPoints: number): string {
@@ -65,37 +78,83 @@ function toDisplayPercent(basisPoints: number): string {
   return fraction ? `${whole}.${fraction}` : String(whole)
 }
 
-// Convert JBSplitData to EditableSplit
+// Convert JBSplitData to EditableSplit. The recipient type is derived from the stored fields: a non-zero
+// hook is a Hook split (Fund market only when it's the CURRENT LP hook — any other hook, including a
+// superseded LP-hook address, stays "Custom" so the exact stored address round-trips byte-identical).
 function toEditableSplit(split: JBSplitData, index: number): EditableSplit {
   const now = Math.floor(Date.now() / 1000)
+  const hasHook = !!split.hook && split.hook.toLowerCase() !== ZERO_ADDRESS.toLowerCase()
+  const isFundMarket = hasHook && isLpHookAddr(split.hook)
+  const recipientType: RecipientType = hasHook ? 'hook' : split.projectId > 0 ? 'project' : 'address'
   return {
     id: `existing-${index}`,
     percent: toDisplayPercent(split.percent),
+    recipientType,
     beneficiary: split.beneficiary,
     projectId: split.projectId > 0 ? String(split.projectId) : '',
     preferAddToBalance: split.preferAddToBalance,
     lockedUntil: split.lockedUntil,
     hook: split.hook,
-    routeMode: split.projectId > 0 ? 'project' : 'wallet',
+    hookMode: isFundMarket ? 'fundmarket' : 'custom',
+    hookAddress: hasHook && !isFundMarket ? split.hook : '',
     isLocked: split.lockedUntil > now,
     isNew: false,
   }
 }
 
 // Create empty split for adding
-function createEmptySplit(): EditableSplit {
+function createEmptySplit(allowFundMarket: boolean): EditableSplit {
   return {
     id: `new-${Date.now()}-${Math.random()}`,
     percent: '',
+    recipientType: 'address',
     beneficiary: '',
     projectId: '',
     preferAddToBalance: false,
     lockedUntil: 0,
     hook: ZERO_ADDRESS,
-    routeMode: 'wallet',
+    hookMode: allowFundMarket ? 'fundmarket' : 'custom',
+    hookAddress: '',
     isLocked: false,
     isNew: true,
   }
+}
+
+// Collapse a rich editable row into the flat encode shape buildSplit/relayr consume. Each recipient type
+// projects onto the contract's (projectId, beneficiary, preferAddToBalance, hook) tuple:
+//   Address — plain wallet: hook 0, no project.
+//   Project — pay (mints its tokens, beneficiary receives them) or add-to-balance (mints none, no beneficiary).
+//   Hook    — Fund market routes to the shared LP hook with an owner/account pass-through beneficiary;
+//             Custom uses the entered hook, an optional "with project", and an optional "and beneficiary".
+function toSubmittableSplit(
+  split: EditableSplit,
+  kind: 'payout' | 'reserved',
+  ownerFallback: string,
+): EditableSplit {
+  if (split.recipientType === 'hook') {
+    if (split.hookMode === 'fundmarket') {
+      return {
+        ...split,
+        hook: JBP6_FEE_LP_SPLIT_HOOK,
+        projectId: '',
+        beneficiary: (split.beneficiary || '').trim() || ownerFallback,
+        preferAddToBalance: false,
+      }
+    }
+    return { ...split, hook: (split.hookAddress || '').trim(), preferAddToBalance: false }
+  }
+  if (split.recipientType === 'project') {
+    const addToBalance = kind === 'payout' && split.preferAddToBalance
+    return {
+      ...split,
+      hook: ZERO_ADDRESS,
+      projectId: split.projectId,
+      beneficiary: addToBalance ? '' : split.beneficiary,
+      preferAddToBalance: addToBalance,
+    }
+  }
+  // address
+  return { ...split, hook: ZERO_ADDRESS, projectId: '', preferAddToBalance: false }
 }
 
 // Calculate total percent for splits
@@ -123,7 +182,7 @@ function splitSetsMatch(left: JBSplitData[], right: JBSplitData[]): boolean {
 export default function SetSplitsForm({ projectId, chainId = '1', messageId }: SetSplitsFormProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
-  const { isConnected } = useAccount()
+  const { isConnected, address: connectedAddress } = useAccount()
   const { address: managedAddress, isManagedMode } = useManagedWallet()
   const hasActiveWallet = isManagedMode ? !!managedAddress : isConnected
 
@@ -158,6 +217,23 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
   const primaryData = chainSplitsData.find(cd => cd.chainId === primaryChainId) || chainSplitsData[0]
   const baseCurrency = primaryData?.baseCurrency || 1
 
+  // The fund-market hook's pass-through beneficiary: the acting wallet, else the project owner.
+  const ownerFallback = (isManagedMode ? managedAddress : connectedAddress) || primaryData?.owner || ''
+  // Fixed-duration rulesets are the only ones where a split lock has meaning (a flexible ruleset's owner
+  // could re-queue splits at will), matching the create flow's lockAllowed gate.
+  const lockAllowed = (primaryData?.rulesetDuration ?? 0) > 0
+
+  // Flat, encode-ready splits handed to the review modal + relayr path (which read .hook/.beneficiary/etc.
+  // directly). Normalizing here keeps SetSplitsModal and useOmnichainSetSplits recipient-type-agnostic.
+  const submittablePayoutSplits = useMemo(
+    () => payoutSplits.map(s => toSubmittableSplit(s, 'payout', ownerFallback)),
+    [payoutSplits, ownerFallback],
+  )
+  const submittableReservedSplits = useMemo(
+    () => reservedSplits.map(s => toSubmittableSplit(s, 'reserved', ownerFallback)),
+    [reservedSplits, ownerFallback],
+  )
+
   // Calculate changes
   const payoutTotal = getTotalPercent(payoutSplits)
   const reservedTotal = getTotalPercent(reservedSplits)
@@ -165,7 +241,7 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
   const builtSplits = useMemo(() => {
     const build = (split: EditableSplit, kind: 'payout' | 'reserved') => {
       try {
-        return buildSplit(split, 'Split', { kind, sourceProjectId })
+        return buildSplit(toSubmittableSplit(split, kind, ownerFallback), 'Split', { kind, sourceProjectId })
       } catch {
         return null
       }
@@ -174,14 +250,10 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
       payout: payoutSplits.map(split => build(split, 'payout')),
       reserved: reservedSplits.map(split => build(split, 'reserved')),
     }
-  }, [payoutSplits, reservedSplits, sourceProjectId])
+  }, [payoutSplits, reservedSplits, sourceProjectId, ownerFallback])
 
-  const splitIsValid = (split: EditableSplit, built: (typeof builtSplits.payout)[number]) => {
-    if ((split.routeMode === 'project') !== Boolean(split.projectId)) return false
-    return built !== null
-  }
-  const payoutValid = payoutTotal <= 100 && payoutSplits.every((split, index) => splitIsValid(split, builtSplits.payout[index]))
-  const reservedValid = reservedTotal <= 100 && reservedSplits.every((split, index) => splitIsValid(split, builtSplits.reserved[index]))
+  const payoutValid = payoutTotal <= 100 && builtSplits.payout.every(built => built !== null)
+  const reservedValid = reservedTotal <= 100 && builtSplits.reserved.every(built => built !== null)
 
   const editableFingerprint = (built: (typeof builtSplits.payout)[number]) =>
     built ? splitFingerprint(built) : 'invalid'
@@ -262,6 +334,8 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
               payoutSplits,
               reservedSplits,
               baseCurrency: chainProject?.currentRuleset?.baseCurrency ?? 1,
+              rulesetDuration: chainProject?.currentRuleset?.duration ?? 0,
+              owner: chainProject?.owner ?? '',
               payoutGroupId,
               payoutToken,
               configurationComplete: rulesetId !== '0' && configurationComplete,
@@ -281,6 +355,8 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
               payoutSplits: [],
               reservedSplits: [],
               baseCurrency: 1,
+              rulesetDuration: 0,
+              owner: '',
               payoutGroupId: null,
               payoutToken: null,
               configurationComplete: false,
@@ -330,7 +406,7 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
 
   useEffect(() => {
     const ids = [...payoutSplits, ...reservedSplits]
-      .filter(split => split.routeMode === 'project' && /^\d+$/.test(split.projectId))
+      .filter(split => split.recipientType === 'project' && /^\d+$/.test(split.projectId))
       .map(split => split.projectId)
     const missing = [...new Set(ids)].filter(id => !destinationProjects[id])
     if (missing.length === 0) return
@@ -357,10 +433,11 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
     )
   }, [isLocked, chainIsCompatible])
 
-  // Add a new split
+  // Add a new split. Only reserved-token groups may fund the market (the shared LP hook pools reserved
+  // tokens), so a new reserved hook row defaults to Fund market; payout hook rows are Custom-only.
   const handleAddSplit = useCallback((type: 'payout' | 'reserved') => {
     if (isLocked) return
-    const newSplit = createEmptySplit()
+    const newSplit = createEmptySplit(type === 'reserved')
     if (type === 'payout') {
       setPayoutSplits(prev => [...prev, newSplit])
     } else {
@@ -378,22 +455,48 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
     }
   }, [isLocked])
 
-  // Update a split field
+  // Merge a partial patch into one split (skips actively-locked rows, which must resubmit byte-identical).
+  const handlePatchSplit = useCallback((
+    type: 'payout' | 'reserved',
+    id: string,
+    patch: Partial<EditableSplit>,
+  ) => {
+    if (isLocked) return
+    const updateFn = (prev: EditableSplit[]) =>
+      prev.map(s => s.id === id && !s.isLocked ? { ...s, ...patch } : s)
+    if (type === 'payout') setPayoutSplits(updateFn)
+    else setReservedSplits(updateFn)
+  }, [isLocked])
+
+  // Update a single split field.
   const handleUpdateSplit = useCallback((
     type: 'payout' | 'reserved',
     id: string,
     field: keyof EditableSplit,
-    value: string | boolean
+    value: string | boolean | number
+  ) => {
+    handlePatchSplit(type, id, { [field]: value } as Partial<EditableSplit>)
+  }, [handlePatchSplit])
+
+  // Switch a row's recipient type. Clears the other types' identity fields so a wallet address left in the
+  // input can't silently become a hook/project id (or vice-versa) — the create flow does the same on switch.
+  const handleChangeRecipientType = useCallback((
+    type: 'payout' | 'reserved',
+    id: string,
+    recipientType: RecipientType,
   ) => {
     if (isLocked) return
-    const updateFn = (prev: EditableSplit[]) =>
-      prev.map(s => s.id === id && !s.isLocked ? { ...s, [field]: value } : s)
-
-    if (type === 'payout') {
-      setPayoutSplits(updateFn)
-    } else {
-      setReservedSplits(updateFn)
+    const updateFn = (prev: EditableSplit[]) => {
+      // Only reserved rows can Fund market, and only if no other row already claims it (a second would
+      // double-pool the reserved tokens); otherwise a new hook row starts as Custom.
+      const marketTaken = prev.some(s => s.id !== id && s.recipientType === 'hook' && s.hookMode === 'fundmarket')
+      const hookMode: HookMode = recipientType === 'hook' && type === 'reserved' && !marketTaken ? 'fundmarket' : 'custom'
+      return prev.map(s => s.id === id && !s.isLocked
+        ? { ...s, recipientType, beneficiary: '', projectId: '', hookAddress: '', hook: ZERO_ADDRESS, preferAddToBalance: false, hookMode }
+        : s)
     }
+    if (type === 'payout') setPayoutSplits(updateFn)
+    else setReservedSplits(updateFn)
   }, [isLocked])
 
   // Callbacks for transaction completion
@@ -443,9 +546,31 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
     }
   }, [isLocked, selectedChains, payoutValid, reservedValid, clearsEffectiveSplits, hasChanges, hasActiveWallet])
 
-  // Render split row
+  // Render split row — a percent input, a recipient-type column (Address | Project | Hook), and actions.
   const renderSplitRow = (split: EditableSplit, type: 'payout' | 'reserved') => {
     const ensName = ensNames[split.beneficiary.toLowerCase()]
+    const rowFrozen = split.isLocked || isLocked || !primaryData?.configurationComplete
+    const labelCls = `text-[10px] block mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`
+    const fieldCls = `w-full px-2 py-1.5 text-sm outline-none ${
+      isDark
+        ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-600'
+        : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'
+    } ${rowFrozen ? 'opacity-50 cursor-not-allowed' : ''}`
+    const isReserved = type === 'reserved'
+    // "Fund market" pools reserved tokens through the shared LP hook — reserved groups only, and never on
+    // more than one row (a second would double-pool). Disable the option elsewhere once a row claims it.
+    const groupSplits = isReserved ? reservedSplits : payoutSplits
+    const otherFundsMarket = groupSplits.some(
+      s => s.id !== split.id && s.recipientType === 'hook' && s.hookMode === 'fundmarket',
+    )
+    const fundMarketOffered = isReserved
+    const fundMarketSelectable = fundMarketOffered && !otherFundsMarket
+
+    const TEN_YEARS = 10 * 365 * 24 * 60 * 60
+    const projectBeneficiaryLabel = isReserved
+      ? 'Fallback beneficiary'
+      : split.preferAddToBalance ? 'Beneficiary (unused)' : 'Destination-token beneficiary'
+
     return (
       <div
         key={split.id}
@@ -456,9 +581,7 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
         <div className="flex items-start gap-3">
           {/* Percent */}
           <div className="w-20">
-            <label className={`text-[10px] block mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-              Percent
-            </label>
+            <label className={labelCls}>Percent</label>
             <div className="relative">
               <input
                 type="number"
@@ -480,115 +603,209 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
             </div>
           </div>
 
-          {/* Destination */}
+          {/* Recipient column */}
           <div className="flex-1">
-            <div className={`mb-2 inline-flex border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-              {(['wallet', 'project'] as const).map(mode => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => {
-                    handleUpdateSplit(type, split.id, 'routeMode', mode)
-                    if (mode === 'wallet') {
-                      handleUpdateSplit(type, split.id, 'projectId', '')
-                      handleUpdateSplit(type, split.id, 'preferAddToBalance', false)
-                    }
-                  }}
-                  disabled={split.isLocked || isLocked || !primaryData?.configurationComplete}
-                  className={`px-2 py-1 text-[10px] font-medium ${
-                    split.routeMode === mode
-                      ? isDark ? 'bg-white/15 text-white' : 'bg-gray-200 text-gray-900'
-                      : isDark ? 'text-gray-400' : 'text-gray-500'
-                  }`}
-                >
-                  {mode === 'wallet' ? 'Wallet' : 'Project'}
-                </button>
-              ))}
-            </div>
-            {split.routeMode === 'project' && (
-              <>
-                <label className={`text-[10px] block mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  Destination project ID
-                </label>
+            {/* Type dropdown + inline project id (Project) */}
+            <div className="flex items-center gap-2 mb-2">
+              <select
+                value={split.recipientType}
+                onChange={(e) => handleChangeRecipientType(type, split.id, e.target.value as RecipientType)}
+                disabled={rowFrozen}
+                className={`px-2 py-1.5 text-sm outline-none ${
+                  isDark ? 'bg-juice-dark border border-white/10 text-white' : 'bg-white border border-gray-200 text-gray-900'
+                } ${rowFrozen ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                <option value="address">Address</option>
+                <option value="project">Project</option>
+                <option value="hook">Hook</option>
+              </select>
+              {split.recipientType === 'project' && (
                 <input
                   type="text"
                   inputMode="numeric"
                   value={split.projectId}
                   onChange={(e) => handleUpdateSplit(type, split.id, 'projectId', e.target.value)}
-                  disabled={split.isLocked || isLocked || !primaryData?.configurationComplete}
+                  disabled={rowFrozen}
                   placeholder="Project ID"
-                  className={`w-full px-2 py-1.5 mb-2 text-sm font-mono outline-none ${
-                    isDark
-                      ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-600'
-                      : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'
-                  }`}
+                  className={`w-28 px-2 py-1.5 text-sm font-mono outline-none ${
+                    isDark ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-600' : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'
+                  } ${rowFrozen ? 'opacity-50 cursor-not-allowed' : ''}`}
                 />
+              )}
+            </div>
+
+            {/* ADDRESS */}
+            {split.recipientType === 'address' && (
+              <>
+                <label className={labelCls}>Wallet address</label>
+                <input
+                  type="text"
+                  value={split.beneficiary}
+                  onChange={(e) => handleUpdateSplit(type, split.id, 'beneficiary', e.target.value)}
+                  disabled={rowFrozen}
+                  placeholder="0x..."
+                  className={`${fieldCls} font-mono`}
+                />
+                {ensName && (
+                  <div className={`text-[10px] mt-0.5 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{ensName}</div>
+                )}
               </>
             )}
-            <label className={`text-[10px] block mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-              {split.routeMode === 'wallet'
-                ? 'Wallet address'
-                : type === 'reserved'
-                  ? 'Fallback beneficiary'
-                  : split.preferAddToBalance
-                    ? 'Beneficiary (unused)'
-                    : 'Destination-token beneficiary'}
-            </label>
-            <input
-              type="text"
-              value={split.beneficiary}
-              onChange={(e) => handleUpdateSplit(type, split.id, 'beneficiary', e.target.value)}
-              disabled={split.isLocked || isLocked || !primaryData?.configurationComplete}
-              placeholder={split.routeMode === 'project' && type === 'payout' && split.preferAddToBalance ? 'Optional' : '0x...'}
-              className={`w-full px-2 py-1.5 text-sm font-mono outline-none ${
-                isDark
-                  ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-600'
-                  : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'
-              } ${split.isLocked || isLocked || !primaryData?.configurationComplete ? 'opacity-50 cursor-not-allowed' : ''}`}
-            />
-            {ensName && (
-              <div className={`text-[10px] mt-0.5 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                {ensName}
-              </div>
-            )}
-            {split.routeMode === 'project' && split.projectId && (
-              <div className={`mt-1 text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                <ProjectLink chainSlug={chainInfo.slug} projectId={split.projectId} className="hover:underline">
-                  {destinationProjects[split.projectId]?.name || `Project #${split.projectId}`}
-                </ProjectLink>
-              </div>
-            )}
-            {split.routeMode === 'project' && type === 'payout' && (
-              <label className={`mt-2 flex items-center gap-2 text-[10px] ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+
+            {/* PROJECT */}
+            {split.recipientType === 'project' && (
+              <>
+                {split.projectId && (
+                  <div className={`mb-2 text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <ProjectLink chainSlug={chainInfo.slug} projectId={split.projectId} className="hover:underline">
+                      {destinationProjects[split.projectId]?.name || `Project #${split.projectId}`}
+                    </ProjectLink>
+                  </div>
+                )}
+                {type === 'payout' && (
+                  <label className={`mb-2 flex items-center gap-2 text-[10px] ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                    <input
+                      type="checkbox"
+                      checked={split.preferAddToBalance}
+                      onChange={(e) => handleUpdateSplit(type, split.id, 'preferAddToBalance', e.target.checked)}
+                      disabled={split.isLocked || isLocked}
+                    />
+                    Add to balance instead of paying the project
+                  </label>
+                )}
+                <label className={labelCls}>{projectBeneficiaryLabel}</label>
                 <input
-                  type="checkbox"
-                  checked={split.preferAddToBalance}
-                  onChange={(e) => handleUpdateSplit(type, split.id, 'preferAddToBalance', e.target.checked)}
-                  disabled={split.isLocked || isLocked}
+                  type="text"
+                  value={split.beneficiary}
+                  onChange={(e) => handleUpdateSplit(type, split.id, 'beneficiary', e.target.value)}
+                  disabled={rowFrozen}
+                  placeholder={type === 'payout' && split.preferAddToBalance ? 'Optional' : '0x...'}
+                  className={`${fieldCls} font-mono`}
                 />
-                Add to balance instead of paying the project
-              </label>
+                {ensName && (
+                  <div className={`text-[10px] mt-0.5 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{ensName}</div>
+                )}
+                <div className={`mt-1 text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                  {isReserved
+                    ? 'Reserved project recipient. Source tokens must be claimed ERC-20s, and the destination needs a primary terminal accepting that token; credits cannot use this route. Missing or reverting routes send source tokens to the fallback beneficiary.'
+                    : split.preferAddToBalance
+                      ? 'add to balance · no tokens minted'
+                      : 'pay project · destination project tokens go to the beneficiary'}
+                </div>
+                {split.beneficiary.toLowerCase() === ZERO_ADDRESS.toLowerCase() &&
+                  !split.isNew &&
+                  !split.preferAddToBalance && (
+                  <div className="mt-1 text-[10px] text-amber-500">
+                    No beneficiary is stored. The account triggering distribution receives destination tokens.
+                  </div>
+                )}
+              </>
             )}
-            {split.routeMode === 'project' && (
-              <div className={`mt-1 text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
-                {type === 'reserved'
-                  ? 'Reserved project recipient. Source tokens must be claimed ERC-20s, and the destination needs a primary terminal accepting that token; credits cannot use this route. Missing or reverting routes send source tokens to the fallback beneficiary.'
-                  : split.preferAddToBalance
-                    ? 'add to balance · no tokens minted'
-                    : 'pay project · destination project tokens go to the beneficiary'}
-              </div>
+
+            {/* HOOK */}
+            {split.recipientType === 'hook' && (
+              <>
+                {fundMarketOffered && (
+                  <select
+                    value={split.hookMode}
+                    onChange={(e) => {
+                      const mode = e.target.value as HookMode
+                      if (mode === 'fundmarket' && !fundMarketSelectable) return
+                      handleUpdateSplit(type, split.id, 'hookMode', mode)
+                    }}
+                    disabled={rowFrozen}
+                    className={`mb-2 px-2 py-1.5 text-sm outline-none ${
+                      isDark ? 'bg-juice-dark border border-white/10 text-white' : 'bg-white border border-gray-200 text-gray-900'
+                    } ${rowFrozen ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <option value="fundmarket" disabled={!fundMarketSelectable}>Fund market</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                )}
+                {split.hookMode === 'fundmarket' && fundMarketOffered ? (
+                  <div className={`text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Pools split tokens into a Uniswap V4 buyback position. Trading fees route back to your project.
+                    <div className={`mt-1 font-mono ${isDark ? 'text-cyan-300' : 'text-cyan-700'}`}>
+                      {JBP6_FEE_LP_SPLIT_HOOK.slice(0, 6)}...{JBP6_FEE_LP_SPLIT_HOOK.slice(-4)}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <label className={labelCls}>Split hook address</label>
+                    <input
+                      type="text"
+                      value={split.hookAddress}
+                      onChange={(e) => handleUpdateSplit(type, split.id, 'hookAddress', e.target.value)}
+                      disabled={rowFrozen}
+                      placeholder="0x... (split hook address)"
+                      className={`${fieldCls} font-mono mb-2`}
+                    />
+                    <label className={labelCls}>with project (optional)</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={split.projectId}
+                      onChange={(e) => handleUpdateSplit(type, split.id, 'projectId', e.target.value)}
+                      disabled={rowFrozen}
+                      placeholder="Project ID"
+                      className={`${fieldCls} font-mono mb-2`}
+                    />
+                    <label className={labelCls}>and beneficiary (optional)</label>
+                    <input
+                      type="text"
+                      value={split.beneficiary}
+                      onChange={(e) => handleUpdateSplit(type, split.id, 'beneficiary', e.target.value)}
+                      disabled={rowFrozen}
+                      placeholder="0x..."
+                      className={`${fieldCls} font-mono`}
+                    />
+                    {ensName && (
+                      <div className={`text-[10px] mt-0.5 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>{ensName}</div>
+                    )}
+                  </>
+                )}
+              </>
             )}
-            {split.routeMode === 'project' &&
-              split.beneficiary.toLowerCase() === ZERO_ADDRESS.toLowerCase() &&
-              !split.isNew &&
-              !split.preferAddToBalance && (
-              <div className="mt-1 text-[10px] text-amber-500">
-                No beneficiary is stored. The account triggering distribution receives destination tokens.
-              </div>
-            )}
-            {split.hook.toLowerCase() !== ZERO_ADDRESS.toLowerCase() && (
-              <div className={`mt-1 text-[10px] font-mono ${isDark ? 'text-cyan-300' : 'text-cyan-700'}`}>
-                Recognized split hook · {split.hook.slice(0, 6)}...{split.hook.slice(-4)}
+
+            {/* Split lock (fixed-duration rulesets only) */}
+            {lockAllowed && !split.isLocked && (
+              <div className="mt-2">
+                <label className={`flex items-center gap-2 text-[10px] ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+                  <input
+                    type="checkbox"
+                    checked={!!split.lockedUntil}
+                    disabled={isLocked}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        const until = Math.floor(Date.now() / 1000) + Math.min(primaryData?.rulesetDuration || 0, TEN_YEARS)
+                        handleUpdateSplit(type, split.id, 'lockedUntil', until)
+                      } else {
+                        handleUpdateSplit(type, split.id, 'lockedUntil', 0)
+                      }
+                    }}
+                  />
+                  Locked
+                </label>
+                {!!split.lockedUntil && (
+                  <>
+                    <input
+                      type="date"
+                      min={new Date().toISOString().slice(0, 10)}
+                      value={new Date(split.lockedUntil * 1000).toISOString().slice(0, 10)}
+                      onChange={(e) => {
+                        const ts = Math.floor(Date.parse(`${e.target.value}T00:00:00Z`) / 1000)
+                        if (Number.isFinite(ts)) handleUpdateSplit(type, split.id, 'lockedUntil', Math.max(0, ts))
+                      }}
+                      disabled={isLocked}
+                      className={`mt-1 px-2 py-1 text-xs outline-none ${
+                        isDark ? 'bg-juice-dark border border-white/10 text-white' : 'bg-white border border-gray-200 text-gray-900'
+                      }`}
+                    />
+                    <div className={`mt-1 text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                      Locked until this date — the split can’t be edited or removed for the rest of this ruleset.
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -609,7 +826,6 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
             )}
           </div>
         </div>
-
       </div>
     )
   }
@@ -942,8 +1158,8 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
           onClose={() => setShowModal(false)}
           projectName={project?.name}
           chainSplitsData={selectedChains}
-          payoutSplits={payoutSplits}
-          reservedSplits={reservedSplits}
+          payoutSplits={submittablePayoutSplits}
+          reservedSplits={submittableReservedSplits}
           baseCurrency={baseCurrency}
           onConfirmed={handleConfirmed}
           onError={handleError}

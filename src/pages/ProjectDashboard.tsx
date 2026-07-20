@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef, type ComponentType } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAccount } from 'wagmi'
@@ -19,11 +19,9 @@ import { ChatInput } from '../components/chat'
 import BalanceChart from '../components/dynamic/charts/BalanceChart'
 import VolumeChart from '../components/dynamic/charts/VolumeChart'
 import PriceChart from '../components/dynamic/PriceChart'
+import TokenPriceChart from '../components/dynamic/charts/TokenPriceChart'
 import ActivityFeed from '../components/dynamic/ActivityFeed'
 import ProjectCard from '../components/dynamic/ProjectCard'
-import RulesetSchedule from '../components/dynamic/RulesetSchedule'
-import FundsSection from '../components/dynamic/FundsSection'
-import TokensTab from '../components/dynamic/TokensTab'
 import ShopTab from '../components/dynamic/ShopTab'
 import ProjectSummary from '../components/dynamic/ProjectSummary'
 import { hasNFTHook } from '../services/nft'
@@ -43,8 +41,9 @@ import ManageTiersForm from '../components/dynamic/ManageTiersForm'
 import SetSplitsForm from '../components/dynamic/SetSplitsForm'
 import SetUriForm from '../components/dynamic/SetUriForm'
 import { ChainMappingWarning } from '../components/dynamic/ChainMappingWarning'
+import ProjectTabs from '../components/project/ProjectTabs'
+import { parseProjectHash, projectHashFor, projectTabsFor, type OwnersSubtabId, type ProjectTabId } from '../components/project/flavor'
 
-type DashboardTab = 'about' | 'rulesets' | 'funds' | 'tokens' | 'shop'
 type ModalType =
   | 'pay' | 'cashout' | 'payouts' | 'ruleset'
   | 'reservedTokens' | 'deployErc20' | 'surplusAllowance'
@@ -68,41 +67,6 @@ const CHAIN_DISPLAY: Record<number, string> = {
   421614: 'Arb Sepolia',
 }
 
-const VALID_TABS: DashboardTab[] = ['about', 'rulesets', 'funds', 'tokens', 'shop']
-
-// One entry per action modal, rendered by the shared modal wrapper.
-// maxWidth applies on desktop only; textClose renders the text close button;
-// titled renders the panel unpadded with the cash-out heading inside.
-type ActionModalSpec = {
-  Form: ComponentType<{ projectId: string; chainId: string }>
-  maxWidth: string
-  textClose?: boolean
-  titled?: boolean
-}
-
-const ACTION_MODALS: Partial<Record<Exclude<ModalType, null>, ActionModalSpec>> = {
-  payouts: { Form: SendPayoutsForm, maxWidth: 'max-w-2xl', textClose: true },
-  cashout: { Form: CashOutForm, maxWidth: 'max-w-md', titled: true },
-  ruleset: { Form: QueueRulesetForm, maxWidth: 'max-w-2xl' },
-  reservedTokens: { Form: SendReservedTokensForm, maxWidth: 'max-w-2xl' },
-  deployErc20: { Form: DeployERC20Form, maxWidth: 'max-w-2xl' },
-  surplusAllowance: { Form: UseSurplusAllowanceForm, maxWidth: 'max-w-2xl' },
-  setSplits: { Form: SetSplitsForm, maxWidth: 'max-w-2xl' },
-  setUri: { Form: SetUriForm, maxWidth: 'max-w-2xl' },
-  manageTiers: { Form: ManageTiersForm, maxWidth: 'max-w-2xl' },
-}
-
-// Strip HTML tags from description for plain text display
-function stripHtmlTags(html: string): string {
-  // Replace <br>, <br/>, </p> with newlines for proper line breaks
-  const withLineBreaks = html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-  // Remove all remaining HTML tags
-  const text = withLineBreaks.replace(/<[^>]*>/g, '')
-  // Clean up multiple newlines and trim
-  return text.replace(/\n{3,}/g, '\n\n').trim()
-}
 
 export default function ProjectDashboard({ chainId, projectId }: ProjectDashboardProps) {
   const { theme } = useThemeStore()
@@ -111,27 +75,33 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   const isMobile = useIsMobile()
   const isDark = theme === 'dark'
 
-  // Initialize tab from URL hash (e.g., #shop, #tokens)
-  const getInitialTab = (): DashboardTab => {
-    const hash = window.location.hash.slice(1) // Remove #
-    return VALID_TABS.includes(hash as DashboardTab) ? (hash as DashboardTab) : 'about'
-  }
+  // Tab + owners-subtab from the URL hash (#owners/settlement, #shop, legacy #about…)
+  const initialHash = parseProjectHash(window.location.hash)
+  const [activeTab, setActiveTabState] = useState<ProjectTabId>(initialHash.tab ?? 'overview')
+  const [ownersSubtab, setOwnersSubtabState] = useState<OwnersSubtabId>(initialHash.subtab ?? 'accounts')
 
-  const [activeTab, setActiveTabState] = useState<DashboardTab>(getInitialTab)
-
-  // Wrapper to update both state and URL hash
-  const setActiveTab = useCallback((tab: DashboardTab) => {
-    setActiveTabState(tab)
-    window.history.replaceState(null, '', `#${tab}`)
+  // The hash is rewritten by both setters, so the flavor slug (owner/operator) stays right.
+  const isRevnetRef = useRef(false)
+  const writeHash = useCallback((tab: ProjectTabId, subtab: OwnersSubtabId | null) => {
+    window.history.replaceState(null, '', projectHashFor(tab, isRevnetRef.current, subtab))
   }, [])
+
+  const setActiveTab = useCallback((tab: ProjectTabId) => {
+    setActiveTabState(tab)
+    writeHash(tab, tab === 'owners' || tab === 'tokens' ? ownersSubtab : null)
+  }, [ownersSubtab, writeHash])
+
+  const setOwnersSubtab = useCallback((id: OwnersSubtabId) => {
+    setOwnersSubtabState(id)
+    writeHash('owners', id)
+  }, [writeHash])
 
   // Listen for hash changes (browser back/forward)
   useEffect(() => {
     const handleHashChange = () => {
-      const hash = window.location.hash.slice(1)
-      if (VALID_TABS.includes(hash as DashboardTab)) {
-        setActiveTabState(hash as DashboardTab)
-      }
+      const { tab, subtab } = parseProjectHash(window.location.hash)
+      if (tab) setActiveTabState(tab)
+      if (subtab) setOwnersSubtabState(subtab)
     }
     window.addEventListener('hashchange', handleHashChange)
     return () => window.removeEventListener('hashchange', handleHashChange)
@@ -160,10 +130,11 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   // Listen for generic tab switch event (e.g., from "You get" token preview)
   useEffect(() => {
     const handleSwitchTab = (e: Event) => {
-      const customEvent = e as CustomEvent<{ tab: DashboardTab }>
+      const customEvent = e as CustomEvent<{ tab: ProjectTabId }>
       const tab = customEvent.detail?.tab
       if (tab) {
-        setActiveTab(tab)
+        // 'tokens' is the custom-project label for the same surface revnets call 'owners'.
+        setActiveTab(tab === 'tokens' && isRevnetRef.current ? 'owners' : tab)
       }
     }
     window.addEventListener('juice:switch-tab', handleSwitchTab)
@@ -180,6 +151,9 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   const [revnetOperatorError, setRevnetOperatorError] = useState<string | null>(null)
   const [displayAddressEns, setDisplayAddressEns] = useState<string | null>(null)
   const [hasNftHook, setHasNftHook] = useState(false)
+  // Show Shop optimistically until the 721 probe resolves — so a #shop deep link
+  // isn't bounced and the tab doesn't pop in late (website discover.js:5814).
+  const [nftHookProbed, setNftHookProbed] = useState(false)
   const [nftHookError, setNftHookError] = useState<string | null>(null)
   const [ethPrice, setEthPrice] = useState<number | null>(null)
 
@@ -292,6 +266,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
           setHasNftHook(false)
           setNftHookError('Reward configuration unavailable')
         }
+        setNftHookProbed(true)
         setEthPrice(priceResult.status === 'fulfilled' ? priceResult.value : null)
       } catch (error) {
         console.error('Failed to load project:', error)
@@ -361,23 +336,121 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
     navigate('/') // Go to home where ChatContainer will process the queued message
   }
 
-  // Tab configuration - dynamic based on project features
-  // Must be called before early returns to satisfy React hooks rules
-  const tabs: Array<{ id: DashboardTab; label: string }> = useMemo(() => {
-    const baseTabs: Array<{ id: DashboardTab; label: string }> = [
-      { id: 'about', label: 'About' },
-    ]
-    // Shop tab goes right after About (if project has NFT hook)
-    if (hasNftHook) {
-      baseTabs.push({ id: 'shop', label: 'Shop' })
-    }
-    baseTabs.push(
-      { id: 'rulesets', label: 'Rules' },
-      { id: 'funds', label: 'Funds' },
-      { id: 'tokens', label: 'Members' },
+  // The tab row itself lives in ProjectTabs (projectTabsFor decides the flavor's set).
+  // The hash writer needs the flavor without re-rendering on every tab change.
+  useEffect(() => {
+    isRevnetRef.current = projectIsRevnet
+  }, [projectIsRevnet])
+
+  // A hash naming a tab this flavor doesn't have (e.g. #funds on a revnet, or a
+  // stale #shop after the 721 probe came back empty) falls back to Overview.
+  useEffect(() => {
+    const available = projectTabsFor({
+      isRevnet: projectIsRevnet,
+      isMobile,
+      // Optimistic until the probe resolves — only drop Shop once it comes back empty.
+      hasShop: !nftHookProbed || hasNftHook,
+      hasErc20: !!project?.token,
+    })
+    if (!available.some(t => t.id === activeTab)) setActiveTabState('overview')
+  }, [projectIsRevnet, isMobile, nftHookProbed, hasNftHook, project?.token, activeTab])
+
+  /**
+   * The tab bar + body, wired once for both layouts. Charts juicy has and the
+   * website doesn't (volume/balance history, the issuance projection) ride along
+   * as slots so the tabs stay a straight port.
+   */
+  const renderTabs = (mobile: boolean) => {
+    if (!project) return null
+    return (
+      <ProjectTabs
+        project={project}
+        projectId={projectId}
+        chainId={chainId}
+        connectedChains={connectedChains}
+        suckerGroupBalance={suckerGroupBalance}
+        isRevnet={projectIsRevnet}
+        isMobile={mobile}
+        hasShop={!nftHookProbed || hasNftHook}
+        hasErc20={!!project.token}
+        erc20Address={(project.token as `0x${string}`) || null}
+        revnetOperator={revnetOperator}
+        canEdit={isOwner}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        ownersSubtab={ownersSubtab}
+        onOwnersSubtabChange={setOwnersSubtab}
+        activityFeed={
+          <ActivityFeed projectId={String(projectId)} chainId={String(chainId)} limit={15} />
+        }
+        priceChart={
+          <TokenPriceChart projectId={String(projectId)} chainId={String(chainId)} />
+        }
+        summary={
+          <>
+            <ProjectSummary
+              projectName={project.name}
+              balance={displayBalance}
+              volume={displayVolume}
+              paymentsCount={displayPaymentsCount}
+              balanceAvailable={balanceAvailable}
+              volumeAvailable={volumeAvailable}
+              paymentsAvailable={paymentsAvailable}
+              createdAt={project.createdAt}
+              isRevnet={projectIsRevnet}
+              hasNftHook={hasNftHook}
+              connectedChainsCount={connectedChains.length}
+              ethPrice={ethPrice}
+              currency={suckerGroupBalance?.currency}
+              decimals={suckerGroupBalance?.decimals}
+            />
+            {nftHookError && (
+              <div className={`border px-3 py-2 text-xs ${
+                isDark
+                  ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
+                  : 'border-amber-300 bg-amber-50 text-amber-800'
+              }`}>
+                Reward data unavailable: {nftHookError}
+              </div>
+            )}
+          </>
+        }
+        rulesetsChart={
+          <PriceChart projectId={String(projectId)} chainId={String(chainId)} showHistory={!projectIsRevnet} />
+        }
+        fundsCharts={
+          <>
+            <ExplainerMessage>
+              Here's how much has been contributed to the project over time.
+            </ExplainerMessage>
+            <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
+            <ExplainerMessage>
+              Here's how the project's funds have changed over time.
+            </ExplainerMessage>
+            <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
+          </>
+        }
+        shop={
+          <ShopTab
+            projectId={String(projectId)}
+            chainId={String(chainId)}
+            isOwner={isOwner}
+            isRevnet={projectIsRevnet}
+            connectedChains={connectedChains.map(c => ({ chainId: c.chainId, projectId: c.projectId }))}
+            onManageTiers={() => setActiveModal('manageTiers')}
+          />
+        }
+        onQueueRuleset={() => setActiveModal('ruleset')}
+        onSendPayouts={() => setActiveModal('payouts')}
+        onUseAllowance={() => setActiveModal('surplusAllowance')}
+        onEditMetadata={() => setActiveModal('setUri')}
+        onEditToken={() => setActiveModal('deployErc20')}
+        onEditSplits={() => setActiveModal('setSplits')}
+        onDeployErc20={() => setActiveModal('deployErc20')}
+        onCashOut={() => setActiveModal('cashout')}
+      />
     )
-    return baseTabs
-  }, [hasNftHook])
+  }
 
   if (projectLoading) {
     return (
@@ -414,224 +487,6 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
       </div>
     )
   }
-
-  // Balance stat with per-chain breakdown tooltip (shared by desktop and mobile)
-  const balanceStat = (
-      <div
-        className="relative"
-        onMouseEnter={() => setShowBalanceTooltip(true)}
-        onMouseLeave={() => setShowBalanceTooltip(false)}
-        onClick={() => setShowBalanceTooltip(prev => !prev)}
-      >
-        <span className={`font-semibold cursor-pointer ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          {balanceAvailable
-            ? `${formatBalanceUsd(displayBalance, ethPrice, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)} balance${balanceScope}`
-            : 'Balance unavailable'}
-        </span>
-        {/* Per-chain balance breakdown tooltip */}
-        {showBalanceTooltip && balanceAvailable && suckerGroupBalance && suckerGroupBalance.projectBalances.length > 1 && (
-          <div className={`absolute top-full left-0 mt-1 p-2 shadow-lg z-50 min-w-[200px] text-xs ${
-            isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
-          }`}>
-            {suckerGroupBalance.projectBalances.map(pb => {
-              const chainName = CHAIN_DISPLAY[pb.chainId] || `Chain ${pb.chainId}`
-              const pbCurrency = pb.currency ?? suckerGroupBalance.currency
-              const pbDecimals = pb.decimals ?? suckerGroupBalance.decimals
-              return (
-                <div key={pb.chainId} className="flex justify-between gap-4 py-0.5">
-                  <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{chainName}</span>
-                  <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {formatBalanceNative(pb.balance, pbCurrency, pbDecimals)}
-                  </span>
-                </div>
-              )
-            })}
-            <div className={`flex justify-between gap-4 pt-1 mt-1 border-t ${
-              isDark ? 'border-white/10' : 'border-gray-100'
-            }`}>
-              <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Total</span>
-              <span className={`font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {formatBalanceNative(displayBalance, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)}
-              </span>
-            </div>
-          </div>
-        )}
-      </div>
-  )
-
-  // Owner actions gear + dropdown (shared; dropdown alignment differs per layout)
-  const renderOwnerMenu = (menuAlign: 'left-0' | 'right-0') => (
-      <div className="relative" ref={ownerMenuRef}>
-        <button
-          onClick={() => setShowOwnerMenu(!showOwnerMenu)}
-          className={`ml-1 p-1 rounded transition-colors ${
-            isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-          }`}
-          title="Owner actions"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </button>
-        {/* Owner Actions Menu */}
-        {showOwnerMenu && (
-          <div
-            className={`absolute top-full ${menuAlign} mt-1 w-48 py-1 shadow-lg z-50 ${
-              isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
-            }`}
-            onClick={() => setShowOwnerMenu(false)}
-          >
-            {/* FUNDS section */}
-            <div className={`px-3 py-1 text-[10px] font-semibold uppercase tracking-wider ${
-              isDark ? 'text-gray-500' : 'text-gray-400'
-            }`}>
-              Funds
-            </div>
-            <button
-              onClick={() => setActiveModal('payouts')}
-              className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
-                isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              Send Payouts
-            </button>
-            <button
-              onClick={() => setActiveModal('surplusAllowance')}
-              className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
-                isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              Use Surplus Allowance
-            </button>
-
-            {/* TOKENS section */}
-            <div className={`px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider border-t ${
-              isDark ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-100'
-            }`}>
-              Tokens
-            </div>
-            <button
-              onClick={() => setActiveModal('reservedTokens')}
-              className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
-                isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              Send Reserved Tokens
-            </button>
-            {!hasErc20Token && (
-              <button
-                onClick={() => setActiveModal('deployErc20')}
-                className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
-                  isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                Deploy ERC20
-              </button>
-            )}
-
-            {/* CONFIGURATION section */}
-            <div className={`px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider border-t ${
-              isDark ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-100'
-            }`}>
-              Configuration
-            </div>
-            <button
-              onClick={() => setActiveModal('ruleset')}
-              className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
-                isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              Queue Ruleset
-            </button>
-            <button
-              onClick={() => setActiveModal('setSplits')}
-              className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
-                isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              Configure Splits
-            </button>
-            <button
-              onClick={() => setActiveModal('setUri')}
-              className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
-                isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
-              }`}
-            >
-              Update Metadata
-            </button>
-
-            {/* INVENTORY section - only if project has NFT hook */}
-            {hasNftHook && (
-              <>
-                <div className={`px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider border-t ${
-                  isDark ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-100'
-                }`}>
-                  Inventory
-                </div>
-                <button
-                  onClick={() => setActiveModal('manageTiers')}
-                  className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
-                    isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
-                  }`}
-                >
-                  Manage NFT Tiers
-                </button>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-  )
-
-  // Action modals: one config-driven wrapper shared by desktop and mobile
-  const modalSpec = activeModal ? ACTION_MODALS[activeModal] : undefined
-  const ModalForm = modalSpec?.Form
-  const actionModal = modalSpec && ModalForm && createPortal(
-    <div
-      key={isMobile ? 'mobile' : 'desktop'}
-      className={isMobile
-        ? 'fixed inset-0 z-50 flex items-end justify-center'
-        : 'fixed inset-0 z-50 flex items-center justify-center p-4'}
-    >
-      <div
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={() => setActiveModal(null)}
-      />
-      <div className={`relative w-full ${isMobile ? '' : `${modalSpec.maxWidth} `}max-h-[90vh] overflow-y-auto${modalSpec.titled ? '' : ' p-4'} ${
-        isDark
-          ? `bg-juice-dark ${isMobile ? 'border-t' : 'border'} border-white/10`
-          : `bg-white ${isMobile ? 'border-t' : 'border'} border-gray-200`
-      }`}>
-        <button
-          onClick={() => setActiveModal(null)}
-          className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
-            isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
-          }`}
-          aria-label={modalSpec.textClose ? 'Close' : undefined}
-        >
-          {modalSpec.textClose ? (
-            <span aria-hidden="true">X</span>
-          ) : (
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          )}
-        </button>
-        {modalSpec.titled ? (
-          <div className="p-4">
-            <h2 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Cash Out {project.name} Tokens
-            </h2>
-            <ModalForm projectId={String(projectId)} chainId={String(chainId)} />
-          </div>
-        ) : (
-          <ModalForm projectId={String(projectId)} chainId={String(chainId)} />
-        )}
-      </div>
-    </div>,
-    document.body
-  )
 
   // Desktop layout with two-column structure
   if (!isMobile) {
@@ -687,7 +542,46 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                   </h1>
                   {/* Stats row */}
                   <div className={`flex items-center gap-4 mt-1 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                    {balanceStat}
+                    <div
+                      className="relative"
+                      onMouseEnter={() => setShowBalanceTooltip(true)}
+                      onMouseLeave={() => setShowBalanceTooltip(false)}
+                      onClick={() => setShowBalanceTooltip(prev => !prev)}
+                    >
+                      <span className={`font-semibold cursor-pointer ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                        {balanceAvailable
+                          ? `${formatBalanceUsd(displayBalance, ethPrice, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)} balance${balanceScope}`
+                          : 'Balance unavailable'}
+                      </span>
+                      {/* Per-chain balance breakdown tooltip */}
+                      {showBalanceTooltip && balanceAvailable && suckerGroupBalance && suckerGroupBalance.projectBalances.length > 1 && (
+                        <div className={`absolute top-full left-0 mt-1 p-2 shadow-lg z-50 min-w-[200px] text-xs ${
+                          isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
+                        }`}>
+                          {suckerGroupBalance.projectBalances.map(pb => {
+                            const chainName = CHAIN_DISPLAY[pb.chainId] || `Chain ${pb.chainId}`
+                            const pbCurrency = pb.currency ?? suckerGroupBalance.currency
+                            const pbDecimals = pb.decimals ?? suckerGroupBalance.decimals
+                            return (
+                              <div key={pb.chainId} className="flex justify-between gap-4 py-0.5">
+                                <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{chainName}</span>
+                                <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                                  {formatBalanceNative(pb.balance, pbCurrency, pbDecimals)}
+                                </span>
+                              </div>
+                            )
+                          })}
+                          <div className={`flex justify-between gap-4 pt-1 mt-1 border-t ${
+                            isDark ? 'border-white/10' : 'border-gray-100'
+                          }`}>
+                            <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Total</span>
+                            <span className={`font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                              {formatBalanceNative(displayBalance, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     <span>
                       <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                         {paymentsAvailable ? displayPaymentsCount.toLocaleString() : 'Unavailable'}
@@ -727,7 +621,127 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                               <span className="px-1.5 py-0.5 bg-green-500/20 text-green-500 rounded text-[10px] font-medium">
                                 {t('project.you', 'You')}
                               </span>
-                              {renderOwnerMenu('left-0')}
+                              <div className="relative" ref={ownerMenuRef}>
+                                <button
+                                  onClick={() => setShowOwnerMenu(!showOwnerMenu)}
+                                  className={`ml-1 p-1 rounded transition-colors ${
+                                    isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                                  }`}
+                                  title="Owner actions"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  </svg>
+                                </button>
+                                {/* Owner Actions Menu */}
+                                {showOwnerMenu && (
+                                  <div
+                                    className={`absolute top-full left-0 mt-1 w-48 py-1 shadow-lg z-50 ${
+                                      isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
+                                    }`}
+                                    onClick={() => setShowOwnerMenu(false)}
+                                  >
+                                    {/* FUNDS section */}
+                                    <div className={`px-3 py-1 text-[10px] font-semibold uppercase tracking-wider ${
+                                      isDark ? 'text-gray-500' : 'text-gray-400'
+                                    }`}>
+                                      Funds
+                                    </div>
+                                    <button
+                                      onClick={() => setActiveModal('payouts')}
+                                      className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                        isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                      }`}
+                                    >
+                                      Send Payouts
+                                    </button>
+                                    <button
+                                      onClick={() => setActiveModal('surplusAllowance')}
+                                      className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                        isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                      }`}
+                                    >
+                                      Use Surplus Allowance
+                                    </button>
+
+                                    {/* TOKENS section */}
+                                    <div className={`px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider border-t ${
+                                      isDark ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-100'
+                                    }`}>
+                                      Tokens
+                                    </div>
+                                    <button
+                                      onClick={() => setActiveModal('reservedTokens')}
+                                      className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                        isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                      }`}
+                                    >
+                                      Send Reserved Tokens
+                                    </button>
+                                    {!hasErc20Token && (
+                                      <button
+                                        onClick={() => setActiveModal('deployErc20')}
+                                        className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                          isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                        }`}
+                                      >
+                                        Deploy ERC20
+                                      </button>
+                                    )}
+
+                                    {/* CONFIGURATION section */}
+                                    <div className={`px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider border-t ${
+                                      isDark ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-100'
+                                    }`}>
+                                      Configuration
+                                    </div>
+                                    <button
+                                      onClick={() => setActiveModal('ruleset')}
+                                      className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                        isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                      }`}
+                                    >
+                                      Queue Ruleset
+                                    </button>
+                                    <button
+                                      onClick={() => setActiveModal('setSplits')}
+                                      className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                        isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                      }`}
+                                    >
+                                      Configure Splits
+                                    </button>
+                                    <button
+                                      onClick={() => setActiveModal('setUri')}
+                                      className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                        isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                      }`}
+                                    >
+                                      Update Metadata
+                                    </button>
+
+                                    {/* INVENTORY section - only if project has NFT hook */}
+                                    {hasNftHook && (
+                                      <>
+                                        <div className={`px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider border-t ${
+                                          isDark ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-100'
+                                        }`}>
+                                          Inventory
+                                        </div>
+                                        <button
+                                          onClick={() => setActiveModal('manageTiers')}
+                                          className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                            isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                          }`}
+                                        >
+                                          Manage NFT Tiers
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             </>
                           )}
                         </>
@@ -797,133 +811,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
 
             {/* Right: Main content (scrollable) */}
             <div className="flex-1 overflow-y-auto">
-              {/* Tab navigation */}
-              <div className={`sticky top-0 z-10 px-6 pt-4 pb-0 ${
-                isDark ? 'bg-juice-dark' : 'bg-white'
-              }`}>
-                <div className={`flex gap-6 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                  {tabs.map(tab => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`pb-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
-                        activeTab === tab.id
-                          ? 'border-juice-orange text-juice-orange'
-                          : isDark
-                            ? 'border-transparent text-gray-400 hover:text-gray-200'
-                            : 'border-transparent text-gray-500 hover:text-gray-700'
-                      }`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="px-6 py-6 space-y-6">
-                {/* About Tab */}
-                {activeTab === 'about' && (
-                  <>
-                    {project.description ? (
-                      <p className={`text-sm whitespace-pre-line ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                        {stripHtmlTags(project.description)}
-                      </p>
-                    ) : (
-                      <p className={`text-sm italic ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                        No description available.
-                      </p>
-                    )}
-
-                    {/* Juicy Summary */}
-                    <ProjectSummary
-                      projectName={project.name}
-                      balance={displayBalance}
-                      volume={displayVolume}
-                      paymentsCount={displayPaymentsCount}
-                      balanceAvailable={balanceAvailable}
-                      volumeAvailable={volumeAvailable}
-                      paymentsAvailable={paymentsAvailable}
-                      createdAt={project.createdAt}
-                      isRevnet={projectIsRevnet}
-                      hasNftHook={hasNftHook}
-                      connectedChainsCount={connectedChains.length}
-                      ethPrice={ethPrice}
-                      currency={suckerGroupBalance?.currency}
-                      decimals={suckerGroupBalance?.decimals}
-                    />
-                    {nftHookError && (
-                      <div className={`border px-3 py-2 text-xs ${
-                        isDark
-                          ? 'border-amber-500/40 bg-amber-500/10 text-amber-200'
-                          : 'border-amber-300 bg-amber-50 text-amber-800'
-                      }`}>
-                        Reward data unavailable: {nftHookError}
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* Rulesets Tab */}
-                {activeTab === 'rulesets' && (
-                  <div className="space-y-6">
-                    <ExplainerMessage>
-                      Here are the current and upcoming rules. Rulesets define how the project handles payments, membership, inventory, and access to funds.
-                    </ExplainerMessage>
-                    <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
-                    <ExplainerMessage>
-                      Here's how access to membership changes over time based on issuance cuts. Contributors from earlier windows get more than later ones.
-                    </ExplainerMessage>
-                    {/* Price forecast for revnets, issuance history for regular projects */}
-                    <PriceChart projectId={String(projectId)} chainId={String(chainId)} showHistory={!projectIsRevnet} />
-                  </div>
-                )}
-
-                {/* Funds Tab */}
-                {activeTab === 'funds' && (
-                  <div className="space-y-6">
-                    <ExplainerMessage>
-                      Here's the project's money. You can see the total balance, available payouts, and cash out value for members.
-                    </ExplainerMessage>
-                    <FundsSection
-                      projectId={String(projectId)}
-                      chainId={String(chainId)}
-                      isOwner={isOwner}
-                      onSendPayouts={() => setActiveModal('payouts')}
-                      onCashOut={() => setActiveModal('cashout')}
-                      isRevnet={projectIsRevnet}
-                    />
-                    <ExplainerMessage>
-                      Here's how much has been contributed to the project over time.
-                    </ExplainerMessage>
-                    <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
-                    <ExplainerMessage>
-                      Here's how the project's funds have changed over time.
-                    </ExplainerMessage>
-                    <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
-                  </div>
-                )}
-
-                {/* Tokens Tab */}
-                {activeTab === 'tokens' && (
-                  <TokensTab
-                    projectId={String(projectId)}
-                    chainId={String(chainId)}
-                    isOwner={isOwner}
-                    onDeployErc20={() => setActiveModal('deployErc20')}
-                  />
-                )}
-
-                {/* Shop Tab */}
-                {activeTab === 'shop' && (
-                  <ShopTab
-                    projectId={String(projectId)}
-                    chainId={String(chainId)}
-                    isOwner={isOwner}
-                    connectedChains={connectedChains.map(c => ({ chainId: c.chainId, projectId: c.projectId }))}
-                    onManageTiers={() => setActiveModal('manageTiers')}
-                  />
-                )}
-              </div>
+              {renderTabs(false)}
             </div>
           </div>
 
@@ -944,7 +832,243 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
         <div className="w-[4px] bg-juice-orange shrink-0" />
 
         {/* Modals */}
-        {actionModal}
+        {activeModal === 'payouts' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setActiveModal(null)}
+            />
+            <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 ${
+              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+            }`}>
+              <button
+                onClick={() => setActiveModal(null)}
+                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+                aria-label="Close"
+              >
+                <span aria-hidden="true">X</span>
+              </button>
+              <SendPayoutsForm projectId={String(projectId)} chainId={String(chainId)} />
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {activeModal === 'cashout' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setActiveModal(null)}
+            />
+            <div className={`relative w-full max-w-md max-h-[90vh] overflow-y-auto ${
+              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+            }`}>
+              <button
+                onClick={() => setActiveModal(null)}
+                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <div className="p-4">
+                <h2 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                  Cash Out {project.name} Tokens
+                </h2>
+                <CashOutForm
+                  projectId={String(projectId)}
+                  chainId={String(chainId)}
+                />
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {activeModal === 'ruleset' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setActiveModal(null)}
+            />
+            <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 ${
+              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+            }`}>
+              <button
+                onClick={() => setActiveModal(null)}
+                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <QueueRulesetForm projectId={String(projectId)} chainId={String(chainId)} />
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Send Reserved Tokens Modal */}
+        {activeModal === 'reservedTokens' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setActiveModal(null)}
+            />
+            <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 ${
+              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+            }`}>
+              <button
+                onClick={() => setActiveModal(null)}
+                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <SendReservedTokensForm projectId={String(projectId)} chainId={String(chainId)} />
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Deploy ERC20 Modal */}
+        {activeModal === 'deployErc20' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setActiveModal(null)}
+            />
+            <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 ${
+              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+            }`}>
+              <button
+                onClick={() => setActiveModal(null)}
+                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <DeployERC20Form projectId={String(projectId)} chainId={String(chainId)} />
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Use Surplus Allowance Modal */}
+        {activeModal === 'surplusAllowance' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setActiveModal(null)}
+            />
+            <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 ${
+              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+            }`}>
+              <button
+                onClick={() => setActiveModal(null)}
+                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <UseSurplusAllowanceForm projectId={String(projectId)} chainId={String(chainId)} />
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Set Splits Modal */}
+        {activeModal === 'setSplits' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setActiveModal(null)}
+            />
+            <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 ${
+              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+            }`}>
+              <button
+                onClick={() => setActiveModal(null)}
+                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <SetSplitsForm projectId={String(projectId)} chainId={String(chainId)} />
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Set URI Modal */}
+        {activeModal === 'setUri' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setActiveModal(null)}
+            />
+            <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 ${
+              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+            }`}>
+              <button
+                onClick={() => setActiveModal(null)}
+                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <SetUriForm projectId={String(projectId)} chainId={String(chainId)} />
+            </div>
+          </div>,
+          document.body
+        )}
+
+        {/* Manage Tiers Modal */}
+        {activeModal === 'manageTiers' && createPortal(
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setActiveModal(null)}
+            />
+            <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 ${
+              isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
+            }`}>
+              <button
+                onClick={() => setActiveModal(null)}
+                className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                }`}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+              <ManageTiersForm projectId={String(projectId)} chainId={String(chainId)} />
+            </div>
+          </div>,
+          document.body
+        )}
       </div>
     )
   }
@@ -994,7 +1118,46 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               </h1>
               {/* Stats row */}
               <div className={`flex flex-wrap gap-x-3 gap-y-1 mt-1 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                {balanceStat}
+                <div
+                  className="relative"
+                  onMouseEnter={() => setShowBalanceTooltip(true)}
+                  onMouseLeave={() => setShowBalanceTooltip(false)}
+                  onClick={() => setShowBalanceTooltip(prev => !prev)}
+                >
+                  <span className={`font-semibold cursor-pointer ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    {balanceAvailable
+                      ? `${formatBalanceUsd(displayBalance, ethPrice, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)} balance${balanceScope}`
+                      : 'Balance unavailable'}
+                  </span>
+                  {/* Per-chain balance breakdown tooltip */}
+                  {showBalanceTooltip && balanceAvailable && suckerGroupBalance && suckerGroupBalance.projectBalances.length > 1 && (
+                    <div className={`absolute top-full left-0 mt-1 p-2 shadow-lg z-50 min-w-[200px] text-xs ${
+                      isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
+                    }`}>
+                      {suckerGroupBalance.projectBalances.map(pb => {
+                        const chainName = CHAIN_DISPLAY[pb.chainId] || `Chain ${pb.chainId}`
+                        const pbCurrency = pb.currency ?? suckerGroupBalance.currency
+                        const pbDecimals = pb.decimals ?? suckerGroupBalance.decimals
+                        return (
+                          <div key={pb.chainId} className="flex justify-between gap-4 py-0.5">
+                            <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{chainName}</span>
+                            <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                              {formatBalanceNative(pb.balance, pbCurrency, pbDecimals)}
+                            </span>
+                          </div>
+                        )
+                      })}
+                      <div className={`flex justify-between gap-4 pt-1 mt-1 border-t ${
+                        isDark ? 'border-white/10' : 'border-gray-100'
+                      }`}>
+                        <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Total</span>
+                        <span className={`font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                          {formatBalanceNative(displayBalance, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 <span>
                   <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                     {paymentsAvailable ? displayPaymentsCount.toLocaleString() : 'Unavailable'}
@@ -1033,7 +1196,127 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                           <span className="px-1.5 py-0.5 bg-green-500/20 text-green-500 rounded text-[10px] font-medium">
                             {t('project.you', 'You')}
                           </span>
-                          {renderOwnerMenu('right-0')}
+                          <div className="relative" ref={ownerMenuRef}>
+                            <button
+                              onClick={() => setShowOwnerMenu(!showOwnerMenu)}
+                              className={`ml-1 p-1 rounded transition-colors ${
+                                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+                              }`}
+                              title="Owner actions"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              </svg>
+                            </button>
+                            {/* Owner Actions Menu - Mobile */}
+                            {showOwnerMenu && (
+                              <div
+                                className={`absolute top-full right-0 mt-1 w-48 py-1 shadow-lg z-50 ${
+                                  isDark ? 'bg-juice-dark border border-white/20' : 'bg-white border border-gray-200'
+                                }`}
+                                onClick={() => setShowOwnerMenu(false)}
+                              >
+                                {/* FUNDS section */}
+                                <div className={`px-3 py-1 text-[10px] font-semibold uppercase tracking-wider ${
+                                  isDark ? 'text-gray-500' : 'text-gray-400'
+                                }`}>
+                                  Funds
+                                </div>
+                                <button
+                                  onClick={() => setActiveModal('payouts')}
+                                  className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                    isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  Send Payouts
+                                </button>
+                                <button
+                                  onClick={() => setActiveModal('surplusAllowance')}
+                                  className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                    isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  Use Surplus Allowance
+                                </button>
+
+                                {/* TOKENS section */}
+                                <div className={`px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider border-t ${
+                                  isDark ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-100'
+                                }`}>
+                                  Tokens
+                                </div>
+                                <button
+                                  onClick={() => setActiveModal('reservedTokens')}
+                                  className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                    isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  Send Reserved Tokens
+                                </button>
+                                {!hasErc20Token && (
+                                  <button
+                                    onClick={() => setActiveModal('deployErc20')}
+                                    className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                      isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                    }`}
+                                  >
+                                    Deploy ERC20
+                                  </button>
+                                )}
+
+                                {/* CONFIGURATION section */}
+                                <div className={`px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider border-t ${
+                                  isDark ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-100'
+                                }`}>
+                                  Configuration
+                                </div>
+                                <button
+                                  onClick={() => setActiveModal('ruleset')}
+                                  className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                    isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  Queue Ruleset
+                                </button>
+                                <button
+                                  onClick={() => setActiveModal('setSplits')}
+                                  className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                    isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  Configure Splits
+                                </button>
+                                <button
+                                  onClick={() => setActiveModal('setUri')}
+                                  className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                    isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                  }`}
+                                >
+                                  Update Metadata
+                                </button>
+
+                                {/* INVENTORY section - only if project has NFT hook */}
+                                {hasNftHook && (
+                                  <>
+                                    <div className={`px-3 py-1 mt-1 text-[10px] font-semibold uppercase tracking-wider border-t ${
+                                      isDark ? 'text-gray-500 border-white/10' : 'text-gray-400 border-gray-100'
+                                    }`}>
+                                      Inventory
+                                    </div>
+                                    <button
+                                      onClick={() => setActiveModal('manageTiers')}
+                                      className={`w-full px-3 py-1.5 text-left text-xs transition-colors ${
+                                        isDark ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-gray-100'
+                                      }`}
+                                    >
+                                      Manage NFT Tiers
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </>
                       )}
                     </>
@@ -1077,144 +1360,21 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
           )}
         </div>
 
-        {/* Tab navigation */}
-        <div className="px-4 overflow-x-auto">
-          <div className={`flex gap-4 border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-            {tabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`pb-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
-                  activeTab === tab.id
-                    ? 'border-juice-orange text-juice-orange'
-                    : isDark
-                      ? 'border-transparent text-gray-400 hover:text-gray-200'
-                      : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
 
-      {/* Main content */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
-        {/* About tab */}
-        {activeTab === 'about' && (
-          <>
-            {project.description ? (
-              <p className={`text-sm whitespace-pre-line ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                {stripHtmlTags(project.description)}
-              </p>
-            ) : (
-              <p className={`text-sm italic ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                No description available.
-              </p>
-            )}
-
-            {/* Juicy Summary */}
-            <ProjectSummary
-              projectName={project.name}
-              balance={displayBalance}
-              volume={displayVolume}
-              paymentsCount={displayPaymentsCount}
-              balanceAvailable={balanceAvailable}
-              volumeAvailable={volumeAvailable}
-              paymentsAvailable={paymentsAvailable}
-              createdAt={project.createdAt}
-              isRevnet={projectIsRevnet}
-              hasNftHook={hasNftHook}
-              connectedChainsCount={connectedChains.length}
-              ethPrice={ethPrice}
-              currency={suckerGroupBalance?.currency}
-              decimals={suckerGroupBalance?.decimals}
-            />
-
-            {/* Pay section on mobile About tab */}
-            <ProjectCard
-              projectId={String(projectId)}
-              chainId={String(chainId)}
-              embedded
-            />
-
-            {/* Activity Feed */}
-            <div>
-              <div className={`pb-2 ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                <span className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  Activity
-                </span>
-              </div>
-              <ActivityFeed
-                projectId={String(projectId)}
-                chainId={String(chainId)}
-                limit={15}
-                compact
-              />
-            </div>
-          </>
-        )}
-
-        {/* Rulesets tab */}
-        {activeTab === 'rulesets' && (
-          <div className="space-y-6">
-            <ExplainerMessage>
-              Here are the current and upcoming rules. Rulesets define how the project handles payments, membership, inventory, and access to funds.
-            </ExplainerMessage>
-            <RulesetSchedule projectId={String(projectId)} chainId={String(chainId)} />
-            <ExplainerMessage>
-              Here's how access to membership changes over time based on issuance cuts. Contributors from earlier windows get more than later ones.
-            </ExplainerMessage>
-            <PriceChart projectId={String(projectId)} chainId={String(chainId)} showHistory={!projectIsRevnet} />
-          </div>
-        )}
-
-        {/* Funds tab */}
-        {activeTab === 'funds' && (
-          <div className="space-y-6">
-            <ExplainerMessage>
-              Here's the project's money. You can see the total balance, available payouts, and cash out value for members.
-            </ExplainerMessage>
-            <FundsSection
-              projectId={String(projectId)}
-              chainId={String(chainId)}
-              isOwner={isOwner}
-              onSendPayouts={() => setActiveModal('payouts')}
-              onCashOut={() => setActiveModal('cashout')}
-              isRevnet={projectIsRevnet}
-            />
-            <ExplainerMessage>
-              Here's how much has been contributed to the project over time.
-            </ExplainerMessage>
-            <VolumeChart projectId={String(projectId)} chainId={String(chainId)} />
-            <ExplainerMessage>
-              Here's how the project's funds have changed over time.
-            </ExplainerMessage>
-            <BalanceChart projectId={String(projectId)} chainId={String(chainId)} />
-          </div>
-        )}
-
-        {/* Tokens tab */}
-        {activeTab === 'tokens' && (
-          <TokensTab
+      {/* Tabs (bar + body) — same wiring as desktop. The pay/cash-out panel leads
+          on mobile (its own left column on desktop); Activity is a tab here, so the
+          card renders childless rather than embedding the feed. */}
+      <div className="flex-1 overflow-y-auto">
+        <div className={`border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <ProjectCard
             projectId={String(projectId)}
             chainId={String(chainId)}
-            isOwner={isOwner}
-            onDeployErc20={() => setActiveModal('deployErc20')}
+            embedded
+            isRevnet={projectIsRevnet}
           />
-        )}
-
-        {/* Shop tab */}
-        {activeTab === 'shop' && (
-          <ShopTab
-            projectId={String(projectId)}
-            chainId={String(chainId)}
-            isOwner={isOwner}
-            connectedChains={connectedChains.map(c => ({ chainId: c.chainId, projectId: c.projectId }))}
-            onManageTiers={() => setActiveModal('manageTiers')}
-          />
-        )}
+        </div>
+        {renderTabs(true)}
       </div>
 
       {/* Chat dock - mobile */}
@@ -1227,7 +1387,244 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
       </div>
 
       {/* Mobile modals */}
-      {actionModal}
+      {activeModal === 'payouts' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setActiveModal(null)}
+          />
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto p-4 ${
+            isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200'
+          }`}>
+            <button
+              onClick={() => setActiveModal(null)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+              aria-label="Close"
+            >
+              <span aria-hidden="true">X</span>
+            </button>
+            <SendPayoutsForm projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {activeModal === 'ruleset' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setActiveModal(null)}
+          />
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto p-4 ${
+            isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200'
+          }`}>
+            <button
+              onClick={() => setActiveModal(null)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <QueueRulesetForm projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Send Reserved Tokens Modal - Mobile */}
+      {activeModal === 'reservedTokens' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setActiveModal(null)}
+          />
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto p-4 ${
+            isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200'
+          }`}>
+            <button
+              onClick={() => setActiveModal(null)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <SendReservedTokensForm projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Deploy ERC20 Modal - Mobile */}
+      {activeModal === 'deployErc20' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setActiveModal(null)}
+          />
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto p-4 ${
+            isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200'
+          }`}>
+            <button
+              onClick={() => setActiveModal(null)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <DeployERC20Form projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Use Surplus Allowance Modal - Mobile */}
+      {activeModal === 'surplusAllowance' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setActiveModal(null)}
+          />
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto p-4 ${
+            isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200'
+          }`}>
+            <button
+              onClick={() => setActiveModal(null)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <UseSurplusAllowanceForm projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Set Splits Modal - Mobile */}
+      {activeModal === 'setSplits' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setActiveModal(null)}
+          />
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto p-4 ${
+            isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200'
+          }`}>
+            <button
+              onClick={() => setActiveModal(null)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <SetSplitsForm projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Set URI Modal - Mobile */}
+      {activeModal === 'setUri' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setActiveModal(null)}
+          />
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto p-4 ${
+            isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200'
+          }`}>
+            <button
+              onClick={() => setActiveModal(null)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <SetUriForm projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Manage Tiers Modal - Mobile */}
+      {activeModal === 'manageTiers' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setActiveModal(null)}
+          />
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto p-4 ${
+            isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200'
+          }`}>
+            <button
+              onClick={() => setActiveModal(null)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <ManageTiersForm projectId={String(projectId)} chainId={String(chainId)} />
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Cash Out Modal - Mobile */}
+      {activeModal === 'cashout' && createPortal(
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setActiveModal(null)}
+          />
+          <div className={`relative w-full max-h-[90vh] overflow-y-auto ${
+            isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200'
+          }`}>
+            <button
+              onClick={() => setActiveModal(null)}
+              className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <div className="p-4">
+              <h2 className={`text-lg font-semibold mb-4 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                Cash Out {project.name} Tokens
+              </h2>
+              <CashOutForm
+                projectId={String(projectId)}
+                chainId={String(chainId)}
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   )
 }

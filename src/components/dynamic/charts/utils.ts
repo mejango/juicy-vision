@@ -102,9 +102,11 @@ export const CHART_COLORS = {
   // Data series colors
   primary: '#F5A623',    // juice-orange
   secondary: '#5CEBDF',  // juice-cyan
-  // Grid (dark mode)
+  // Axis & grid (dark mode)
+  axis: '#666666',
   grid: 'rgba(255,255,255,0.1)',
-  // Grid (light mode)
+  // Axis & grid (light mode)
+  axisLight: '#999999',
   gridLight: 'rgba(0,0,0,0.1)',
   // Token price chart specific
   issuance: '#10b981',   // emerald - issuance price

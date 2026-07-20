@@ -105,6 +105,8 @@ export interface ItemState {
   description: string
   imageUri: string
   mediaType: string
+  _mediaUploading: boolean
+  _mediaError: string
   metaUri: string
   encodedIpfsUri: string
   price: string
@@ -242,7 +244,7 @@ export function itemDraft(): ItemState {
   return {
     expanded: true, advOpen: false,
     name: '', description: '',
-    imageUri: '', mediaType: '', metaUri: '', encodedIpfsUri: '',
+    imageUri: '', mediaType: '', _mediaUploading: false, _mediaError: '', metaUri: '', encodedIpfsUri: '',
     price: '', limited: false, supply: '',
     splitOn: false, splitRecipients: [],
     discountOn: false, discountPct: '',
@@ -251,6 +253,19 @@ export function itemDraft(): ItemState {
     votingOn: false, votingUnits: '',
     flags: { allowOwnerMint: false, transfersPausable: false, cantBeRemoved: false, allowCredits: true, ownerCanEditDiscount: true },
   }
+}
+
+// A pending or failed shop-item media upload must never silently deploy as a name-only onchain tier —
+// the tier is immutable once minted. The `_`-prefixed flags are stripped from exported .jb drafts, so
+// after a reload an unpinned file has to be chosen again.
+export function shopMediaUploadIssue(state: CreateFlowState): string | null {
+  if (!state || state.shopEnabled === false) return null
+  const items = state.nfts || []
+  for (let i = 0; i < items.length; i++) {
+    if (items[i]._mediaUploading) return `Item ${i + 1} media is still uploading.`
+    if (items[i]._mediaError) return `Item ${i + 1} media upload failed. Choose the file again before continuing.`
+  }
+  return null
 }
 
 export function initState(): CreateFlowState {
@@ -306,7 +321,9 @@ export function sanitizeState(state: CreateFlowState): CreateFlowState {
     if (k.charAt(0) === '_' || typeof src[k] === 'function') return
     c[k] = src[k]
   })
-  const clone = JSON.parse(JSON.stringify(c)) as CreateFlowState
+  // Deep clone + strip functions AND nested `_`-prefixed transients at any
+  // depth, so the exported .jb carries only durable config (website parity).
+  const clone = JSON.parse(JSON.stringify(c, (key, val) => (key.charAt(0) === '_' ? undefined : val))) as CreateFlowState
   clone.deploying = false
   clone.statusLines = []
   clone.done = false
@@ -339,7 +356,21 @@ export function mergeDraft(obj: unknown): CreateFlowState | null {
   s.customToken = mergeKnownFields(defaults.customToken, src.customToken)
   if (s.customToken.status === 'loading') s.customToken.status = 'idle'
   s.stages = (Array.isArray(src.stages) && src.stages.length > 0 ? (src.stages as unknown[]) : [null])
-    .map((st) => mergeKnownFields(createStage(), st))
+    .map((st) => {
+      const stage = mergeKnownFields(createStage(), st)
+      // Harden imported payoutByKind: valid modes only, recipients capped (website parity).
+      if (!stage.payoutByKind || typeof stage.payoutByKind !== 'object' || Array.isArray(stage.payoutByKind)) {
+        stage.payoutByKind = {}
+      } else {
+        Object.keys(stage.payoutByKind).forEach((key) => {
+          const pk = stage.payoutByKind[key] as { mode?: unknown; recipients?: unknown } | null
+          if (!pk || typeof pk !== 'object' || Array.isArray(pk)) { delete stage.payoutByKind[key]; return }
+          pk.mode = pk.mode === 'unlimited' || pk.mode === 'limited' ? pk.mode : 'none'
+          pk.recipients = Array.isArray(pk.recipients) ? pk.recipients.slice(0, 100) : []
+        })
+      }
+      return stage
+    })
   s.nfts = (Array.isArray(src.nfts) ? (src.nfts as unknown[]) : []).map((n) => mergeKnownFields(itemDraft(), n))
   // Map imported chain ids into ids this build knows; drop the rest, min 1.
   s.chainIds = (Array.isArray(src.chainIds) ? (src.chainIds as unknown[]).map(Number) : [])
@@ -355,7 +386,7 @@ export function mergeDraft(obj: unknown): CreateFlowState | null {
 }
 
 /** Canonical↔testnet pairs, mirroring the website's CHAIN_PAIRS. */
-const CHAIN_PAIRS: { canon: number; testnet: number }[] = [
+export const CHAIN_PAIRS: { canon: number; testnet: number }[] = [
   { canon: 1, testnet: 11155111 },
   { canon: 10, testnet: 11155420 },
   { canon: 42161, testnet: 421614 },

@@ -25,7 +25,7 @@ import {
   buildDeployTiersConfigFromState,
   buildRevnetStageConfigs,
   DEADLINE_HOOKS,
-  BANNY_LP_SPLIT_HOOK,
+  JBP6_FEE_LP_SPLIT_HOOK,
   FOREVER_SECONDS,
 } from './builders'
 import { ALL_CHAIN_IDS, JB_CONTRACTS, JB_ROUTER_TERMINAL_REGISTRY, NATIVE_TOKEN, ZERO_ADDRESS } from '../../../constants'
@@ -251,7 +251,7 @@ describe('reserved splits', () => {
     expect(sumPercents(group!.splits)).toBe(SPLITS_TOTAL)
   })
 
-  it("routes 'lphook' (fund market) rows to the BannyLPSplitHook", () => {
+  it("routes 'lphook' (fund market) rows to the JBP6FeeLPSplitHook", () => {
     const s = singleChainState()
     s.stages[0].reservedRecipients = [
       { type: 'lphook', address: '', projectId: 0, percent: 5 },
@@ -259,7 +259,7 @@ describe('reserved splits', () => {
     ]
     const [cfg] = buildRulesetConfigsForChain(s, CHAIN_A, 0)
     const group = cfg.splitGroups.find((g) => g.groupId === '1')!
-    expect(group.splits[0].hook).toBe(BANNY_LP_SPLIT_HOOK)
+    expect(group.splits[0].hook).toBe(JBP6_FEE_LP_SPLIT_HOOK)
     expect(group.splits[0].projectId).toBe(0)
     expect(group.splits[1].hook).toBe(ZERO_ADDRESS)
   })
@@ -594,5 +594,29 @@ describe('shop redemption rides ruleset metadata (website parity)', () => {
     const s = singleChainState()
     const [rs] = buildRulesetConfigsForChain(s, CHAIN_A, 0)
     expect(rs.metadata.useDataHookForCashOut).toBe(false)
+  })
+})
+
+describe('canonical per-chain override keys (website ef5fbdf)', () => {
+  it('reads payout amounts from addr[pamt:] and item supplies from addr[isup:]', async () => {
+    const s = singleChainState()
+    s.chainIds = [CHAIN_A, CHAIN_B]
+    s.stages[0].payoutMode = 'limited'
+    s.stages[0].payoutRecipients = [wallet(A1, 0, '1')]
+    s.perChain = { [CHAIN_B]: { addr: { 'pamt:0:0': '2.5' } } }
+    const [rsA] = buildRulesetConfigsForChain(s, CHAIN_A, 0)
+    const [rsB] = buildRulesetConfigsForChain(s, CHAIN_B, 0)
+    expect(rsA.fundAccessLimitGroups[0].payoutLimits[0].amount).toBe(parseEther('1').toString())
+    expect(rsB.fundAccessLimitGroups[0].payoutLimits[0].amount).toBe(parseEther('2.5').toString())
+
+    s.shopEnabled = true
+    const item = itemDraft()
+    item.name = 'Thing'; item.price = '0.01'; item.limited = true; item.supply = '10'
+    s.nfts = [item]
+    s.perChain[CHAIN_B].addr!['isup:0'] = '3'
+    const cfg = await buildDeployTiersConfigFromState(s)
+    const overrides = buildChainConfigOverrides(s, s.chainIds, 0, cfg!.tiersConfig.tiers)
+    const bOverride = overrides.find((o) => o.chainId === CHAIN_B)
+    expect(bOverride?.tiers?.[0].initialSupply).toBe(3)
   })
 })

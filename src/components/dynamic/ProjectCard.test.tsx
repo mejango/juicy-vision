@@ -17,18 +17,24 @@ vi.mock('wagmi', () => ({
 }))
 
 // Mock viem
-vi.mock('viem', () => ({
-  formatEther: vi.fn((val) => (Number(val) / 1e18).toString()),
-  formatUnits: vi.fn((val, decimals) => (Number(val) / Math.pow(10, decimals)).toString()),
-  parseEther: vi.fn((val) => BigInt(Math.floor(Number(val) * 1e18))),
-  parseUnits: vi.fn((val, decimals) => BigInt(Math.floor(Number(val) * Math.pow(10, decimals)))),
-  createPublicClient: vi.fn(() => ({
-    getBalance: vi.fn().mockResolvedValue(BigInt(0)),
-    readContract: mockReadContract,
-  })),
-  http: vi.fn(),
-  erc20Abi: [],
-}))
+// Keep real viem (encode/keccak/event-selector helpers used at module load by
+// ammMarket, now in ProjectCard's graph); only the RPC/format helpers are faked.
+vi.mock('viem', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('viem')>()
+  return {
+    ...actual,
+    formatEther: vi.fn((val) => (Number(val) / 1e18).toString()),
+    formatUnits: vi.fn((val, decimals) => (Number(val) / Math.pow(10, decimals)).toString()),
+    parseEther: vi.fn((val) => BigInt(Math.floor(Number(val) * 1e18))),
+    parseUnits: vi.fn((val, decimals) => BigInt(Math.floor(Number(val) * Math.pow(10, decimals)))),
+    createPublicClient: vi.fn(() => ({
+      getBalance: vi.fn().mockResolvedValue(BigInt(0)),
+      readContract: mockReadContract,
+    })),
+    http: vi.fn(),
+    erc20Abi: [],
+  }
+})
 
 // Mock bendystraw service
 vi.mock('../../services/bendystraw', () => ({
@@ -156,6 +162,10 @@ describe('ProjectCard', () => {
           [],
         ]
       }
+      // Direct-pay currencies come from the project's actual accounting contexts (native ETH here).
+      if (functionName === 'accountingContextsOf') {
+        return [{ token: '0x000000000000000000000000000000000000EEEe', decimals: 18, currency: 61166 }]
+      }
       return 0n
     })
 
@@ -241,7 +251,7 @@ describe('ProjectCard', () => {
       expect(await screen.findByText('You get')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: '568.00 REV' })).toBeInTheDocument()
       expect(screen.getByText('Splits get 348.13 REV')).toBeInTheDocument()
-      expect(screen.getByText('issuance')).toBeInTheDocument()
+      expect(screen.getByText('Issuance')).toBeInTheDocument()
       expect(mockReadContract).toHaveBeenCalledWith(expect.objectContaining({
         functionName: 'previewPayFor',
       }))
@@ -281,6 +291,25 @@ describe('ProjectCard', () => {
       await waitFor(() => {
         const container = document.querySelector('.bg-white')
         expect(container).toBeInTheDocument()
+      })
+    })
+  })
+
+  describe('treasury balance refresh', () => {
+    it('refetches the group balance when a balance-changing tx invalidates project data', async () => {
+      render(<ProjectCard projectId="1" />)
+      await waitFor(() => {
+        expect(bendystraw.fetchSuckerGroupBalance).toHaveBeenCalled()
+      })
+      ;(bendystraw.fetchSuckerGroupBalance as Mock).mockClear()
+
+      // A cash out / payout / pay confirmation fires this; the header must refetch, not wait for a reload.
+      window.dispatchEvent(new CustomEvent('juice:project-data-invalidated', {
+        detail: { chainId: 1, projectId: 1 },
+      }))
+
+      await waitFor(() => {
+        expect(bendystraw.fetchSuckerGroupBalance).toHaveBeenCalledTimes(1)
       })
     })
   })

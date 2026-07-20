@@ -20,11 +20,12 @@ import ParticipantAvatars from './components/chat/ParticipantAvatars'
 import { SettingsPanel } from './components/settings'
 import ErrorBoundary from './components/ui/ErrorBoundary'
 import { useChatStore, useThemeStore, type ChatMember } from './stores'
-import { useTransactionExecutor, useManagedWallet, useIsMobile } from './hooks'
+import { useTransactionExecutor, useManagedWallet, useIsMobile, useSafeApp } from './hooks'
 import { getSessionPseudoAddress, getCachedPseudoAddress } from './services/session'
 import { getWalletSession } from './services/siwe'
 import { useEnsNameResolved } from './hooks'
 import { PaymentReviewModal } from './components/payment'
+import NetworkModeSelect from './components/common/NetworkModeSelect'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -547,11 +548,14 @@ function ActivitySidebar({ onProjectClick }: { onProjectClick: (query: string) =
       <div className={`px-3 py-2 border-b flex items-center justify-between ${
         theme === 'dark' ? 'border-white/10' : 'border-gray-200'
       }`}>
-        <h2 className={`text-sm font-semibold whitespace-nowrap ${
-          theme === 'dark' ? 'text-white' : 'text-gray-900'
-        }`}>
-          {t('ui.liveActivity', 'Live juicy activity')}
-        </h2>
+        <div className="flex items-baseline gap-2.5 min-w-0">
+          <h2 className={`text-sm font-semibold whitespace-nowrap ${
+            theme === 'dark' ? 'text-white' : 'text-gray-900'
+          }`}>
+            {t('ui.liveActivity', 'Live juicy activity')}
+          </h2>
+          <NetworkModeSelect />
+        </div>
         <button
           onClick={handleAddNote}
           className={`p-1 rounded transition-colors ${
@@ -860,6 +864,11 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
 
 // Main chat app component (with hooks)
 function MainApp() {
+  // If opened as a Safe App (inside Safe{Wallet}), detect + connect the Safe on
+  // load so the whole app treats it as the active account and transactions
+  // route to the Safe queue. No-op when not framed by Safe{Wallet}.
+  useSafeApp()
+
   // Pre-fetch pseudo-address from backend on mount (populates cache for all components)
   useEffect(() => {
     getSessionPseudoAddress()

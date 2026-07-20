@@ -1,553 +1,135 @@
-# Juicy Vision Protocol-Truth Audit (2026-07-09)
+# Project-page parity build — website/ tabs + pay card + full transaction surface
 
-**Goal:** Keep the normie-facing experience accountable to v6 contracts and
-Bendystraw, using `website/` as the full-featured reference. Never invite a user
-to sign a transaction that is unavailable, misrouted, misleading, or based on
-stale/incorrect protocol state.
+Branch: `feat/project-page-parity` (isolated worktree at `../juicy-vision-parity`, based on main).
+Goal: juicy-vision project pages copy website/'s tabs and pay-card organization exactly,
+revnet-aware, SDK-backed where possible, with juicy's natural-language explainers as the
+only difference. Every transaction reachable from website/'s project page ships complete
+and safe. Then a full adversarial audit across custom projects and revnets.
 
-## Audit Checklist
+Reference maps (from exploration agents, 2026-07-16):
+- website/src/discover.js is the source (21,948 lines); pay-preview.js, component-base.js.
+- Tab sets — revnet: Overview | Terms | Owners | Shop | Extras | Operator; custom:
+  Overview | Rulesets | Funds | Tokens | Shop | Extras | Owner. Activity first tab on mobile.
+- Owners/Tokens subtabs — revnet: Accounts | Market | Settlement | Splits | Auto Issuance | Loans;
+  custom: Accounts | Market | Settlement | Reserved.
+- 35 transactions inventoried (§3 of the website map in session transcript).
+- Juicy already ships guarded: pay (721/router/credits), cash out, send payouts, surplus
+  allowance, reserved distribution, deploy ERC-20, queue ruleset, set splits, set URI,
+  manage tiers. Missing: claim credits, loans (open/repay), bridge move/claim/execute/sync,
+  LP add/remove/keeper, transfer authority, permissions editor, owner powers, buyback/router
+  config, add accounting context, payer deploy, direct AMM swap, add-to-balance UI entry,
+  copy-project export.
+- SDK (@bananapus/nana-sdk-core 1.2.0, installed): builders for pay/cashout/claim/transfer
+  credits/permissions/suckers (prepare/claim/toRemote)/loans (borrow/repay/reallocate)/
+  revnet reads (cashOutDelay, isRevnetOperator, tiered721Hook)/queue rulesets/splits/
+  deploy ERC-20; full canonical ABIs + addresses for 30 contracts × 8 chains.
+  NOT in SDK: sendPayoutsOf/useAllowanceOf arg builders, permit2 pay flows, LP/UniversalRouter,
+  Safe flows, bendystraw queries (react pkg only).
 
-- [x] Inventory every read model, write action, chain/address source, and AI tool
-- [x] Cross-check transaction encoders and preconditions against v6 interfaces
-- [x] Cross-check indexed fields and derived values against Bendystraw schemas
-- [x] Compare user-facing project/payment/cash-out/owner flows with `website/`
-- [x] Fix correctness and safety issues with focused regression coverage
-- [x] Run frontend and backend type checks/tests plus a production build
-- [x] Exercise critical user journeys in a real browser at desktop and mobile sizes
-- [x] Record findings, fixes, verification, and any residual risks below
+## Doctrine
+- 1:1 with website/ for layout, contents, ordering, copy; juicy explainer sentences
+  (ExplainerMessage + one inline caveat at each action) are additive, never structural.
+- Safety conventions are non-negotiable (from both codebases): reviewed-state fingerprints
+  re-verified after every await, displayed min == submitted min (never 0), simulate before
+  write, quotes re-fetched at submit for pool routes, success dispatches project-updated events.
+- Use SDK ABIs/addresses/builders everywhere they exist; keep juicy plumbing (managed wallet,
+  Relayr hooks, useTransactionExecutor, PaymentReviewModal) as the execution layer.
+- Admin tab is protocol-wide on website (not a project-page tab) — OUT of scope.
+- Safe-owner queue flows: port the Owner-tab Safe cards only if time allows after audit;
+  they need a safe.js equivalent (new infra). Flag in PR if deferred. [decision pending]
+
+## Phases
+
+### Phase 0 — foundation (orchestrator)
+- [x] Worktree + deps install
+- [x] Tab model: flavor-dependent tab sets + hash routing (src/components/project/flavor.ts)
+- [x] Guarded tx runner: src/services/projectTx.ts + src/hooks/useGuardedTx.ts
+      (reverify → approve → simulate → send → confirm; managed + self-custody)
+- [x] Revnet flavor: existing isRevnetProject (owner == REVOwner, website parity) kept
+
+### Phase 1 — parallel batch A (disjoint files)
+- [ ] Pay card reorg (ProjectCard → website pay-card structure: mini-shop strip, mode
+      select pay|add-to-balance, chain+currency selects incl. via-router, preview,
+      direct-swap offer, feedback block, min-received, starts-in gate)
+- [x] Rulesets tab: carousel card (6626c95 — 21 tests: projection math, signature, diffs)
+- [x] Funds tab: per-kind cards (f2d4996 — 9 tests: unlimited sentinel, partial-failure
+      suppression, USDC 6-dec)
+- [x] Overview + Terms tabs (305cd75 — 22 tests: stage decode, issuance cuts)
+- [ ] Extras tab: copy-project .jb export + payer-address card [agent running]
+
+### Phase 2 — parallel batch B
+- [x] Owners/Tokens shell + Accounts subtab (203267d — 19 tests; claim-credits guarded;
+      renderSubtab(id) contract for other subtab builders)
+- [x] Settlement subtab + Move-between-chains (3057765 — 36 tests: merkle vectors,
+      fee escalation, movement classification)
+- [x] Loans (revnet) (31d1018 — 20 tests: permil fee ramp, loan-id churn)
+- [x] Market subtab + LP (6be8914 partial + finish — 36 tests: tick math, counterpart)
+- [x] Splits/Reserved + Auto Issuance (5679f91 — 14 tests)
+- [x] Owner/Operator back office (3f06cf3 — 25 tests; Safe-queue cards deferred)
+
+### Phase 2.5 — graphs (user directive 2026-07-17)
+- [ ] Port ALL website charts in juicy's SVG style: revnet price ladder (issuance +
+      cash-out floor + AMM spot, range buttons), Terms issuance schedule chart;
+      LP depth/composition/ownership charts ride with the Market agent
+- [ ] KEEP juicy-only charts website lacks: VolumeChart + BalanceChart (Funds tab),
+      TokenPriceChart/PriceChart history (Rulesets), HoldersChart (Accounts)
+- [ ] Chart inventory table in PR body
+
+### Phase 3 — integration (orchestrator)
+- [ ] Wire tabs into ProjectDashboard (desktop + mobile), event bus parity
+      (project-updated refresh), header parity (authority per chain, contract warnings,
+      rule-change notice)
+- [ ] Explainer pass: ExplainerMessage intros per tab + inline caveats per action
+- [ ] tsc + full vitest suite + targeted new tests per tx builder
+- [ ] UI smoke on dev server
+
+### Phase 4 — adversarial audit (parallel skeptics)
+- [ ] Tx-safety audit: every ported transaction — min params, fingerprint re-verification,
+      simulation, approval pre-steps, currency/decimals, revnet vs custom
+- [ ] Parity audit: tab-by-tab against website/ source
+- [ ] Revnet-flavor audit: everything §4 of the website map changes
+- [ ] Fix confirmed findings, re-run suite
 
 ## Review
 
-Completed the protocol-truth audit and the recovered maintainability pass.
-
-### Correctness and safety
-
-- Centralized v6 contract, currency, token, and sucker-deployer policy in shared
-  chain/address registries used by both frontend and backend.
-- Added runtime trust checks for projects, terminals, controllers, hooks, split
-  routes, managed-wallet calldata, ERC-20 approvals, rulesets, tiers, revnets,
-  and omnichain mappings, with focused regression tests.
-- Preserved exact accounting semantics for native currency and chain-specific
-  USDC, contract-quoted cash-outs, payout limits, ruleset timing, tier metadata,
-  and per-chain project IDs.
-- Fixed message archival scoping so an ID must belong to the supplied chat, and
-  removed the spoofable Cloud Scheduler header as a cron authentication path.
-- Added database integrity/idempotency migrations for terminal wallets and
-  Relayr bundles.
-
-### Maintainability and efficiency
-
-- Removed duplicate frontend/backend address-registry implementations and
-  replaced backend/frontend copies with thin shared-module exports.
-- Removed dead components, hooks, imports, state, and an unnecessary project
-  fetch; extracted reusable IPFS-media and project-link helpers.
-- Restored unconditional React hook ordering in `TransactionPreview` and removed
-  its lint quarantine.
-- Cached viem read clients and lazy-loaded route-level pages. The main production
-  entry chunk fell from about 2.34 MB to 1.29 MB while preserving all routes.
-- Changed frontend production files lint with zero warnings; the follow-up simple
-  debt pass reduced full-project lint debt from 332 to 69 warnings, with zero
-  errors.
-
-### Verification (2026-07-11)
-
-- Frontend: ESLint passed; `tsc -b` passed; 1,379 unit tests passed with 6
-  skipped; production build passed.
-- Backend/shared changed files: Deno format and lint passed; `deno check main.ts`
-  passed; 290 tests (1,018 steps) passed with 129 environment-dependent tests
-  ignored and zero failures.
-- Browser: exact payment-review/cancel journey passed in Chromium at 1440×900
-  and 390×844; cancellation produced no wallet call.
-
-### Residual risks
-
-- The repository still has 69 non-gating frontend lint warnings: 60 explicit
-  `any` types (mostly test and WebAuthn mocks), 5 Fast Refresh file-layout
-  suggestions, and 4 hook dependency decisions. Fixing these cleanly requires
-  real type modeling, file moves, or behavioral review rather than simple edits.
-- The 1.29 MB main chunk still merits further splitting, but the remaining shared
-  chat/wallet boundary would add loading and dependency complexity; this pass
-  intentionally stops at the existing route-level split.
-- The follow-up parity pass now submits native pay, cash-out, and Add to Balance
-  staging transactions and runs live native/USDC-router/NFT previews. USDC,
-  AMM, NFT-payment, feeless, bundler, and managed-wallet submissions still need
-  fixtures with the required funds and on-chain route state.
-- Browserslist data is stale according to the build warning; dependency metadata
-  can be refreshed separately without coupling it to this audit.
-
-## Recovery and Maintainability Pass (2026-07-11)
-
-- [x] Recover the interrupted worktree and verification artifacts without
-  overwriting in-progress changes
-- [x] Re-run frontend lint, unit tests, type checking, and production build
-- [x] Re-run backend formatting, lint, type checking, and unit tests
-- [x] Review changed production code for duplicated policy, oversized modules,
-  unclear trust boundaries, dead exports, avoidable network work, and unsafe
-  failure handling
-- [x] Refactor high-value findings without reducing supported flows or safety
-  coverage
-- [x] Run focused regressions and critical desktop/mobile browser journeys
-- [x] Record completed audit coverage, verification, and residual risks below
-
-## Simple Debt Pass (2026-07-12)
-
-- [x] Publish the recovered audit baseline before further cleanup
-- [x] Remove clearly dead production imports, state, helpers, and handlers
-- [x] Remove simple unused test bindings without weakening assertions
-- [x] Leave debt that requires new abstractions or behavior changes documented
-- [x] Re-run frontend gates and push the follow-up cleanup
-
-## Common-User Journey Parity Pass (2026-07-12)
-
-- [x] Use the same route-aware `previewPayFor` sequence for Project pay, Pay
-  Credits settlement, PayTerm wallet confirmation, and AI billing
-- [x] Interpret issuance and buyback-hook pay previews through one shared module,
-  with exact issuance floors and AMM-only slippage
-- [x] Use the same hook-aware `previewCashOutFrom` sequence as the complete
-  project journey, including terminal fees, fee-free surplus, feeless
-  beneficiaries, Revnet hooks, buyback metadata, and locked re-previews
-- [x] Cover issuance/AMM, native/USDC-router, NFT metadata, zero/nonzero-tax fee
-  variants, Revnet hooks, and changed/locked previews with parity fixtures
-- [x] Replace spoofable transaction-history CRUD ownership with authenticated
-  user or validated anonymous-session ownership and expose personal history
-- [x] Remove the generic transaction execution shell and align chat prompts and
-  interactions with the dedicated reviewed forms
-- [x] Add managed native pay and native/USDC Add to Balance journeys
-- [x] Add staged tier discounts to the existing owner tier-management journey
-- [x] Replace transaction-modal mainnet-only chain maps with the shared,
-  environment-aware chain registry
-- [x] Exercise live Sepolia native issuance, Revnet treasury cash-out, and Add to
-  Balance transactions; verify exact previews, simulation, receipts, burns, and
-  resulting balances
-- [x] Exercise read-only live fixtures for Sepolia native and USDC/router pay,
-  hook-aware cash-out, and Base Sepolia NFT metadata/current configuration
-- [ ] Submit USDC/router, buyback-AMM, NFT, and feeless cash-out transactions when
-  staging has the required token/gas/permissioned fixture state. The configured
-  signer currently has Sepolia ETH only; no deployed V6 project currently
-  selects an AMM route, and feeless status is protocol-admin controlled.
-
-### Live staging evidence
-
-- Native issuance pay, Sepolia project 7:
-  `0x2cddb897b73caa8c52f3fc8e3ef41d195fc668880b7d412400cd420bb997902b`
-  (15,500,000,000,000,000 tokens previewed and issued exactly)
-- Revnet treasury cash-out, Sepolia project 7:
-  `0x26bb21524904cbc665e7b61918aa08bba5df491dea70012cd2d2bf03fb6b0e7a`
-  (274,124,126,250 wei reclaimed against a 271,382,884,987 wei floor)
-- Native Add to Balance, Sepolia project 7:
-  `0x98638fc4d6e1d6075cde860bee84744b0e5a6a4912d694211538c4d292439c49`
-  (1,000,000,000,000 wei credited exactly)
-- `RUN_CHAIN_INTEGRATION=true` now verifies the current Base Sepolia project 9
-  NFT fixture plus Sepolia native, USDC/router, and cash-out route previews.
-
----
-
-# Cost Management, Vibeengineering, and Security Hardening
-
-## Latest: Reward Tier Creation Flow Improvements
-
-**Status: Complete**
-
-Feedback from user testing on the tier creation conversation flow:
-
-### 1. Display Prices in USD by Default ✓
-- [x] NFTTierCard.tsx - Shows USD primary for USD-based tiers, ETH for ETH-based
-- [x] TierDetailModal.tsx - Same USD-first logic
-- [x] ProjectCard.tsx - Fixed USDC decimals (6, not 18)
-- [x] TransactionPreview.tsx - Already had USD display support
-- [x] Added `isUsdcCurrency()` checks for chain-specific USDC codes
-
-### 2. Tier Media Support ✓
-- [x] ChatInput.tsx already supports image uploads (drag, drop, paste, file picker)
-- [x] GenerateImageButton component for AI image generation
-- [x] TierEditor.tsx uses GenerateImageButton for auto-generation
-- [x] AI prompt in nftTiers.ts instructs to ask for uploads or offer generation
-
-### 3. Limited Supply Handling for Multichain ✓
-- [x] AI prompt updated to ask "How many should be available?" for limited tiers
-- [x] Extended `ChainConfigOverride` in omnichainDeployer.ts with per-chain `tiers` array
-- [x] Updated `buildOmnichainLaunch721RulesetsTransactions()` for per-chain tier filtering
-- [x] Added `TiersChainConfigOverride` to tiersHook.ts for adjustTiers
-- [x] AI prompt documents chain preference: ETH → ARB → BASE → OP
-
-### Files Updated
-- `shared/prompts/transaction/nftTiers.ts` - USD pricing, limited supply, media guidance
-- `src/components/dynamic/TransactionPreview.tsx` - USD display for USDC currencies
-- `src/components/dynamic/NFTTierCard.tsx` - USD-first pricing for USD-based tiers
-- `src/components/dynamic/TierDetailModal.tsx` - USD-first pricing
-- `src/components/dynamic/ProjectCard.tsx` - Fixed USDC decimals, added isUsdcCurrency
-- `src/services/omnichainDeployer.ts` - Per-chain tier configuration support
-- `src/services/tiersHook.ts` - Per-chain tier support for adjustTiers
-
----
-
-## Previous: Shop Owner Controls (Tier Management)
-
-**Status: Complete**
-
-Added owner controls to the Shop tab for managing NFT tiers, including AI prompt updates for chat-based tier management.
-
-### AI Prompt Updates (`shared/prompts/transaction/nftTiers.ts`)
-
-Extended the NFT tiers prompt module to support existing project tier management:
-
-1. **adjustTiers documentation** - Function signature, adding/removing tiers
-2. **setDiscountPercentsOf documentation** - Batch discount updates
-3. **Multi-chain inventory explanation** - Jargon-free guidance: "If you set a limited quantity, each chain will have its own stock. For example, 50 available means 50 on each chain where your project runs."
-4. **Chat flow guidance** - Step-by-step instructions for guiding users through tier operations
-5. **Extended hints** - Added: adjustTiers, add tier, remove tier, delete tier, sell something, setDiscount, discount, sale, price reduction, edit tier, update tier, tier metadata
-
-### UI Implementation
-
-**ShopTab changes (`src/components/dynamic/ShopTab.tsx`):**
-1. Added "Sell something" button (green, top right) for owners - triggers chat flow to add new tier
-2. Added `hasTokenUriResolver()` check to determine if tier metadata can be edited
-3. Added handler functions for tier actions that trigger chat-based flows:
-   - `handleEditMetadata` - Edit tier name/description/image
-   - `handleSetDiscount` - Set discount percentage
-   - `handleRemoveTier` - Remove tier from shop
-
-**NFTTierCard changes (`src/components/dynamic/NFTTierCard.tsx`):**
-1. Added three-dot owner menu with:
-   - **Edit info** - Disabled if hook has tokenUriResolver (on-chain metadata)
-   - **Set discount** - Shows current discount if set
-   - **Remove** - Disabled if `cannotBeRemoved` flag is set
-2. Added click-outside handler to close menu
-3. New props: `hasTokenUriResolver`, `onEditMetadata`, `onSetDiscount`, `onRemoveTier`
-
-**NFT Service changes (`src/services/nft/index.ts`):**
-1. Added `hasTokenUriResolver()` function to check if hook uses on-chain URI resolver
-
-**Conditional Guards:**
-- "Edit info" disabled when hook has tokenUriResolver
-- "Remove" disabled when tier has `cannotBeRemoved` flag
-- "Deploy ERC20" hidden when project already has token
-
----
-
-## Previous: Owner Actions Menu in Project Dashboard
-
-**Status: Complete**
-
-Added a gear icon button next to the "You" badge on the Project Dashboard that opens a dropdown menu with all owner actions:
-
-**Implementation in `src/pages/ProjectDashboard.tsx`:**
-
-1. Extended `ModalType` to include: `reservedTokens`, `deployErc20`, `surplusAllowance`, `manageTiers`, `setSplits`, `setUri`
-2. Added owner action form imports: `SendReservedTokensForm`, `DeployERC20Form`, `UseSurplusAllowanceForm`, `ManageTiersForm`, `SetSplitsForm`, `SetUriForm`
-3. Added `showOwnerMenu` state and `ownerMenuRef` for click-outside handling
-4. Added `hasErc20Token` computed property (from `project.tokenSymbol`)
-5. Added gear icon button next to "You" badge (desktop and mobile layouts)
-6. Added grouped owner actions dropdown menu:
-   - **Funds**: Send Payouts, Use Surplus Allowance
-   - **Tokens**: Send Reserved Tokens, Deploy ERC20 (conditional: only if no token)
-   - **Configuration**: Queue Ruleset, Configure Splits, Update Metadata
-   - **Inventory**: Manage NFT Tiers (conditional: only if hasNftHook)
-7. Added modal wrappers for each form component (desktop and mobile styles)
-
-**Conditional Guards:**
-- Deploy ERC20: Only shown if `!hasErc20Token`
-- Manage NFT Tiers: Only shown if `hasNftHook`
-
----
-
-## Previous: Ruleset Caching for Revnets
-
-**Status: Complete**
-
-Added client-side caching to bendystraw for ruleset history and revnet stages:
-- Revnets: Permanent cache (immutable data)
-- Regular projects: 1-hour TTL cache
-
-**Changes in `src/services/bendystraw/client.ts`:**
-1. Added `rulesetHistoryCache` (TTL), `revnetRulesetHistoryCache` (permanent), `revnetStagesCache` (permanent)
-2. Modified `fetchRevnetStages()` - checks cache first, recomputes time-dependent flags on hit
-3. Modified `fetchRulesetHistory()` - checks both caches, stores in appropriate cache based on project type
-
----
-
-## Completed Tasks
-
-### Phase 1: Cost Management
-
-- [x] **Dynamic Model Selection** (`claude.ts`)
-  - Added `selectModel()` function that chooses between Haiku 3.5 ($1/1M) and Sonnet 4 ($15/1M)
-  - Uses intent detection patterns: complex queries → Sonnet, simple queries → Haiku
-  - Considers tool usage and token count in decision
-
-- [x] **PostgreSQL Rate Limiting** (`claude.ts`, `rateLimit.ts`)
-  - Removed in-memory rate limits from `claude.ts`
-  - Now uses existing `rateLimit.ts` PostgreSQL implementation
-  - Survives restarts, works across instances
-
-- [x] **Token-Based Billing** (`aiBilling.ts`, `config.ts`, `types/index.ts`)
-  - Added `AI_FREE_MODE` environment variable (default: `true` for beta)
-  - Added `calculateTokenCost()` for per-model cost calculation
-  - Updated `deductAiCost()` to use actual token counts
-
-### Phase 2: Security Hardening
-
-- [x] **Per-Tool Rate Limits** (`rateLimit.ts`)
-  - Added limits for sensitive AI tools:
-    - `pin_to_ipfs`: 10/hour
-    - `execute_bridge_transaction`: 5/hour
-    - `prepare_bridge_transaction`: 20/hour
-    - `claim_bridge_transaction`: 20/hour
-  - Added `checkToolRateLimit()` helper function
-
-- [x] **GraphQL Query Sanitization** (`omnichain.ts`)
-  - Added `sanitizeForGraphQL()` function
-  - Removes quotes, backslashes, and control characters
-  - Limits query length to 100 chars
-
-- [x] **Structured Error Types** (`errors/AppError.ts`)
-  - Created `AppError` base class with code, message, statusCode
-  - Added specialized errors: `RateLimitError`, `AuthError`, `ForbiddenError`, `NotFoundError`, `ValidationError`, `ConflictError`, `ExternalServiceError`, `CircuitBreakerError`, `InsufficientBalanceError`
-  - Added `isAppError()` type guard
-
-- [x] **Global Error Handler** (`main.ts`)
-  - Updated `app.onError()` to detect `AppError` instances
-  - Returns structured JSON with error code and proper status
-  - Sets `Retry-After` header for rate limits
-
-### Phase 3: Code Hardening
-
-- [x] **Circuit Breaker** (`utils/circuitBreaker.ts`)
-  - Created `CircuitBreaker` class with closed/open/half-open states
-  - Pre-configured breakers for: Bendystraw, IPFS, Juicerkle, MCP Docs
-  - Added `getAllCircuitStats()` for monitoring
-
-### Phase 4: AI Confidence Escalation System
-
-- [x] **Confidence Signal in Prompts** (`shared/prompts.ts`)
-  - Added confidence signal instruction to BASE_PROMPT
-  - AI now ends responses with `<confidence level="high|medium|low" reason="..."/>`
-  - Low confidence triggers user-facing uncertainty message
-
-- [x] **Confidence Parsing** (`backend/src/services/claude.ts`)
-  - Added `parseConfidence()` function to extract and strip confidence tags
-  - Returns cleaned content and confidence metadata
-
-- [x] **Escalation Service** (`backend/src/services/escalation.ts`)
-  - `createEscalation()` - Auto-create on low confidence
-  - `getEscalationQueue()` - List pending for admin with filtering
-  - `getEscalation()` - Get single with conversation context
-  - `resolveEscalation()` - Admin marks approved/corrected
-  - `getEscalationStats()` - Queue statistics
-
-- [x] **Trending Context Service** (`backend/src/services/trendingContext.ts`)
-  - Fetches top 10 projects from Bendystraw by trendingScore
-  - Caches in PostgreSQL with 1-hour TTL
-  - Injects into AI system prompt to prevent hallucination
-
-- [x] **Context Manager Update** (`backend/src/services/contextManager.ts`)
-  - Imports trending context and injects into buildEnhancedSystemPrompt
-
-- [x] **Admin Escalation Routes** (`backend/src/routes/admin.ts`)
-  - GET `/admin/escalations` - Queue with filtering
-  - GET `/admin/escalations/stats` - Queue statistics
-  - GET `/admin/escalations/:id` - Detail with context
-  - POST `/admin/escalations/:id/resolve` - Resolve escalation
-
-- [x] **Trending Refresh Cron** (`backend/src/routes/cron.ts`)
-  - POST `/cron/trending` - Hourly refresh of trending projects
-
-- [x] **Chat Flow Integration** (`backend/src/routes/chat.ts`)
-  - Parses confidence from AI responses
-  - Stores confidence metadata with messages
-  - Auto-creates escalations for low-confidence responses
-
-- [x] **Admin UI: EscalationsPage** (`src/admin/pages/EscalationsPage.tsx`)
-  - Stats cards (pending, approved, corrected, avg review time)
-  - Filterable table by status
-  - Click to view details
-
-- [x] **Admin UI: EscalationViewer** (`src/admin/components/EscalationViewer.tsx`)
-  - Shows user query, AI response, confidence reason
-  - Displays surrounding conversation context
-  - Approve/correct actions with notes
-
-- [x] **Admin Navigation** (`src/admin/AdminApp.tsx`, `src/admin/AdminLayout.tsx`)
-  - Added escalations route and navigation link
-
-- [x] **Database Migration** (`backend/src/db/migrations/004_escalation.sql`)
-  - Added ai_confidence, ai_confidence_reason to multi_chat_messages
-  - Created ai_escalations table
-  - Created context_cache table for trending data
-
-### Phase 5: Specialist Knowledge Routing System
-
-- [x] **Sub-Module System** (`shared/prompts/transaction/*.ts`)
-  - Decomposed TRANSACTION_CONTEXT (8k tokens) into 10 granular modules (~200-1500 tokens each)
-  - Created: chains, v6Addresses, terminals, splitsLimits, nftTiers, revnetParams, rulesets, deployment, metadata
-  - Each module has its own hints, token estimate, and description
-
-- [x] **Sub-Module Aggregator** (`shared/prompts/index.ts`, `shared/prompts/transaction/index.ts`)
-  - Module registry with `TRANSACTION_SUB_MODULES` array
-  - `matchSubModulesByKeywords()` for keyword-based selection
-  - `buildTransactionContext()` to assemble selected modules
-  - `estimateSubModuleTokens()` for token counting
-
-- [x] **Context Manager Updates** (`backend/src/services/contextManager.ts`)
-  - Extended `DetectedIntents` with `transactionSubModules` field
-  - `detectIntentsWithContext()` now detects granular sub-modules
-  - `buildModularPromptWithSubModules()` for token-efficient prompts
-  - Updated `buildEnhancedSystemPrompt()` with `useSubModules` option
-
-- [x] **Intent Embeddings Migration** (`backend/src/db/migrations/005_intent_embeddings.sql`)
-  - pgvector extension for similarity search
-  - `intent_embeddings` table with domain, sub_module, embedding vector(1024)
-  - IVFFlat index for fast approximate nearest neighbor search
-
-- [x] **Embedding Service** (`backend/src/services/embeddingService.ts`)
-  - Voyage AI API wrapper for generating embeddings
-  - In-memory LRU cache for embedding results
-  - Batch embedding support for seeding
-  - Cosine similarity calculation
-
-- [x] **Semantic Intent Detection** (`backend/src/services/intentDetection.ts`)
-  - Hybrid semantic + keyword intent detection
-  - `detectSemanticIntents()` queries pgvector for similar intents
-  - Combines with keyword matching for fallback/boost
-  - `seedIntentEmbeddings()` for populating the database
-
-- [x] **Intent Metrics** (`backend/src/db/migrations/006_intent_metrics.sql`, `backend/src/services/intentMetrics.ts`)
-  - `intent_detection_metrics` table for per-invocation logging
-  - `intent_detection_stats` table for aggregated statistics
-  - `logIntentDetection()`, `updateIntentMetrics()` for tracking
-  - `aggregateHourlyStats()`, `aggregateDailyStats()` for cron jobs
-  - `getStatsSummary()`, `getTopSubModules()` for analytics
-
-- [x] **MCP Server Integration** (`.claude/plugins/jb-knowledge/.mcp.json`)
-  - Registered existing docs.juicebox.money MCP server
-  - Provides: search_docs, get_doc, get_contract_addresses, get_sdk_reference, etc.
-
-- [x] **Chat Route Integration** (`backend/src/routes/chat.ts`)
-  - Enabled sub-module loading in `buildEnhancedPrompt()`
-  - Intent metrics logging on each AI invocation
-  - AI confidence level tracking in metrics
-
-- [x] **Cron Job** (`backend/src/routes/cron.ts`)
-  - Added `/cron/intent-metrics/aggregate` endpoint
-  - Hourly aggregation with daily rollup at midnight
-  - Cleanup of old detailed metrics (30-day retention)
-
-## Expected Outcomes
-
-| Metric | Before | After |
-|--------|--------|-------|
-| Avg tokens per request | ~14,500 | ~8,500 (-41%) |
-| Intent detection accuracy | ~70% (keyword) | ~90% (hybrid) |
-| Time to add new domain | Modify prompts.ts | Add sub-module or use MCP |
-
-## Deferred Tasks
-
-- [ ] Split `chat.ts` (1,484 lines) → 4 files
-- [ ] Split `smartAccounts.ts` (1,783 lines) → 3 files
-
-## Verification Results
-
-- [x] TypeScript compiles: `npx tsc --noEmit` ✓
-- [x] All modified files pass type check ✓
-
-## Files Modified
-
-| File | Changes |
-|------|---------|
-| `services/claude.ts` | Model selection, PostgreSQL rate limits, confidence parsing |
-| `services/aiBilling.ts` | Token-based billing, env var control |
-| `services/rateLimit.ts` | Tool-specific rate limits |
-| `services/omnichain.ts` | GraphQL sanitization |
-| `services/contextManager.ts` | Trending context injection |
-| `routes/admin.ts` | Escalation endpoints |
-| `routes/cron.ts` | Trending refresh job |
-| `routes/chat.ts` | Confidence integration |
-| `shared/prompts.ts` | Confidence signal instruction |
-| `utils/config.ts` | Added `aiFreeMode` config |
-| `types/index.ts` | Added `aiFreeMode` to `EnvConfig` |
-| `main.ts` | Structured error handling |
-| `src/admin/AdminApp.tsx` | Escalations route |
-| `src/admin/AdminLayout.tsx` | Escalations nav link |
-
-## New Files
-
-| File | Purpose |
-|------|---------|
-| `errors/AppError.ts` | Structured error types |
-| `utils/circuitBreaker.ts` | Circuit breaker for external services |
-| `backend/src/services/escalation.ts` | Escalation queue logic |
-| `backend/src/services/trendingContext.ts` | Fetch/cache trending projects |
-| `backend/src/db/migrations/004_escalation.sql` | Schema changes |
-| `src/admin/pages/EscalationsPage.tsx` | Admin queue UI |
-| `src/admin/components/EscalationViewer.tsx` | Detail view |
-
----
-
-# E2E Testing Architecture Implementation
-
-## Status: Complete
-
-Implemented a comprehensive E2E testing system with two complementary approaches:
-1. **Playwright E2E Suite** - Deterministic regression tests
-2. **AI UX Tester Bot** - Claude-powered exploratory testing
-
-## Completed Tasks
-
-- [x] **Test Fixtures** (`e2e/fixtures/`)
-  - `auth.ts` - Managed wallet and self-custody auth strategies
-  - `api.ts` - API response fixtures for deterministic tests
-  - `test-wallet.ts` - Mock wallet provider for testing
-
-- [x] **Test Helpers** (`e2e/helpers/`)
-  - `chat.ts` - Chat interaction helpers
-  - `components.ts` - Component interaction helpers
-  - `wallet.ts` - Wallet connection utilities
-
-- [x] **E2E Flow Tests** (`e2e/flows/`)
-  - `project-creation.spec.ts` - Chat→deploy flow
-  - `store-management.spec.ts` - Tier management
-  - `dashboard.spec.ts` - Dashboard navigation
-
-- [x] **API Tests** (`e2e/api-tests/`)
-  - `chat-api.spec.ts` - Chat endpoint tests
-  - `project-api.spec.ts` - Project endpoint tests
-  - `tier-api.spec.ts` - Tier management tests
-
-- [x] **UX Bot** (`e2e/ux-bot/`)
-  - `agent.ts` - Claude orchestrator
-  - `driver.ts` - Playwright actions
-  - `analyzer.ts` - Page analysis
-  - `reporter.ts` - HTML/JSON reports
-  - `api-client.ts` - API testing
-
-- [x] **Configuration**
-  - `playwright.config.ts` - Added projects
-  - `package.json` - New npm scripts
-
-## NPM Scripts
-
-```bash
-npm run test:e2e          # All E2E tests
-npm run test:e2e:flow     # Flow tests only
-npm run test:e2e:api      # API tests only
-npm run test:ux-bot       # UX Bot tests
-npm run test:ux-bot:scenario  # Custom scenario
-```
-
-## New File Structure
-
-```
-e2e/
-├── fixtures/             # Auth, API, wallet mocks
-├── helpers/              # Reusable test utilities
-├── flows/                # User journey tests
-├── api-tests/            # Direct API tests
-├── mocks/                # JSON test data
-├── ux-bot/               # AI testing agent
-│   ├── agent.ts
-│   ├── driver.ts
-│   ├── analyzer.ts
-│   ├── reporter.ts
-│   └── scenarios/
-└── ux-bot.spec.ts        # Bot entry point
-```
+Build complete + wired (PR #26). 1,690 tests pass; tsc + eslint clean. 16 commits.
+
+### Audit status — PARTIAL (session limit hit)
+8 adversarial agents launched (tx-safety, parity, revnet semantics, integration);
+ALL terminated on the session limit (resets 2:20am). Completed a manual pass on
+the highest-risk invariants instead:
+- Guarded runner sound: 2nd reverify after switch+approval; exact-amount approval
+  re-read; managed-mode does NOT race (backend waitForTransactionReceipt blocks);
+  account/chain drift aborts at send.
+- CRITICAL regression found + FIXED (ce5d4d2): mobile lost the pay/cash-out card
+  (old mobile About tab embedded ProjectCard; renderTabs didn't). Restored.
+- switch-tab 'tokens'→'owners' remap for revnets: correct.
+- No dangerouslySetInnerHTML in ported tabs; loans have no interest-rate language;
+  no hardcoded-18-dec in owner subtabs; loans grant BURN_TOKENS not SDK ROOT.
+
+### Manual audit round 2 — findings FOUND + FIXED
+- **CRITICAL** mobile pay card missing (ce5d4d2) — restored.
+- **HIGH** per-chain projectId ignored for reserved distribute / pending / auto-issue
+  (2aa3d1b) — threaded ChainProject[]; V6 ids differ per chain, home id off-home
+  hit the wrong project (permissionless tx). Tests updated.
+- **HIGH** loan/move/add-liquidity modals were built but NEVER MOUNTED — unreachable
+  (f105b44). AccountsSubtab now self-mounts all three. Same commit: OpenLoanModal
+  used home revnetId despite a chain selector → per-chain revnetIdFor.
+- **MED** open-loan floor recomputed from a fresh quote and sent without re-display
+  (c947954) — now uses the reviewed quote, aborts on drop (matches sibling modals).
+
+### STILL TODO before merge
+- **Per-chain projectId in suckerBridge (MoveChainsModal + SettlementSubtab)** — same
+  class as 2aa3d1b: both use home project.projectId with a user-selected source chain.
+  Lower risk (Settlement = display reads; MoveChains sucker resolution fails safe —
+  `prepare` takes no projectId, only readSuckerPairsOf does), but should thread
+  per-chain ids through suckerBridge.ts. Follow-up, not started (budget).
+- Re-run the full 4-agent adversarial audit after the session limit resets; the
+  manual passes were not exhaustive (tab-by-tab parity + remaining tx paths).
+
+### Deferred (flagged in PR, not bugs)
+Safe-queue cards; direct-swap execution (link-out); LP partial-exit; copy-project
+refuses on 721 shops.
+
+### Upstream
+SDK loans.d.ts REVLOANS_PERMISSION_ID=1 (ROOT) is wrong for borrow — fix in juice-sdk-v4.
