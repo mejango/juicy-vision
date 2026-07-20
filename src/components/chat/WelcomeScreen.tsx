@@ -992,7 +992,6 @@ interface Trait {
   id: TraitId
   label: string
   keywords: string[] // suggestions containing these words match this trait
-  expanded?: boolean // only show when expanded
 }
 
 const traits: Trait[] = [
@@ -2272,6 +2271,8 @@ const SAFE_TRAIT_IDS = new Set<TraitId>([
 ])
 
 const welcomeTraits = traits.filter(trait => SAFE_TRAIT_IDS.has(trait.id))
+// Trait labels for mixing into suggestions and category detection
+const traitLabels = welcomeTraits.map(trait => trait.label)
 const welcomeSuggestions = allSuggestions.filter(suggestion => SAFE_WELCOME_SUGGESTIONS.has(suggestion))
 
 // POPULAR (cyan) - Entry points, universal appeal, high-value starting questions
@@ -2798,10 +2799,53 @@ function shuffle<T>(array: T[]): T[] {
 
 // Pre-computed chip data for performance
 interface ChipData {
-  text: string
   displayText: string
   isCategory: boolean
   badgeType: 'id' | 'bold' | 'popular' | 'pro' | 'demo' | 'fun' | null
+}
+
+type BadgeType = Exclude<ChipData['badgeType'], null>
+
+// Chip button classes keyed by (isCategory ? 'id' : badgeType), falling back to 'default'
+const CHIP_CLASSES: Record<string, { dark: string; light: string }> = {
+  id: {
+    dark: 'bg-yellow-500/20 border-yellow-400/50 text-yellow-300 font-medium hover:bg-yellow-500/35 hover:border-yellow-400',
+    light: 'bg-yellow-50 border-yellow-500/50 text-yellow-700 font-medium hover:bg-yellow-100 hover:border-yellow-500',
+  },
+  bold: {
+    dark: 'bg-purple-500/25 border-purple-400/50 text-purple-300 hover:bg-purple-500/40 hover:border-purple-400',
+    light: 'bg-purple-50 border-purple-400/50 text-purple-700 hover:bg-purple-100 hover:border-purple-500',
+  },
+  popular: {
+    dark: 'bg-juice-cyan/20 border-juice-cyan/40 text-juice-cyan hover:bg-juice-cyan/35 hover:border-juice-cyan',
+    light: 'bg-juice-cyan/10 border-juice-cyan/50 text-teal-700 hover:bg-juice-cyan/20 hover:border-teal-500',
+  },
+  pro: {
+    dark: 'bg-juice-orange/20 border-juice-orange/40 text-juice-orange hover:bg-juice-orange/35 hover:border-juice-orange',
+    light: 'bg-orange-50 border-juice-orange/50 text-orange-700 hover:bg-orange-100 hover:border-orange-500',
+  },
+  demo: {
+    dark: 'bg-pink-500/20 border-pink-400/40 text-pink-300 hover:bg-pink-500/35 hover:border-pink-400',
+    light: 'bg-pink-50 border-pink-400/50 text-pink-700 hover:bg-pink-100 hover:border-pink-500',
+  },
+  fun: {
+    dark: 'bg-green-500/20 border-green-400/40 text-green-300 hover:bg-green-500/35 hover:border-green-400',
+    light: 'bg-green-50 border-green-400/50 text-green-700 hover:bg-green-100 hover:border-green-500',
+  },
+  default: {
+    dark: 'bg-gray-700/40 border-white/10 text-gray-300 hover:bg-gray-600/50 hover:border-white/25 hover:text-white',
+    light: 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-900',
+  },
+}
+
+// Badge <span> class + label per badgeType
+const BADGE_META: Record<BadgeType, { cls: string; tKey: string; label: string }> = {
+  id: { cls: 'text-[10px] uppercase tracking-wide font-semibold text-yellow-400', tKey: 'badges.id', label: 'id' },
+  bold: { cls: 'text-[10px] uppercase tracking-wide font-semibold text-purple-400', tKey: 'badges.bold', label: 'bold' },
+  popular: { cls: 'text-[10px] uppercase tracking-wide text-juice-cyan/70', tKey: 'badges.popular', label: 'popular' },
+  pro: { cls: 'text-[10px] uppercase tracking-wide font-semibold text-yellow-400', tKey: 'badges.pro', label: 'pro' },
+  demo: { cls: 'text-[10px] uppercase tracking-wide font-semibold text-pink-400', tKey: 'badges.demo', label: 'demo' },
+  fun: { cls: 'text-[10px] uppercase tracking-wide font-semibold text-green-400', tKey: 'badges.fun', label: 'fun' },
 }
 
 // Memoized chip component to avoid re-renders during scroll
@@ -2820,33 +2864,9 @@ const ChipButton = memo(function ChipButton({
   const isDark = theme === 'dark'
   const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null)
 
-  const className = isCategory
-    ? isDark
-      ? 'bg-yellow-500/20 border-yellow-400/50 text-yellow-300 font-medium hover:bg-yellow-500/35 hover:border-yellow-400'
-      : 'bg-yellow-50 border-yellow-500/50 text-yellow-700 font-medium hover:bg-yellow-100 hover:border-yellow-500'
-    : badgeType === 'bold'
-      ? isDark
-        ? 'bg-purple-500/25 border-purple-400/50 text-purple-300 hover:bg-purple-500/40 hover:border-purple-400'
-        : 'bg-purple-50 border-purple-400/50 text-purple-700 hover:bg-purple-100 hover:border-purple-500'
-      : badgeType === 'popular'
-        ? isDark
-          ? 'bg-juice-cyan/20 border-juice-cyan/40 text-juice-cyan hover:bg-juice-cyan/35 hover:border-juice-cyan'
-          : 'bg-juice-cyan/10 border-juice-cyan/50 text-teal-700 hover:bg-juice-cyan/20 hover:border-teal-500'
-        : badgeType === 'pro'
-          ? isDark
-            ? 'bg-juice-orange/20 border-juice-orange/40 text-juice-orange hover:bg-juice-orange/35 hover:border-juice-orange'
-            : 'bg-orange-50 border-juice-orange/50 text-orange-700 hover:bg-orange-100 hover:border-orange-500'
-          : badgeType === 'demo'
-            ? isDark
-              ? 'bg-pink-500/20 border-pink-400/40 text-pink-300 hover:bg-pink-500/35 hover:border-pink-400'
-              : 'bg-pink-50 border-pink-400/50 text-pink-700 hover:bg-pink-100 hover:border-pink-500'
-            : badgeType === 'fun'
-              ? isDark
-                ? 'bg-green-500/20 border-green-400/40 text-green-300 hover:bg-green-500/35 hover:border-green-400'
-                : 'bg-green-50 border-green-400/50 text-green-700 hover:bg-green-100 hover:border-green-500'
-              : isDark
-                ? 'bg-gray-700/40 border-white/10 text-gray-300 hover:bg-gray-600/50 hover:border-white/25 hover:text-white'
-                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50 hover:border-gray-400 hover:text-gray-900'
+  const chipKey = isCategory ? 'id' : badgeType
+  const chipVariant = (chipKey && CHIP_CLASSES[chipKey]) || CHIP_CLASSES.default
+  const className = isDark ? chipVariant.dark : chipVariant.light
 
   // Handle touch start - record position for drag detection
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -2885,34 +2905,9 @@ const ChipButton = memo(function ChipButton({
       style={{ height: CHIP_HEIGHT }}
     >
       {displayText}
-      {badgeType === 'id' && (
-        <span className="text-[10px] uppercase tracking-wide font-semibold text-yellow-400">
-          {t('badges.id', 'id')}
-        </span>
-      )}
-      {badgeType === 'bold' && (
-        <span className="text-[10px] uppercase tracking-wide font-semibold text-purple-400">
-          {t('badges.bold', 'bold')}
-        </span>
-      )}
-      {badgeType === 'popular' && (
-        <span className="text-[10px] uppercase tracking-wide text-juice-cyan/70">
-          {t('badges.popular', 'popular')}
-        </span>
-      )}
-      {badgeType === 'pro' && (
-        <span className="text-[10px] uppercase tracking-wide font-semibold text-yellow-400">
-          {t('badges.pro', 'pro')}
-        </span>
-      )}
-      {badgeType === 'demo' && (
-        <span className="text-[10px] uppercase tracking-wide font-semibold text-pink-400">
-          {t('badges.demo', 'demo')}
-        </span>
-      )}
-      {badgeType === 'fun' && (
-        <span className="text-[10px] uppercase tracking-wide font-semibold text-green-400">
-          {t('badges.fun', 'fun')}
+      {badgeType && BADGE_META[badgeType] && (
+        <span className={BADGE_META[badgeType].cls}>
+          {t(BADGE_META[badgeType].tKey, BADGE_META[badgeType].label)}
         </span>
       )}
     </button>
@@ -2944,9 +2939,6 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
       transformRef.current.style.transform = `translate(${offsetRef.current.x}px, ${offsetRef.current.y}px) scale(${scaleRef.current})`
     }
   }, [])
-
-  // Get trait labels for mixing into suggestions
-  const traitLabels = welcomeTraits.map(t => t.label)
 
   // Shuffled base list - random on each page load
   const shuffledBase = useMemo(() => {
@@ -2993,7 +2985,6 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
   // Pre-compute chip data for all suggestions (avoids recalculation during scroll)
   const chipDataMap = useMemo(() => {
     const map = new Map<string, ChipData>()
-    const traitLabels = welcomeTraits.map(tr => tr.label)
 
     filteredSuggestions.forEach(suggestion => {
       const isCategory = traitLabels.includes(suggestion)
@@ -3017,7 +3008,6 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
       }
 
       map.set(suggestion, {
-        text: suggestion,
         displayText,
         isCategory,
         badgeType,
@@ -3053,12 +3043,11 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
 
   // Use refs + document-level listeners for reliable dragging
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isDraggingRef.current) return
-
-      // Calculate distance from initial mouse position
-      const dx = e.clientX - mouseStartRef.current.x
-      const dy = e.clientY - mouseStartRef.current.y
+    // Shared single-pointer pan: threshold check + offset update + DOM sync
+    const applyPan = (clientX: number, clientY: number) => {
+      // Calculate distance from initial pointer position
+      const dx = clientX - mouseStartRef.current.x
+      const dy = clientY - mouseStartRef.current.y
       const distance = Math.sqrt(dx * dx + dy * dy)
 
       // Only consider it a drag if movement exceeds threshold
@@ -3067,13 +3056,18 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
       }
 
       offsetRef.current = {
-        x: e.clientX - dragStartRef.current.x,
-        y: e.clientY - dragStartRef.current.y,
+        x: clientX - dragStartRef.current.x,
+        y: clientY - dragStartRef.current.y,
       }
       // Direct DOM update for smooth scrolling (no React re-render)
       updateTransform()
       // Schedule state sync for visibility calculations
       scheduleSyncState()
+    }
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDraggingRef.current) return
+      applyPan(e.clientX, e.clientY)
     }
 
     const handleMouseUp = () => {
@@ -3106,25 +3100,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
       if (!isDraggingRef.current) return
 
       const touch = e.touches[0]
-
-      // Calculate distance from initial touch position
-      const dx = touch.clientX - mouseStartRef.current.x
-      const dy = touch.clientY - mouseStartRef.current.y
-      const distance = Math.sqrt(dx * dx + dy * dy)
-
-      // Only consider it a drag if movement exceeds threshold
-      if (distance > DRAG_THRESHOLD) {
-        hasDraggedRef.current = true
-      }
-
-      offsetRef.current = {
-        x: touch.clientX - dragStartRef.current.x,
-        y: touch.clientY - dragStartRef.current.y,
-      }
-      // Direct DOM update for smooth scrolling (no React re-render)
-      updateTransform()
-      // Schedule state sync for visibility calculations
-      scheduleSyncState()
+      applyPan(touch.clientX, touch.clientY)
     }
 
     const handleTouchEnd = () => {
@@ -3185,25 +3161,23 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
     }
   }, [updateTransform, scheduleSyncState])
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const beginDrag = (clientX: number, clientY: number) => {
     isDraggingRef.current = true
     hasDraggedRef.current = false
-    mouseStartRef.current = { x: e.clientX, y: e.clientY }
+    mouseStartRef.current = { x: clientX, y: clientY }
     dragStartRef.current = {
-      x: e.clientX - offsetRef.current.x,
-      y: e.clientY - offsetRef.current.y,
+      x: clientX - offsetRef.current.x,
+      y: clientY - offsetRef.current.y,
     }
+  }
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    beginDrag(e.clientX, e.clientY)
   }
 
   const handleTouchStart = (e: React.TouchEvent) => {
     const touch = e.touches[0]
-    isDraggingRef.current = true
-    hasDraggedRef.current = false
-    mouseStartRef.current = { x: touch.clientX, y: touch.clientY }
-    dragStartRef.current = {
-      x: touch.clientX - offsetRef.current.x,
-      y: touch.clientY - offsetRef.current.y,
-    }
+    beginDrag(touch.clientX, touch.clientY)
   }
 
   const handleShuffle = () => {
