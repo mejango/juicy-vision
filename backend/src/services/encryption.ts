@@ -154,41 +154,6 @@ export async function generateKeypair(): Promise<Keypair> {
   };
 }
 
-/**
- * Derive a shared secret from two keypairs (for future direct messaging)
- */
-export async function deriveSharedSecret(
-  privateKeyBase64: string,
-  publicKeyBase64: string
-): Promise<Uint8Array> {
-  const privateKeyBytes = fromBase64(privateKeyBase64);
-  const publicKeyBytes = fromBase64(publicKeyBase64);
-
-  const privateKey = await crypto.subtle.importKey(
-    'pkcs8',
-    privateKeyBytes.buffer as ArrayBuffer,
-    { name: 'ECDH', namedCurve: 'P-256' },
-    false,
-    ['deriveBits']
-  );
-
-  const publicKey = await crypto.subtle.importKey(
-    'raw',
-    publicKeyBytes.buffer as ArrayBuffer,
-    { name: 'ECDH', namedCurve: 'P-256' },
-    false,
-    []
-  );
-
-  const sharedBits = await crypto.subtle.deriveBits(
-    { name: 'ECDH', public: publicKey },
-    privateKey,
-    256
-  );
-
-  return new Uint8Array(sharedBits);
-}
-
 // ============================================================================
 // Symmetric Encryption (AES-GCM)
 // ============================================================================
@@ -350,16 +315,6 @@ export async function getOrCreateUserKeypair(userId: string): Promise<EncryptedK
   const existing = await getUserKeypair(userId);
   if (existing) return existing;
   return createUserKeypair(userId);
-}
-
-/**
- * Decrypt a user's private key (server-side only, for managed wallets)
- */
-export async function getUserPrivateKey(userId: string): Promise<string | null> {
-  const keypair = await getUserKeypair(userId);
-  if (!keypair) return null;
-
-  return decryptPrivateKey(keypair.encryptedPrivateKey);
 }
 
 // ============================================================================

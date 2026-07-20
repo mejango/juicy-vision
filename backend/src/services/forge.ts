@@ -1,5 +1,4 @@
-import { query, queryOne, execute } from '../db/index.ts';
-import { createHash } from 'node:crypto';
+import { queryOne, execute } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
 import { computeFilesHash } from './hookProjects.ts';
 
@@ -713,42 +712,4 @@ export function isAllowedRpcMethod(method: string): boolean {
 
 export function getRpcUrl(chainId: number): string | null {
   return SUPPORTED_CHAINS[chainId] || null;
-}
-
-export async function proxyRpcRequest(
-  chainId: number,
-  method: string,
-  params: unknown[]
-): Promise<unknown> {
-  if (!isAllowedRpcMethod(method)) {
-    throw new Error(`RPC method not allowed: ${method}`);
-  }
-
-  const rpcUrl = getRpcUrl(chainId);
-  if (!rpcUrl) {
-    throw new Error(`Unsupported chain: ${chainId}`);
-  }
-
-  const response = await fetch(rpcUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method,
-      params,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`RPC request failed: ${response.status}`);
-  }
-
-  const data = await response.json();
-
-  if (data.error) {
-    throw new Error(`RPC error: ${data.error.message}`);
-  }
-
-  return data.result;
 }

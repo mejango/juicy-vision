@@ -15,7 +15,6 @@
     "hono/logger": "npm:hono@4/logger",
     "hono/secure-headers": "npm:hono@4/secure-headers",
     "hono/timing": "npm:hono@4/timing",
-    "hono/deno": "npm:hono@4/deno",
     "@hono/zod-validator": "npm:@hono/zod-validator@0.4.3",
     "zod": "npm:zod@3",
     "jose": "npm:jose@5",
@@ -24,7 +23,6 @@
     "viem/accounts": "npm:viem@2/accounts",
     "@anthropic-ai/sdk": "npm:@anthropic-ai/sdk@0.39",
     "postgres": "https://deno.land/x/postgres@v0.19.3/mod.ts",
-    "bcrypt": "https://deno.land/x/bcrypt@v0.4.1/mod.ts",
     "std/": "https://deno.land/std@0.224.0/"
   },
   "compilerOptions": {

@@ -683,6 +683,9 @@ async function requireRulesetConfigurations(
 ): Promise<void> {
   if (configurations.length === 0) throw new Error('At least one ruleset is required');
   const client = getPublicClient(chainId);
+  const acceptedCurrencies = new Set(
+    [...acceptedTokens].map((token) => tokenCurrency(token as Address).toString()),
+  );
   for (let index = 0; index < configurations.length; index++) {
     const configuration = configurations[index];
     const prefix = `rulesets[${index}]`;
@@ -710,9 +713,6 @@ async function requireRulesetConfigurations(
     if (cashOutTaxRate < 0n || cashOutTaxRate > 10_000n) {
       throw new Error(`${prefix} has an invalid cash-out curve rate`);
     }
-    const acceptedCurrencies = new Set(
-      [...acceptedTokens].map((token) => tokenCurrency(token as Address).toString()),
-    );
     if (!acceptedCurrencies.has(asBigInt(configuration.metadata.baseCurrency).toString())) {
       throw new Error(`${prefix} base currency is not tied to a recognized live accounting token`);
     }
@@ -1486,16 +1486,10 @@ async function requireCurrentTiersHook(
   if (directory.toLowerCase() !== ROOTS.directory.toLowerCase()) {
     throw new Error(`Hook not recognized: ${target}`);
   }
-  await requireControllerTarget(
-    chainId,
-    projectId,
-    await client.readContract({
-      address: ROOTS.directory,
-      abi: DIRECTORY_ABI,
-      functionName: 'controllerOf',
-      args: [projectId],
-    }),
-  );
+  // requireControllerTarget reads controllerOf itself and requires it to equal
+  // RECOGNIZED.controller, so passing the recognized controller as the target
+  // accepts/rejects exactly the same set without a duplicate controllerOf read.
+  await requireControllerTarget(chainId, projectId, RECOGNIZED.controller);
   await requireRecognizedProject721Hook({
     client,
     projectId,
@@ -1648,6 +1642,45 @@ async function requireCreationFee(chainId: number, value: bigint): Promise<void>
   if (value !== fee) throw new Error('Project creation fee changed; refresh before continuing');
 }
 
+/**
+ * Validate every live accounting context on a project before trusting it.
+ * Shared by the queue-rulesets and set-split-groups policy branches.
+ */
+function requireLiveAccountingContexts(
+  chainId: number,
+  contexts: Awaited<ReturnType<typeof fetchSplits>>['accountingContexts'],
+): void {
+  contexts.forEach((context, index) => {
+    requireAccountingContext(chainId, {
+      token: context.token,
+      decimals: context.tokenDecimals,
+      currency: context.currency,
+    }, `accountingContexts[${index}]`);
+  });
+}
+
+/**
+ * Verify every non-noop hook specification returned by a terminal preview.
+ * Shared by the pay and cash-out policy branches.
+ */
+async function requireRecognizedPreviewHookSpecifications(
+  client: ReturnType<typeof getPublicClient>,
+  projectId: bigint,
+  rulesetId: bigint,
+  specifications: readonly { noop: boolean; hook: Address }[],
+): Promise<void> {
+  for (const specification of specifications) {
+    if (!specification.noop) {
+      await requireRecognizedRuntimeHook({
+        client,
+        projectId,
+        rulesetId,
+        hook: specification.hook,
+      });
+    }
+  }
+}
+
 export async function assertManagedTransactionAllowed(params: {
   chainId: number;
   to: Address;
@@ -1702,16 +1735,12 @@ export async function assertManagedTransactionAllowed(params: {
       functionName: 'previewPayFor',
       args: [projectId, token, amount, beneficiary, metadata],
     });
-    for (const specification of preview[3]) {
-      if (!specification.noop) {
-        await requireRecognizedRuntimeHook({
-          client,
-          projectId,
-          rulesetId: BigInt(preview[0].id),
-          hook: specification.hook,
-        });
-      }
-    }
+    await requireRecognizedPreviewHookSpecifications(
+      client,
+      projectId,
+      BigInt(preview[0].id),
+      preview[3],
+    );
     const previewOutcome = resolvePayPreviewOutcome({
       beneficiaryTokenCount: preview[1],
       reservedTokenCount: preview[2],
@@ -1812,16 +1841,12 @@ export async function assertManagedTransactionAllowed(params: {
         args: [beneficiary, projectId, params.expectedAccount ?? holder],
       }),
     ]);
-    for (const specification of preview[3]) {
-      if (!specification.noop) {
-        await requireRecognizedRuntimeHook({
-          client,
-          projectId,
-          rulesetId: BigInt(preview[0].id),
-          hook: specification.hook,
-        });
-      }
-    }
+    await requireRecognizedPreviewHookSpecifications(
+      client,
+      projectId,
+      BigInt(preview[0].id),
+      preview[3],
+    );
     const previewOutcome = resolveCashOutPreviewOutcome({
       reclaimAmount: preview[1],
       cashOutTaxRate: preview[2],
@@ -2029,15 +2054,10 @@ export async function assertManagedTransactionAllowed(params: {
       Number(projectId),
       currentRuleset.ruleset.id,
     );
-    const acceptedTokens = new Set<string>();
-    currentConfiguration.accountingContexts.forEach((context, index) => {
-      requireAccountingContext(params.chainId, {
-        token: context.token,
-        decimals: context.tokenDecimals,
-        currency: context.currency,
-      }, `accountingContexts[${index}]`);
-      acceptedTokens.add(context.token.toLowerCase());
-    });
+    requireLiveAccountingContexts(params.chainId, currentConfiguration.accountingContexts);
+    const acceptedTokens = new Set(
+      currentConfiguration.accountingContexts.map((context) => context.token.toLowerCase()),
+    );
     await requireRulesetConfigurations(params.chainId, configurations, acceptedTokens);
     const configuration = configurations[0];
     if (asBigInt(configuration.mustStartAtOrAfter) < BigInt(Math.floor(Date.now() / 1000))) {
@@ -2094,15 +2114,10 @@ export async function assertManagedTransactionAllowed(params: {
       Number(projectId),
       currentRuleset.ruleset.id,
     );
-    const acceptedPayoutGroups = new Set<string>();
-    for (const [index, context] of currentConfiguration.accountingContexts.entries()) {
-      requireAccountingContext(params.chainId, {
-        token: context.token,
-        decimals: context.tokenDecimals,
-        currency: context.currency,
-      }, `accountingContexts[${index}]`);
-      acceptedPayoutGroups.add(BigInt(context.token).toString());
-    }
+    requireLiveAccountingContexts(params.chainId, currentConfiguration.accountingContexts);
+    const acceptedPayoutGroups = new Set(
+      currentConfiguration.accountingContexts.map((context) => BigInt(context.token).toString()),
+    );
     const payoutGroupId = asBigInt(payoutGroups[0].groupId).toString();
     if (!acceptedPayoutGroups.has(payoutGroupId)) {
       throw new Error('Payout split group is not tied to a recognized live accounting token');

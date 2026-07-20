@@ -35,7 +35,6 @@ import {
   validateConfigForEncryption,
   validateConfigForReserves,
 } from './src/utils/config.ts';
-import { getPrimaryChainId } from '@shared/chains.ts';
 import { cleanupRateLimits } from './src/services/claude.ts';
 import { cleanupExpiredSessions } from './src/services/auth.ts';
 import { executeReadySmartAccountTransfers } from './src/services/smartAccounts.ts';
@@ -123,20 +122,22 @@ app.use('*', logger());
 // Response timing
 app.use('*', timing());
 
-// Debug event logging for API calls
-app.use('*', async (c, next) => {
-  const start = Date.now();
-  await next();
-  const duration = Date.now() - start;
+// Debug event logging for API calls (dev only - logDebugEvent is a no-op in production)
+if (bootConfig.env === 'development') {
+  app.use('*', async (c, next) => {
+    const start = Date.now();
+    await next();
+    const duration = Date.now() - start;
 
-  // Log to debug dashboard
-  logDebugEvent('api_call', 'api', {
-    method: c.req.method,
-    path: c.req.path,
-    status: c.res.status,
-    duration,
+    // Log to debug dashboard
+    logDebugEvent('api_call', 'api', {
+      method: c.req.method,
+      path: c.req.path,
+      status: c.res.status,
+      duration,
+    });
   });
-});
+}
 
 // ============================================================================
 // Health Check
@@ -421,45 +422,8 @@ import {
 } from './src/services/terminalWs.ts';
 import { getSession } from './src/services/terminal.ts';
 import { checkPermission } from './src/services/chat.ts';
-import { queryOne } from './src/db/index.ts';
 import { generatePseudoAddress } from './src/utils/crypto.ts';
-
-// WebSocket authentication helper (duplicated from chat.ts for use at server level)
-async function extractWalletSessionForWs(
-  sessionToken: string | undefined,
-): Promise<{ address: string; userId?: string; sessionId?: string; isAnonymous?: boolean } | null> {
-  if (!sessionToken) return null;
-
-  // Try JWT token validation
-  const { validateSession } = await import('./src/services/auth.ts');
-  const { getOrCreateSmartAccount } = await import('./src/services/smartAccounts.ts');
-
-  const jwtResult = await validateSession(sessionToken);
-  if (jwtResult) {
-    const config = getConfig();
-    const smartAccount = await getOrCreateSmartAccount(
-      jwtResult.user.id,
-      getPrimaryChainId(config.isTestnet),
-    );
-    return { address: smartAccount.address, userId: jwtResult.user.id };
-  }
-
-  // Try SIWE session token
-  const session = await queryOne<{ wallet_address: string; expires_at: Date }>(
-    `SELECT wallet_address, expires_at FROM wallet_sessions WHERE session_token = $1 AND expires_at > NOW()`,
-    [sessionToken],
-  );
-
-  if (session) {
-    const user = await queryOne<{ id: string }>(
-      `SELECT u.id FROM users u JOIN multi_chat_members mcm ON mcm.member_user_id = u.id WHERE mcm.member_address = $1 LIMIT 1`,
-      [session.wallet_address],
-    );
-    return { address: session.wallet_address, userId: user?.id };
-  }
-
-  return null;
-}
+import { extractWalletSession } from './src/middleware/walletSession.ts';
 
 // Handle WebSocket requests at the server level to avoid Hono middleware interference
 async function handleRequest(req: Request): Promise<Response> {
@@ -482,8 +446,8 @@ async function handleRequest(req: Request): Promise<Response> {
 
     socket.onopen = async () => {
       try {
-        // Try token-based auth first
-        let walletSession = await extractWalletSessionForWs(sessionToken);
+        // Try token-based auth first (shared JWT + SIWE session resolution)
+        let walletSession = await extractWalletSession(undefined, sessionToken);
 
         // Fall back to anonymous session
         if (!walletSession && sessionId && sessionId.startsWith('ses_')) {

@@ -48,7 +48,6 @@ export async function generatePseudoAddress(sessionId: string): Promise<string> 
  * Synchronous version for middleware using a cached computation approach.
  * Pre-computes addresses during request processing.
  */
-const pseudoAddressCache = new Map<string, string>();
 const CACHE_MAX_SIZE = 10000;
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 

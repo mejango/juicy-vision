@@ -8,7 +8,6 @@
  * - Connection management per chat room
  */
 
-import type { Context } from 'hono';
 import { logDebugEvent } from '../routes/debug.ts';
 
 // ============================================================================
@@ -212,26 +211,6 @@ export function broadcastToChat(
       }
     } catch (error) {
       console.error(`[WS] Failed to send to ${client.address}:`, error);
-    }
-  }
-}
-
-/**
- * Send a message to a specific address (all their connections)
- */
-export function sendToAddress(address: string, message: WsMessage): void {
-  const clients = addressConnections.get(address);
-  if (!clients) return;
-
-  const payload = JSON.stringify(message);
-
-  for (const client of clients) {
-    try {
-      if (client.socket.readyState === WebSocket.OPEN) {
-        client.socket.send(payload);
-      }
-    } catch (error) {
-      console.error(`[WS] Failed to send to ${address}:`, error);
     }
   }
 }

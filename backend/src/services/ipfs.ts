@@ -397,112 +397,9 @@ export async function getLatestArchiveCid(chatId: string): Promise<string | null
   return result?.ipfs_cid ?? null;
 }
 
-/**
- * Archive a single message (for real-time archival)
- */
-export async function archiveMessage(
-  chatId: string,
-  messageId: string,
-): Promise<string> {
-  const message = await queryOne<{
-    id: string;
-    sender_address: string;
-    role: 'user' | 'assistant' | 'system';
-    content: string;
-    is_encrypted: boolean;
-    reply_to_id: string | null;
-    created_at: Date;
-  }>(
-    `SELECT id, sender_address, role, content, is_encrypted, reply_to_id, created_at
-     FROM multi_chat_messages WHERE id = $1 AND chat_id = $2`,
-    [messageId, chatId],
-  );
-
-  if (!message) {
-    throw new Error('Message not found');
-  }
-
-  const archived: ArchivedMessage = {
-    id: message.id,
-    sender: message.sender_address,
-    role: message.role,
-    content: message.content,
-    isEncrypted: message.is_encrypted,
-    replyTo: message.reply_to_id ?? undefined,
-    createdAt: message.created_at.toISOString(),
-  };
-
-  const client = getIpfsClient();
-  const result = await client.pinJson(archived, `juicy-msg-${messageId}`);
-
-  // Update message with CID
-  await execute(
-    'UPDATE multi_chat_messages SET ipfs_cid = $1 WHERE id = $2 AND chat_id = $3',
-    [result.cid, messageId, chatId],
-  );
-
-  return result.cid;
-}
-
-/**
- * Get archive history (all previous CIDs)
- */
-export async function getArchiveHistory(cid: string): Promise<ArchivedChat[]> {
-  const history: ArchivedChat[] = [];
-  let currentCid: string | undefined = cid;
-
-  const client = getIpfsClient();
-
-  while (currentCid) {
-    try {
-      const archive: ArchivedChat = await client.get<ArchivedChat>(currentCid);
-      history.push(archive);
-      currentCid = archive.previousCid;
-    } catch (error) {
-      console.error(`Failed to fetch archive CID ${currentCid}:`, error);
-      break;
-    }
-  }
-
-  return history;
-}
-
 // ============================================================================
 // Cleanup
 // ============================================================================
-
-/**
- * Unpin old archives (keep only last N)
- */
-export async function cleanupOldArchives(
-  chatId: string,
-  keepCount: number = 5,
-): Promise<number> {
-  const latestCid = await getLatestArchiveCid(chatId);
-  if (!latestCid) return 0;
-
-  const history = await getArchiveHistory(latestCid);
-  if (history.length <= keepCount) return 0;
-
-  const client = getIpfsClient();
-  let unpinned = 0;
-
-  for (let i = keepCount; i < history.length; i++) {
-    try {
-      const archive = history[i];
-      // Don't unpin if it has a previousCid (linked list integrity)
-      // Only unpin the tail
-      if (!archive.previousCid) {
-        await client.unpin(latestCid);
-        unpinned++;
-      }
-    } catch (error) {
-      console.error('Failed to unpin:', error);
-    }
-  }
-
-  return unpinned;
-}
 
 // ============================================================================
 // File Pinning (for user uploads)
@@ -535,33 +432,23 @@ export async function pinFileToIpfs(
   return result.cid;
 }
 
-// ============================================================================
-// Scheduled Archival
-// ============================================================================
-
 /**
- * Archive all chats that haven't been archived in the last N hours
+ * Pin a batch of base64 attachments to IPFS in parallel.
+ * Failures are logged and returned with a null cid so callers can skip them
+ * without failing the whole batch.
  */
-export async function archiveStaleChats(hoursThreshold: number = 24): Promise<number> {
-  const staleChats = await query<{ id: string }>(
-    `SELECT id FROM multi_chats
-     WHERE last_archived_at IS NULL
-        OR last_archived_at < NOW() - INTERVAL '${hoursThreshold} hours'
-     ORDER BY last_archived_at ASC NULLS FIRST
-     LIMIT 10`,
-    [],
+export async function pinAttachments<
+  T extends { name: string; mimeType: string; data: string },
+>(attachments: T[]): Promise<Array<{ att: T; cid: string | null }>> {
+  const results = await Promise.allSettled(
+    attachments.map((att) => pinFileToIpfs(att.data, att.name, att.mimeType)),
   );
-
-  let archived = 0;
-
-  for (const chat of staleChats) {
-    try {
-      await archiveChat(chat.id);
-      archived++;
-    } catch (error) {
-      console.error(`Failed to archive chat ${chat.id}:`, error);
+  return attachments.map((att, i) => {
+    const result = results[i];
+    if (result.status === 'fulfilled') {
+      return { att, cid: result.value };
     }
-  }
-
-  return archived;
+    console.error(`[IPFS] Failed to pin attachment ${att.name}:`, result.reason);
+    return { att, cid: null };
+  });
 }

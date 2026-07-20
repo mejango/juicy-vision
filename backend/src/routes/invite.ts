@@ -8,7 +8,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { optionalAuth } from '../middleware/auth.ts';
-import { queryOne } from '../db/index.ts';
+import { requireWalletOrAuth } from '../middleware/walletSession.ts';
 import {
   createInvite,
   getInviteByCode,
@@ -25,98 +25,8 @@ import {
   checkPermission,
 } from '../services/chat.ts';
 import { broadcastToChat } from '../services/websocket.ts';
-import { getConfig } from '../utils/config.ts';
-import { getPrimaryChainId } from '@shared/chains.ts';
 
 export const inviteRouter = new Hono();
-
-// ============================================================================
-// Middleware
-// ============================================================================
-
-interface WalletSession {
-  address: string;
-  userId?: string;
-  sessionId?: string;
-  isAnonymous?: boolean;
-}
-
-declare module 'hono' {
-  interface ContextVariableMap {
-    walletSession?: WalletSession;
-  }
-}
-
-async function extractWalletSession(
-  authHeader: string | undefined,
-  sessionToken: string | undefined
-): Promise<WalletSession | null> {
-  const token = sessionToken || authHeader?.replace('Bearer ', '');
-  if (!token) return null;
-
-  const session = await queryOne<{
-    wallet_address: string;
-    expires_at: Date;
-  }>(
-    `SELECT wallet_address, expires_at FROM wallet_sessions
-     WHERE session_token = $1 AND expires_at > NOW()`,
-    [token]
-  );
-
-  if (session) {
-    const user = await queryOne<{ id: string }>(
-      `SELECT u.id FROM users u
-       JOIN multi_chat_members mcm ON mcm.member_user_id = u.id
-       WHERE mcm.member_address = $1
-       LIMIT 1`,
-      [session.wallet_address]
-    );
-
-    return {
-      address: session.wallet_address,
-      userId: user?.id,
-    };
-  }
-
-  return null;
-}
-
-async function requireWalletOrAuth(c: any, next: any) {
-  const authHeader = c.req.header('Authorization');
-  const user = c.get('user');
-
-  if (user) {
-    const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
-    const config = getConfig();
-    const smartAccount = await getOrCreateSmartAccount(user.id, getPrimaryChainId(config.isTestnet));
-    c.set('walletSession', { address: smartAccount.address, userId: user.id } as WalletSession);
-    return next();
-  }
-
-  const sessionToken = c.req.query('session') || c.req.header('X-Wallet-Session');
-  const walletSession = await extractWalletSession(authHeader, sessionToken);
-
-  if (walletSession) {
-    c.set('walletSession', walletSession);
-    return next();
-  }
-
-  // Try anonymous session (X-Session-ID header)
-  const sessionId = c.req.header('X-Session-ID');
-  if (sessionId && sessionId.startsWith('ses_')) {
-    // Use secure HMAC-based pseudo-address generation (same as chat.ts)
-    const { getPseudoAddress } = await import('../utils/crypto.ts');
-    const pseudoAddress = await getPseudoAddress(sessionId);
-    c.set('walletSession', {
-      address: pseudoAddress,
-      sessionId,
-      isAnonymous: true,
-    } as WalletSession);
-    return next();
-  }
-
-  return c.json({ success: false, error: 'Authentication required' }, 401);
-}
 
 // ============================================================================
 // Invite Routes

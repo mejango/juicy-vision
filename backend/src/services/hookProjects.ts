@@ -261,54 +261,6 @@ export async function getProjectFiles(projectId: string): Promise<HookProjectFil
   return files.map(transformFile);
 }
 
-export async function getFile(
-  projectId: string,
-  path: string
-): Promise<HookProjectFile | null> {
-  const file = await queryOne<DbHookProjectFile>(
-    `SELECT * FROM hook_project_files
-     WHERE project_id = $1 AND path = $2`,
-    [projectId, path]
-  );
-
-  return file ? transformFile(file) : null;
-}
-
-export async function addFile(
-  projectId: string,
-  path: string,
-  content: string
-): Promise<HookProjectFile> {
-  const file = await queryOne<DbHookProjectFile>(
-    `INSERT INTO hook_project_files (project_id, path, content)
-     VALUES ($1, $2, $3)
-     RETURNING *`,
-    [projectId, path, content]
-  );
-
-  if (!file) {
-    throw new Error('Failed to add file');
-  }
-
-  return transformFile(file);
-}
-
-export async function updateFile(
-  projectId: string,
-  path: string,
-  content: string
-): Promise<HookProjectFile | null> {
-  const file = await queryOne<DbHookProjectFile>(
-    `UPDATE hook_project_files
-     SET content = $1
-     WHERE project_id = $2 AND path = $3
-     RETURNING *`,
-    [content, projectId, path]
-  );
-
-  return file ? transformFile(file) : null;
-}
-
 export async function upsertFile(
   projectId: string,
   path: string,
@@ -393,47 +345,4 @@ export function computeFilesHash(files: Array<{ path: string; content: string }>
   const sortedFiles = [...files].sort((a, b) => a.path.localeCompare(b.path));
   const combined = sortedFiles.map((f) => `${f.path}:${f.content}`).join('\n');
   return createHash('sha256').update(combined).digest('hex');
-}
-
-export async function getProjectStats(userAddress: string): Promise<{
-  totalProjects: number;
-  deployedProjects: number;
-  byType: Record<HookProjectType, number>;
-}> {
-  interface StatsRow {
-    project_type: HookProjectType;
-    total: string;
-    deployed: string;
-  }
-
-  const stats = await query<StatsRow>(
-    `SELECT project_type,
-            COUNT(*) as total,
-            COUNT(*) FILTER (WHERE is_deployed) as deployed
-     FROM hook_projects
-     WHERE user_address = $1
-     GROUP BY project_type`,
-    [userAddress]
-  );
-
-  const byType: Record<HookProjectType, number> = {
-    'pay-hook': 0,
-    'cash-out-hook': 0,
-    'split-hook': 0,
-  };
-
-  let totalProjects = 0;
-  let deployedProjects = 0;
-
-  for (const row of stats) {
-    byType[row.project_type] = parseInt(row.total, 10);
-    totalProjects += parseInt(row.total, 10);
-    deployedProjects += parseInt(row.deployed, 10);
-  }
-
-  return {
-    totalProjects,
-    deployedProjects,
-    byType,
-  };
 }

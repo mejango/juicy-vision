@@ -118,18 +118,7 @@ export async function registerDevice(
   const chainId = params.chainId ?? 42161; // Default to Arbitrum
   const acceptedTokens = params.acceptedTokens ?? ['ETH'];
 
-  const row = await queryOne<{
-    id: string;
-    merchant_id: string;
-    name: string;
-    project_id: number;
-    chain_id: number;
-    accepted_tokens: string[];
-    api_key_prefix: string;
-    is_active: boolean;
-    last_seen_at: string | null;
-    created_at: string;
-  }>(
+  const row = await queryOne<DeviceRow>(
     `INSERT INTO terminal_devices (
       merchant_id, name, project_id, chain_id, accepted_tokens,
       api_key_hash, api_key_prefix
@@ -168,18 +157,7 @@ export async function registerDevice(
  * Get device by ID
  */
 export async function getDevice(deviceId: string): Promise<TerminalDevice | null> {
-  const row = await queryOne<{
-    id: string;
-    merchant_id: string;
-    name: string;
-    project_id: number;
-    chain_id: number;
-    accepted_tokens: string[];
-    api_key_prefix: string;
-    is_active: boolean;
-    last_seen_at: string | null;
-    created_at: string;
-  }>(
+  const row = await queryOne<DeviceRow>(
     `SELECT id, merchant_id, name, project_id, chain_id, accepted_tokens,
             api_key_prefix, is_active, last_seen_at, created_at
      FROM terminal_devices WHERE id = $1`,
@@ -193,18 +171,7 @@ export async function getDevice(deviceId: string): Promise<TerminalDevice | null
  * Get all devices for a merchant
  */
 export async function getMerchantDevices(merchantId: string): Promise<TerminalDevice[]> {
-  const rows = await query<{
-    id: string;
-    merchant_id: string;
-    name: string;
-    project_id: number;
-    chain_id: number;
-    accepted_tokens: string[];
-    api_key_prefix: string;
-    is_active: boolean;
-    last_seen_at: string | null;
-    created_at: string;
-  }>(
+  const rows = await query<DeviceRow>(
     `SELECT id, merchant_id, name, project_id, chain_id, accepted_tokens,
             api_key_prefix, is_active, last_seen_at, created_at
      FROM terminal_devices
@@ -222,18 +189,7 @@ export async function getMerchantDevices(merchantId: string): Promise<TerminalDe
 export async function authenticateDevice(apiKey: string): Promise<TerminalDevice | null> {
   const hash = createHash('sha256').update(apiKey).digest('hex');
 
-  const row = await queryOne<{
-    id: string;
-    merchant_id: string;
-    name: string;
-    project_id: number;
-    chain_id: number;
-    accepted_tokens: string[];
-    api_key_prefix: string;
-    is_active: boolean;
-    last_seen_at: string | null;
-    created_at: string;
-  }>(
+  const row = await queryOne<DeviceRow>(
     `UPDATE terminal_devices
      SET last_seen_at = NOW()
      WHERE api_key_hash = $1 AND is_active = TRUE
@@ -290,18 +246,7 @@ export async function updateDevice(
 
   values.push(deviceId, merchantId);
 
-  const row = await queryOne<{
-    id: string;
-    merchant_id: string;
-    name: string;
-    project_id: number;
-    chain_id: number;
-    accepted_tokens: string[];
-    api_key_prefix: string;
-    is_active: boolean;
-    last_seen_at: string | null;
-    created_at: string;
-  }>(
+  const row = await queryOne<DeviceRow>(
     `UPDATE terminal_devices
      SET ${setClauses.join(', ')}, updated_at = NOW()
      WHERE id = $${paramIndex++} AND merchant_id = $${paramIndex}
@@ -387,22 +332,7 @@ export async function createSession(
   const expiresAt = new Date();
   expiresAt.setMinutes(expiresAt.getMinutes() + SESSION_EXPIRY_MINUTES);
 
-  const row = await queryOne<{
-    id: string;
-    device_id: string;
-    amount_usd: string;
-    token: string | null;
-    token_symbol: string;
-    status: string;
-    consumer_id: string | null;
-    payment_method: string | null;
-    tx_hash: string | null;
-    tokens_issued: string | null;
-    juice_spend_id: string | null;
-    expires_at: string;
-    completed_at: string | null;
-    created_at: string;
-  }>(
+  const row = await queryOne<SessionRow>(
     `INSERT INTO payment_sessions (
       device_id, amount_usd, token, token_symbol, expires_at
     ) VALUES ($1, $2, $3, $4, $5)
@@ -434,22 +364,7 @@ export async function createSession(
  * Get payment session by ID
  */
 export async function getSession(sessionId: string): Promise<PaymentSession | null> {
-  const row = await queryOne<{
-    id: string;
-    device_id: string;
-    amount_usd: string;
-    token: string | null;
-    token_symbol: string;
-    status: string;
-    consumer_id: string | null;
-    payment_method: string | null;
-    tx_hash: string | null;
-    tokens_issued: string | null;
-    juice_spend_id: string | null;
-    expires_at: string;
-    completed_at: string | null;
-    created_at: string;
-  }>(`SELECT * FROM payment_sessions WHERE id = $1`, [sessionId]);
+  const row = await queryOne<SessionRow>(`SELECT * FROM payment_sessions WHERE id = $1`, [sessionId]);
 
   return row ? mapSessionRow(row) : null;
 }
@@ -460,21 +375,7 @@ export async function getSession(sessionId: string): Promise<PaymentSession | nu
 export async function getSessionWithDetails(
   sessionId: string,
 ): Promise<PaymentSessionWithDetails | null> {
-  const row = await queryOne<{
-    id: string;
-    device_id: string;
-    amount_usd: string;
-    token: string | null;
-    token_symbol: string;
-    status: string;
-    consumer_id: string | null;
-    payment_method: string | null;
-    tx_hash: string | null;
-    tokens_issued: string | null;
-    juice_spend_id: string | null;
-    expires_at: string;
-    completed_at: string | null;
-    created_at: string;
+  const row = await queryOne<SessionRow & {
     merchant_id: string;
     merchant_name: string;
     project_id: number;
@@ -510,22 +411,7 @@ export async function getDeviceSessions(
   deviceId: string,
   limit = 50,
 ): Promise<PaymentSession[]> {
-  const rows = await query<{
-    id: string;
-    device_id: string;
-    amount_usd: string;
-    token: string | null;
-    token_symbol: string;
-    status: string;
-    consumer_id: string | null;
-    payment_method: string | null;
-    tx_hash: string | null;
-    tokens_issued: string | null;
-    juice_spend_id: string | null;
-    expires_at: string;
-    completed_at: string | null;
-    created_at: string;
-  }>(
+  const rows = await query<SessionRow>(
     `SELECT * FROM payment_sessions
      WHERE device_id = $1
      ORDER BY created_at DESC
@@ -565,21 +451,7 @@ export async function getMerchantSessions(
   sql += ` ORDER BY ps.created_at DESC LIMIT $${values.length + 1}`;
   values.push(limit);
 
-  const rows = await query<{
-    id: string;
-    device_id: string;
-    amount_usd: string;
-    token: string | null;
-    token_symbol: string;
-    status: string;
-    consumer_id: string | null;
-    payment_method: string | null;
-    tx_hash: string | null;
-    tokens_issued: string | null;
-    juice_spend_id: string | null;
-    expires_at: string;
-    completed_at: string | null;
-    created_at: string;
+  const rows = await query<SessionRow & {
     merchant_id: string;
     merchant_name: string;
     project_id: number;
@@ -638,22 +510,7 @@ export async function updateSessionStatus(
     setClauses.push(`completed_at = NOW()`);
   }
 
-  const row = await queryOne<{
-    id: string;
-    device_id: string;
-    amount_usd: string;
-    token: string | null;
-    token_symbol: string;
-    status: string;
-    consumer_id: string | null;
-    payment_method: string | null;
-    tx_hash: string | null;
-    tokens_issued: string | null;
-    juice_spend_id: string | null;
-    expires_at: string;
-    completed_at: string | null;
-    created_at: string;
-  }>(
+  const row = await queryOne<SessionRow>(
     `UPDATE payment_sessions
      SET ${setClauses.join(', ')}, updated_at = NOW()
      WHERE id = $1
@@ -822,89 +679,6 @@ export async function payWithJuice(
 
     return mapSessionRow(updated[0]);
   });
-}
-
-/**
- * Mark session as completed (called when Juice spend completes)
- */
-export async function completeSessionFromSpend(
-  spendId: string,
-  txHash: string,
-  tokensIssued: string,
-): Promise<PaymentSession | null> {
-  const row = await queryOne<{
-    id: string;
-    device_id: string;
-    amount_usd: string;
-    token: string | null;
-    token_symbol: string;
-    status: string;
-    consumer_id: string | null;
-    payment_method: string | null;
-    tx_hash: string | null;
-    tokens_issued: string | null;
-    juice_spend_id: string | null;
-    expires_at: string;
-    completed_at: string | null;
-    created_at: string;
-  }>(
-    `UPDATE payment_sessions
-     SET status = 'completed', tx_hash = $1, tokens_issued = $2, completed_at = NOW(), updated_at = NOW()
-     WHERE juice_spend_id = $3 AND status = 'paying'
-     RETURNING *`,
-    [txHash, tokensIssued, spendId],
-  );
-
-  if (row) {
-    logger.info('Payment session completed', {
-      sessionId: row.id,
-      txHash,
-      tokensIssued,
-    });
-  }
-
-  return row ? mapSessionRow(row) : null;
-}
-
-/**
- * Mark session as failed (called when Juice spend fails)
- */
-export async function failSessionFromSpend(
-  spendId: string,
-  errorMessage: string,
-): Promise<PaymentSession | null> {
-  const row = await queryOne<{
-    id: string;
-    device_id: string;
-    amount_usd: string;
-    token: string | null;
-    token_symbol: string;
-    status: string;
-    consumer_id: string | null;
-    payment_method: string | null;
-    tx_hash: string | null;
-    tokens_issued: string | null;
-    juice_spend_id: string | null;
-    expires_at: string;
-    completed_at: string | null;
-    created_at: string;
-  }>(
-    `UPDATE payment_sessions
-     SET status = 'failed', updated_at = NOW()
-     WHERE juice_spend_id = $1 AND status = 'paying'
-     RETURNING *`,
-    [spendId],
-  );
-
-  if (row) {
-    logger.warn('Payment session failed', {
-      sessionId: row.id,
-      spendId,
-      errorMessage,
-    });
-  }
-
-  return row ? mapSessionRow(row) : null;
 }
 
 // ============================================================================
@@ -1103,22 +877,7 @@ export async function startWalletPayment(
   sessionId: string,
   payerAddress: string,
 ): Promise<PaymentSession | null> {
-  const row = await queryOne<{
-    id: string;
-    device_id: string;
-    amount_usd: string;
-    token: string | null;
-    token_symbol: string;
-    status: string;
-    consumer_id: string | null;
-    payment_method: string | null;
-    tx_hash: string | null;
-    tokens_issued: string | null;
-    juice_spend_id: string | null;
-    expires_at: string;
-    completed_at: string | null;
-    created_at: string;
-  }>(
+  const row = await queryOne<SessionRow>(
     `UPDATE payment_sessions
      SET status = 'paying', payment_method = 'wallet', payer_address = $2, updated_at = NOW()
      WHERE id = $1 AND status = 'pending' AND expires_at > NOW()
@@ -1268,22 +1027,7 @@ export async function confirmWalletPayment(
     minimum: paidMinimum,
   });
 
-  const row = await queryOne<{
-    id: string;
-    device_id: string;
-    amount_usd: string;
-    token: string | null;
-    token_symbol: string;
-    status: string;
-    consumer_id: string | null;
-    payment_method: string | null;
-    tx_hash: string | null;
-    tokens_issued: string | null;
-    juice_spend_id: string | null;
-    expires_at: string;
-    completed_at: string | null;
-    created_at: string;
-  }>(
+  const row = await queryOne<SessionRow>(
     `UPDATE payment_sessions
      SET status = 'completed', tokens_issued = $2, completed_at = NOW(), updated_at = NOW()
      WHERE id = $3 AND status = 'paying' AND payment_method = 'wallet'
@@ -1342,22 +1086,7 @@ export async function resetWalletPayment(
     }
   }
 
-  const row = await queryOne<{
-    id: string;
-    device_id: string;
-    amount_usd: string;
-    token: string | null;
-    token_symbol: string;
-    status: string;
-    consumer_id: string | null;
-    payment_method: string | null;
-    tx_hash: string | null;
-    tokens_issued: string | null;
-    juice_spend_id: string | null;
-    expires_at: string;
-    completed_at: string | null;
-    created_at: string;
-  }>(
+  const row = await queryOne<SessionRow>(
     `UPDATE payment_sessions
      SET status = 'pending', payment_method = NULL, payer_address = NULL,
          tx_hash = NULL, tokens_issued = NULL,
@@ -1386,7 +1115,8 @@ export async function resetWalletPayment(
 // Row Mappers
 // ============================================================================
 
-function mapDeviceRow(row: {
+// Raw DB row shapes shared by the queries and mappers below
+interface DeviceRow {
   id: string;
   merchant_id: string;
   name: string;
@@ -1397,22 +1127,9 @@ function mapDeviceRow(row: {
   is_active: boolean;
   last_seen_at: string | null;
   created_at: string;
-}): TerminalDevice {
-  return {
-    id: row.id,
-    merchantId: row.merchant_id,
-    name: row.name,
-    projectId: row.project_id,
-    chainId: row.chain_id,
-    acceptedTokens: row.accepted_tokens,
-    apiKeyPrefix: row.api_key_prefix,
-    isActive: row.is_active,
-    lastSeenAt: row.last_seen_at ? new Date(row.last_seen_at) : null,
-    createdAt: new Date(row.created_at),
-  };
 }
 
-function mapSessionRow(row: {
+interface SessionRow {
   id: string;
   device_id: string;
   amount_usd: string;
@@ -1427,7 +1144,24 @@ function mapSessionRow(row: {
   expires_at: string;
   completed_at: string | null;
   created_at: string;
-}): PaymentSession {
+}
+
+function mapDeviceRow(row: DeviceRow): TerminalDevice {
+  return {
+    id: row.id,
+    merchantId: row.merchant_id,
+    name: row.name,
+    projectId: row.project_id,
+    chainId: row.chain_id,
+    acceptedTokens: row.accepted_tokens,
+    apiKeyPrefix: row.api_key_prefix,
+    isActive: row.is_active,
+    lastSeenAt: row.last_seen_at ? new Date(row.last_seen_at) : null,
+    createdAt: new Date(row.created_at),
+  };
+}
+
+function mapSessionRow(row: SessionRow): PaymentSession {
   return {
     id: row.id,
     deviceId: row.device_id,

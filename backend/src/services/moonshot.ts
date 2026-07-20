@@ -7,10 +7,9 @@
 
 import { getConfig } from '../utils/config.ts';
 import { OMNICHAIN_CONTEXT, OMNICHAIN_TOOLS } from '../context/omnichain.ts';
-import { handleOmnichainTool } from './omnichain.ts';
 import { SYSTEM_PROMPT } from '@shared/prompts.ts';
-import { recordToolUsage, recordInvocation } from './aiMetrics.ts';
-import type { ChatMessage, ToolDefinition, ClaudeRequest, ClaudeResponse, ToolCall, ToolResult } from './claude.ts';
+import { runToolLoop } from './claude.ts';
+import type { ChatMessage, ToolDefinition, ClaudeRequest, ClaudeResponse } from './claude.ts';
 
 // Moonshot API base URL (global endpoint - .cn is China only)
 const MOONSHOT_API_URL = 'https://api.moonshot.ai/v1';
@@ -474,8 +473,11 @@ export async function* streamMessage(
   };
 }
 
-// Agentic streaming with tool execution
-export async function* streamMessageWithTools(
+/**
+ * Stream a Kimi response with automatic tool execution.
+ * Delegates to the shared provider-agnostic agentic loop.
+ */
+export function streamMessageWithTools(
   userId: string,
   request: ClaudeRequest,
   userApiKey?: string,
@@ -483,153 +485,7 @@ export async function* streamMessageWithTools(
 ): AsyncGenerator<{ type: 'text' | 'tool_use' | 'tool_result' | 'usage' | 'thinking'; data: unknown }> {
   console.log('[Moonshot] streamMessageWithTools called for user:', userId);
   console.log('[Moonshot] Message count:', request.messages.length, 'Max iterations:', maxIterations);
-
-  const messages: ChatMessage[] = [...request.messages];
-
-  const invocationStart = Date.now();
-  const toolsUsed: string[] = [];
-  let fullResponseContent = '';
-
-  let iteration = 0;
-  let totalInputTokens = 0;
-  let totalOutputTokens = 0;
-
-  while (iteration < maxIterations) {
-    iteration++;
-
-    let textContent = '';
-    const toolCalls: ToolCall[] = [];
-    let stopReason = 'end_turn';
-    let isFirstTextChunkThisTurn = true;
-
-    for await (const event of streamMessage(userId, { ...request, messages }, userApiKey)) {
-      if (event.type === 'text') {
-        const textChunk = event.data as string;
-        textContent += textChunk;
-        if (isFirstTextChunkThisTurn && fullResponseContent &&
-            !fullResponseContent.match(/[\s\n]$/) && !textChunk.match(/^[\s\n]/)) {
-          fullResponseContent += ' ';
-          yield { type: 'text', data: ' ' };
-        }
-        isFirstTextChunkThisTurn = false;
-        fullResponseContent += textChunk;
-        yield event;
-      } else if (event.type === 'tool_use') {
-        const toolCall = event.data as ToolCall;
-        toolCalls.push(toolCall);
-        toolsUsed.push(toolCall.name);
-        yield { type: 'thinking', data: `Using tool: ${toolCall.name}` };
-      } else if (event.type === 'usage') {
-        const usage = event.data as { inputTokens: number; outputTokens: number; stopReason: string };
-        totalInputTokens += usage.inputTokens;
-        totalOutputTokens += usage.outputTokens;
-        stopReason = usage.stopReason;
-      }
-    }
-
-    if (toolCalls.length === 0 || stopReason !== 'tool_use') {
-      break;
-    }
-
-    // Build assistant message with tool calls
-    const assistantContent: Array<{ type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }> = [];
-
-    if (textContent) {
-      assistantContent.push({ type: 'text', text: textContent });
-    }
-
-    for (const tc of toolCalls) {
-      assistantContent.push({
-        type: 'tool_use',
-        id: tc.id,
-        name: tc.name,
-        input: tc.input,
-      });
-    }
-
-    messages.push({
-      role: 'assistant',
-      content: assistantContent as unknown as string,
-    });
-
-    // Execute tools
-    const toolResults: ToolResult[] = [];
-
-    for (const toolCall of toolCalls) {
-      yield { type: 'tool_use', data: toolCall };
-
-      const toolStart = Date.now();
-      try {
-        const result = await handleOmnichainTool(toolCall.name, toolCall.input);
-        const resultStr = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
-
-        toolResults.push({
-          tool_use_id: toolCall.id,
-          content: resultStr,
-        });
-
-        recordToolUsage({
-          chatId: userId,
-          toolName: toolCall.name,
-          success: true,
-          durationMs: Date.now() - toolStart,
-        });
-
-        yield { type: 'tool_result', data: { id: toolCall.id, name: toolCall.name, result: resultStr } };
-      } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : 'Tool execution failed';
-        toolResults.push({
-          tool_use_id: toolCall.id,
-          content: `Error: ${errorMsg}`,
-          is_error: true,
-        });
-
-        recordToolUsage({
-          chatId: userId,
-          toolName: toolCall.name,
-          success: false,
-          durationMs: Date.now() - toolStart,
-          errorMessage: errorMsg,
-        });
-
-        yield { type: 'tool_result', data: { id: toolCall.id, name: toolCall.name, error: errorMsg } };
-      }
-    }
-
-    // Add tool results
-    messages.push({
-      role: 'user',
-      content: toolResults.map(tr => ({
-        type: 'tool_result',
-        tool_use_id: tr.tool_use_id,
-        content: tr.content,
-        is_error: tr.is_error,
-      })) as unknown as string,
-    });
-  }
-
-  // Record metrics
-  const promptLength = request.messages.reduce((sum, m) => {
-    if (typeof m.content === 'string') return sum + m.content.length;
-    return sum + JSON.stringify(m.content).length;
-  }, 0);
-
-  recordInvocation({
-    chatId: userId,
-    promptLength,
-    responseLength: fullResponseContent.length,
-    totalDurationMs: Date.now() - invocationStart,
-    toolsUsed: [...new Set(toolsUsed)],
-    iterations: iteration,
-    inputTokens: totalInputTokens,
-    outputTokens: totalOutputTokens,
-    success: true,
-  });
-
-  yield {
-    type: 'usage',
-    data: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
-  };
+  return runToolLoop(streamMessage, userId, request, userApiKey, maxIterations);
 }
 
 // Usage stats

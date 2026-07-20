@@ -8,7 +8,7 @@
  * This is Layer 3 of the context management system.
  */
 
-import { query, queryOne, execute, transaction } from '../db/index.ts';
+import { query, queryOne, execute } from '../db/index.ts';
 
 // ============================================================================
 // Types
@@ -482,20 +482,6 @@ export function queueAttachmentSummary(
 // ============================================================================
 
 /**
- * Get all summaries for a chat
- */
-export async function getChatSummaries(chatId: string): Promise<ChatSummary[]> {
-  const results = await query<DbChatSummary>(
-    `SELECT * FROM chat_summaries
-     WHERE chat_id = $1
-     ORDER BY created_at DESC`,
-    [chatId]
-  );
-
-  return results.map(dbToChatSummary);
-}
-
-/**
  * Get the most recent summary for a chat
  */
 export async function getLatestSummary(chatId: string): Promise<ChatSummary | null> {
@@ -519,20 +505,6 @@ export async function getAttachmentSummaries(chatId: string): Promise<Attachment
      WHERE chat_id = $1
      ORDER BY created_at DESC`,
     [chatId]
-  );
-
-  return results.map(dbToAttachmentSummary);
-}
-
-/**
- * Get attachment summaries for a specific message
- */
-export async function getMessageAttachmentSummaries(messageId: string): Promise<AttachmentSummary[]> {
-  const results = await query<DbAttachmentSummary>(
-    `SELECT * FROM attachment_summaries
-     WHERE message_id = $1
-     ORDER BY attachment_index`,
-    [messageId]
   );
 
   return results.map(dbToAttachmentSummary);

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getConfig } from '../utils/config.ts';
+import { estimateTokens } from './summarization.ts';
 import { OMNICHAIN_CONTEXT, OMNICHAIN_TOOLS } from '../context/omnichain.ts';
 import { handleOmnichainTool } from './omnichain.ts';
 import { SYSTEM_PROMPT } from '@shared/prompts.ts';
@@ -54,17 +55,6 @@ const SIMPLE_INTENT_PATTERNS = [
   /\b(show|list|get)\s+(me\s+)?(the\s+)?(projects?|chats?|messages?)\b/i,
   /\bconfirm\b/i,
 ];
-
-/**
- * Estimate token count for a message (rough approximation)
- */
-function estimateTokens(content: string | ChatMessage['content']): number {
-  const text = typeof content === 'string'
-    ? content
-    : JSON.stringify(content);
-  // Rough estimate: ~4 characters per token
-  return Math.ceil(text.length / 4);
-}
 
 /**
  * Select the appropriate model based on query complexity and context
@@ -353,6 +343,58 @@ export interface ParsedConfidence {
 }
 
 /**
+ * Map an internal content block to the Anthropic API block shape.
+ * Shared by sendMessage and streamMessage.
+ */
+function mapContentBlock(
+  block:
+    | ContentBlock
+    | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+    | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean },
+) {
+  if (block.type === 'text') {
+    return { type: 'text' as const, text: block.text };
+  } else if (block.type === 'image') {
+    return {
+      type: 'image' as const,
+      source: {
+        type: 'base64' as const,
+        media_type: block.source.media_type as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+        data: block.source.data,
+      },
+    };
+  } else if (block.type === 'document') {
+    return {
+      type: 'document' as const,
+      source: {
+        type: 'base64' as const,
+        media_type: block.source.media_type as 'application/pdf',
+        data: block.source.data,
+      },
+    };
+  } else if (block.type === 'tool_use') {
+    // Tool use block (assistant message)
+    return {
+      type: 'tool_use' as const,
+      id: block.id,
+      name: block.name,
+      input: block.input,
+    };
+  } else if (block.type === 'tool_result') {
+    // Tool result block (user message)
+    return {
+      type: 'tool_result' as const,
+      tool_use_id: block.tool_use_id,
+      content: block.content,
+      is_error: block.is_error,
+    };
+  } else {
+    // Unknown block type, pass through
+    return block;
+  }
+}
+
+/**
  * Parse and strip confidence tag from AI response.
  * Returns the cleaned content and extracted confidence metadata.
  *
@@ -414,34 +456,7 @@ export async function sendMessage(
   // Build message request with multimodal support
   const messages = request.messages.map((m) => ({
     role: m.role,
-    content: typeof m.content === 'string'
-      ? m.content
-      : m.content.map(block => {
-          if (block.type === 'text') {
-            return { type: 'text' as const, text: block.text };
-          } else if (block.type === 'image') {
-            return {
-              type: 'image' as const,
-              source: {
-                type: 'base64' as const,
-                media_type: block.source.media_type as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-                data: block.source.data,
-              },
-            };
-          } else if (block.type === 'document') {
-            return {
-              type: 'document' as const,
-              source: {
-                type: 'base64' as const,
-                media_type: block.source.media_type as 'application/pdf',
-                data: block.source.data,
-              },
-            };
-          } else {
-            // Tool use/result blocks — pass through as-is
-            return block;
-          }
-        }),
+    content: typeof m.content === 'string' ? m.content : m.content.map(mapContentBlock),
   })) as unknown as Anthropic.MessageParam[];
 
   const messageRequest: Anthropic.MessageCreateParams = {
@@ -535,50 +550,7 @@ export async function* streamMessage(
   // Using 'as unknown as Anthropic.MessageParam[]' to handle dynamic content types
   const messages = request.messages.map((m) => ({
     role: m.role,
-    content: typeof m.content === 'string'
-      ? m.content
-      : m.content.map((block: ContentBlock | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> } | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean }) => {
-          if (block.type === 'text') {
-            return { type: 'text' as const, text: block.text };
-          } else if (block.type === 'image') {
-            return {
-              type: 'image' as const,
-              source: {
-                type: 'base64' as const,
-                media_type: block.source.media_type as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
-                data: block.source.data,
-              },
-            };
-          } else if (block.type === 'document') {
-            return {
-              type: 'document' as const,
-              source: {
-                type: 'base64' as const,
-                media_type: block.source.media_type as 'application/pdf',
-                data: block.source.data,
-              },
-            };
-          } else if (block.type === 'tool_use') {
-            // Tool use block (assistant message)
-            return {
-              type: 'tool_use' as const,
-              id: block.id,
-              name: block.name,
-              input: block.input,
-            };
-          } else if (block.type === 'tool_result') {
-            // Tool result block (user message)
-            return {
-              type: 'tool_result' as const,
-              tool_use_id: block.tool_use_id,
-              content: block.content,
-              is_error: block.is_error,
-            };
-          } else {
-            // Unknown block type, pass through
-            return block;
-          }
-        }),
+    content: typeof m.content === 'string' ? m.content : m.content.map(mapContentBlock),
   })) as unknown as Anthropic.MessageParam[];
 
   const messageRequest: Anthropic.MessageCreateParams = {
@@ -692,17 +664,22 @@ export interface ToolResult {
 }
 
 /**
- * Stream messages with automatic tool execution loop.
- * Continues calling Claude until it stops requesting tools.
+ * Provider-agnostic agentic loop: streams a response, executes any requested
+ * tools, feeds results back, and repeats until the model stops asking for
+ * tools. Shared by the Claude and Moonshot providers, parameterized by each
+ * provider's streamMessage implementation.
  */
-export async function* streamMessageWithTools(
+export async function* runToolLoop(
+  streamMessageFn: (
+    userId: string,
+    request: ClaudeRequest,
+    userApiKey?: string,
+  ) => AsyncGenerator<{ type: 'text' | 'tool_use' | 'usage'; data: unknown }>,
   userId: string,
   request: ClaudeRequest,
   userApiKey?: string,
   maxIterations = 10 // Safety limit to prevent infinite loops
 ): AsyncGenerator<{ type: 'text' | 'tool_use' | 'tool_result' | 'usage' | 'thinking'; data: unknown }> {
-  const includeOmnichain = request.includeOmnichainContext !== false;
-
   // Build the conversation messages (mutable copy)
   const messages: ChatMessage[] = [...request.messages];
 
@@ -724,8 +701,8 @@ export async function* streamMessageWithTools(
     let stopReason = 'end_turn';
     let isFirstTextChunkThisTurn = true;
 
-    // Stream Claude's response for this turn
-    for await (const event of streamMessage(userId, { ...request, messages }, userApiKey)) {
+    // Stream the provider's response for this turn
+    for await (const event of streamMessageFn(userId, { ...request, messages }, userApiKey)) {
       if (event.type === 'text') {
         const textChunk = event.data as string;
         textContent += textChunk;
@@ -862,6 +839,18 @@ export async function* streamMessageWithTools(
     type: 'usage',
     data: { inputTokens: totalInputTokens, outputTokens: totalOutputTokens },
   };
+}
+
+/**
+ * Stream a Claude response with automatic tool execution
+ */
+export function streamMessageWithTools(
+  userId: string,
+  request: ClaudeRequest,
+  userApiKey?: string,
+  maxIterations = 10
+): AsyncGenerator<{ type: 'text' | 'tool_use' | 'tool_result' | 'usage' | 'thinking'; data: unknown }> {
+  return runToolLoop(streamMessage, userId, request, userApiKey, maxIterations);
 }
 
 // ============================================================================

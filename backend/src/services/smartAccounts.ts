@@ -21,37 +21,15 @@ import {
   keccak256,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import {
-  arbitrum,
-  arbitrumSepolia,
-  base,
-  baseSepolia,
-  mainnet,
-  optimism,
-  optimismSepolia,
-  sepolia,
-} from 'viem/chains';
+import { PUBLIC_RPC_URLS, VIEM_CHAINS } from './chainReader.ts';
 import { CANONICAL_USDC_BY_CHAIN, DEAD_ADDRESS as SHARED_DEAD_ADDRESS } from '@shared/chains.ts';
 import { execute, query, queryOne } from '../db/index.ts';
 import { logger } from '../utils/logger.ts';
 import { getConfig } from '../utils/config.ts';
 
 // ============================================================================
-// Chain Configuration
+// Chain Configuration (viem chain + public RPC maps shared with chainReader)
 // ============================================================================
-
-const CHAINS = {
-  // Mainnets
-  1: mainnet,
-  10: optimism,
-  8453: base,
-  42161: arbitrum,
-  // Testnets
-  11155111: sepolia,
-  11155420: optimismSepolia,
-  84532: baseSepolia,
-  421614: arbitrumSepolia,
-} as const;
 
 // Ankr chain slugs for premium RPC
 const ANKR_SLUGS: Record<number, string> = {
@@ -63,20 +41,6 @@ const ANKR_SLUGS: Record<number, string> = {
   11155420: 'optimism_sepolia',
   84532: 'base_sepolia',
   421614: 'arbitrum_sepolia',
-};
-
-// Fallback public RPC endpoints (used when no API key configured)
-const FALLBACK_RPC_URLS: Record<number, string> = {
-  // Mainnets
-  1: 'https://ethereum.publicnode.com',
-  10: 'https://mainnet.optimism.io',
-  8453: 'https://mainnet.base.org',
-  42161: 'https://arb1.arbitrum.io/rpc',
-  // Testnets
-  11155111: 'https://sepolia.drpc.org',
-  11155420: 'https://optimism-sepolia.drpc.org',
-  84532: 'https://base-sepolia.drpc.org',
-  421614: 'https://arbitrum-sepolia.drpc.org',
 };
 
 const NATIVE_WALLET_TOKEN = '0x0000000000000000000000000000000000000000' as Address;
@@ -99,7 +63,7 @@ function getRpcUrl(chainId: number): string {
     return `https://rpc.ankr.com/${slug}/${config.ankrApiKey}`;
   }
 
-  return FALLBACK_RPC_URLS[chainId] || `https://rpc.ankr.com/${slug || 'eth'}`;
+  return PUBLIC_RPC_URLS[chainId] || `https://rpc.ankr.com/${slug || 'eth'}`;
 }
 
 // ============================================================================
@@ -198,7 +162,7 @@ const ERC20_ABI = [
 // Types
 // ============================================================================
 
-interface SmartAccount {
+export interface SmartAccount {
   id: string;
   userId: string;
   chainId: number;
@@ -227,8 +191,10 @@ interface DbSmartAccount {
 // Helpers
 // ============================================================================
 
-function getPublicClient(chainId: number) {
-  const chain = CHAINS[chainId as keyof typeof CHAINS];
+// Clients are cached per chain (and per key for wallet clients) since they are
+// stateless wrappers around the chain + transport configuration.
+function buildPublicClient(chainId: number) {
+  const chain = VIEM_CHAINS[chainId as keyof typeof VIEM_CHAINS];
   if (!chain) throw new Error(`Unsupported chain: ${chainId}`);
 
   return createPublicClient({
@@ -237,8 +203,8 @@ function getPublicClient(chainId: number) {
   });
 }
 
-function getWalletClient(chainId: number, privateKey: `0x${string}`) {
-  const chain = CHAINS[chainId as keyof typeof CHAINS];
+function buildWalletClient(chainId: number, privateKey: `0x${string}`) {
+  const chain = VIEM_CHAINS[chainId as keyof typeof VIEM_CHAINS];
   if (!chain) throw new Error(`Unsupported chain: ${chainId}`);
 
   const account = privateKeyToAccount(privateKey);
@@ -247,6 +213,28 @@ function getWalletClient(chainId: number, privateKey: `0x${string}`) {
     chain,
     transport: http(getRpcUrl(chainId)),
   });
+}
+
+const cachedPublicClients = new Map<number, ReturnType<typeof buildPublicClient>>();
+const cachedWalletClients = new Map<string, ReturnType<typeof buildWalletClient>>();
+
+function getPublicClient(chainId: number) {
+  let client = cachedPublicClients.get(chainId);
+  if (!client) {
+    client = buildPublicClient(chainId);
+    cachedPublicClients.set(chainId, client);
+  }
+  return client;
+}
+
+function getWalletClient(chainId: number, privateKey: `0x${string}`) {
+  const cacheKey = `${chainId}:${privateKey}`;
+  let client = cachedWalletClients.get(cacheKey);
+  if (!client) {
+    client = buildWalletClient(chainId, privateKey);
+    cachedWalletClients.set(cacheKey, client);
+  }
+  return client;
 }
 
 /**
@@ -307,6 +295,22 @@ async function isAccountDeployed(
 // ============================================================================
 
 /**
+ * Map a DB row to a SmartAccount
+ */
+function toSmartAccount(row: DbSmartAccount): SmartAccount {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    chainId: row.chain_id,
+    address: row.address as Address,
+    salt: row.salt,
+    deployed: row.deployed,
+    custodyStatus: row.custody_status as SmartAccount['custodyStatus'],
+    ownerAddress: row.owner_address as Address | null,
+  };
+}
+
+/**
  * Get or create a smart account for a user on a specific chain
  * Does NOT deploy - just computes the deterministic address
  */
@@ -321,16 +325,7 @@ export async function getOrCreateSmartAccount(
   );
 
   if (existing) {
-    return {
-      id: existing.id,
-      userId: existing.user_id,
-      chainId: existing.chain_id,
-      address: existing.address as Address,
-      salt: existing.salt,
-      deployed: existing.deployed,
-      custodyStatus: existing.custody_status as SmartAccount['custodyStatus'],
-      ownerAddress: existing.owner_address as Address | null,
-    };
+    return toSmartAccount(existing);
   }
 
   // Compute new account address
@@ -366,16 +361,7 @@ export async function getOrCreateSmartAccount(
       salt: saltHex,
     });
 
-    return {
-      id: row.id,
-      userId: row.user_id,
-      chainId: row.chain_id,
-      address: row.address as Address,
-      salt: row.salt,
-      deployed: row.deployed,
-      custodyStatus: row.custody_status as SmartAccount['custodyStatus'],
-      ownerAddress: row.owner_address as Address | null,
-    };
+    return toSmartAccount(row);
   } catch (error) {
     // Handle race condition: if another request already inserted, fetch the existing record
     // SECURITY: Always include userId in query to ensure we only return the correct user's account
@@ -403,16 +389,7 @@ export async function getOrCreateSmartAccount(
           throw new Error('Smart account ownership mismatch');
         }
 
-        return {
-          id: existingRow.id,
-          userId: existingRow.user_id,
-          chainId: existingRow.chain_id,
-          address: existingRow.address as Address,
-          salt: existingRow.salt,
-          deployed: existingRow.deployed,
-          custodyStatus: existingRow.custody_status as SmartAccount['custodyStatus'],
-          ownerAddress: existingRow.owner_address as Address | null,
-        };
+        return toSmartAccount(existingRow);
       }
     }
     throw error;
@@ -428,16 +405,7 @@ export async function getUserSmartAccounts(userId: string): Promise<SmartAccount
     [userId],
   );
 
-  return rows.map((r) => ({
-    id: r.id,
-    userId: r.user_id,
-    chainId: r.chain_id,
-    address: r.address as Address,
-    salt: r.salt,
-    deployed: r.deployed,
-    custodyStatus: r.custody_status as SmartAccount['custodyStatus'],
-    ownerAddress: r.owner_address as Address | null,
-  }));
+  return rows.map(toSmartAccount);
 }
 
 /**
@@ -447,8 +415,9 @@ export async function getUserSmartAccounts(userId: string): Promise<SmartAccount
 export async function deploySmartAccount(
   userId: string,
   chainId: number,
+  preloadedAccount?: SmartAccount,
 ): Promise<{ txHash: Hash; address: Address }> {
-  const account = await getOrCreateSmartAccount(userId, chainId);
+  const account = preloadedAccount ?? await getOrCreateSmartAccount(userId, chainId);
 
   if (account.deployed) {
     logger.debug('Smart account already deployed', {
@@ -533,11 +502,12 @@ export async function deploySmartAccount(
 export async function ensureDeployed(
   userId: string,
   chainId: number,
+  preloadedAccount?: SmartAccount,
 ): Promise<Address> {
-  const account = await getOrCreateSmartAccount(userId, chainId);
+  const account = preloadedAccount ?? await getOrCreateSmartAccount(userId, chainId);
 
   if (!account.deployed) {
-    await deploySmartAccount(userId, chainId);
+    await deploySmartAccount(userId, chainId, account);
   }
 
   return account.address;
@@ -588,8 +558,8 @@ export async function executeTransaction(params: {
     throw new Error('Account is not managed - use your own wallet');
   }
 
-  // Ensure deployed
-  const accountAddress = await ensureDeployed(userId, chainId);
+  // Ensure deployed (reusing the already-loaded account row)
+  const accountAddress = await ensureDeployed(userId, chainId, account);
 
   // Check if account has enough ETH for the value (if sending ETH)
   if (value > 0n) {
@@ -816,59 +786,6 @@ export async function transferCustody(
 // ============================================================================
 
 /**
- * Sync token balances for a smart account from chain
- */
-export async function syncAccountBalances(
-  accountId: string,
-  chainId: number,
-  address: Address,
-  tokenAddresses: Address[],
-): Promise<void> {
-  const publicClient = getPublicClient(chainId);
-
-  for (const tokenAddress of tokenAddresses) {
-    try {
-      const isNative = tokenAddress === '0x0000000000000000000000000000000000000000';
-      let balance: bigint;
-      let symbol: string;
-      let decimals: number;
-
-      if (isNative) {
-        balance = await publicClient.getBalance({ address });
-        symbol = 'ETH';
-        decimals = 18;
-      } else {
-        balance = await publicClient.readContract({
-          address: tokenAddress,
-          abi: ERC20_ABI,
-          functionName: 'balanceOf',
-          args: [address],
-        });
-        // TODO: Fetch symbol and decimals from token contract
-        symbol = 'TOKEN';
-        decimals = 18;
-      }
-
-      // Upsert balance
-      await execute(
-        `INSERT INTO smart_account_balances
-         (smart_account_id, token_address, token_symbol, token_decimals, balance, last_synced_at)
-         VALUES ($1, $2, $3, $4, $5, NOW())
-         ON CONFLICT (smart_account_id, token_address)
-         DO UPDATE SET balance = $5, last_synced_at = NOW()`,
-        [accountId, tokenAddress, symbol, decimals, balance.toString()],
-      );
-    } catch (error) {
-      logger.error('Failed to sync balance', error as Error, {
-        accountId,
-        chainId,
-        tokenAddress,
-      });
-    }
-  }
-}
-
-/**
  * Get cached balances for a smart account
  */
 export async function getAccountBalances(
@@ -907,36 +824,6 @@ export async function getAccountBalances(
 // ============================================================================
 // Project Role Tracking
 // ============================================================================
-
-/**
- * Record that a smart account was set as a project recipient
- */
-export async function recordProjectRole(params: {
-  smartAccountId: string;
-  projectId: number;
-  chainId: number;
-  roleType: 'payout_recipient' | 'reserved_recipient' | 'operator';
-  splitGroup?: number;
-  percentBps?: number;
-  txHash?: string;
-}): Promise<void> {
-  await execute(
-    `INSERT INTO smart_account_project_roles
-     (smart_account_id, project_id, chain_id, role_type, split_group, percent_bps, set_tx_hash, set_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-    [
-      params.smartAccountId,
-      params.projectId,
-      params.chainId,
-      params.roleType,
-      params.splitGroup || null,
-      params.percentBps || null,
-      params.txHash || null,
-    ],
-  );
-
-  logger.info('Recorded project role', params);
-}
 
 /**
  * Get all project roles for a user's smart accounts
@@ -1169,6 +1056,56 @@ export async function requestExport(
 }
 
 /**
+ * Transfer custody on each chain in turn, recording per-chain results and
+ * persisting chain_status after every attempt. Shared by confirmExport and
+ * retryExport.
+ */
+async function runExportTransfers(
+  exportId: string,
+  userId: string,
+  newOwnerAddress: Address,
+  chainIds: number[],
+  chainStatus: Record<
+    string,
+    { status: string; txHash?: string; error?: string; completedAt?: string }
+  >,
+): Promise<Record<number, { success: boolean; txHash?: string; error?: string }>> {
+  const chainResults: Record<number, { success: boolean; txHash?: string; error?: string }> = {};
+
+  for (const chainId of chainIds) {
+    try {
+      const { txHash } = await transferCustody(userId, chainId, newOwnerAddress);
+
+      chainResults[chainId] = { success: true, txHash };
+      chainStatus[chainId.toString()] = {
+        status: 'completed',
+        txHash,
+        completedAt: new Date().toISOString(),
+      };
+
+      logger.info('Chain export completed', { exportId, chainId, txHash });
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      chainResults[chainId] = { success: false, error: errorMsg };
+      chainStatus[chainId.toString()] = {
+        status: 'failed',
+        error: errorMsg,
+      };
+
+      logger.error('Chain export failed', error as Error, { exportId, chainId });
+    }
+
+    // Update chain status after each chain
+    await execute(
+      `UPDATE smart_account_exports SET chain_status = $1, updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(chainStatus), exportId],
+    );
+  }
+
+  return chainResults;
+}
+
+/**
  * Confirm and execute the export
  */
 export async function confirmExport(exportId: string): Promise<{
@@ -1223,45 +1160,13 @@ export async function confirmExport(exportId: string): Promise<{
   if (claimed !== 1) throw new Error('Export is already being processed');
 
   // Execute transfers
-  const chainResults: Record<number, { success: boolean; txHash?: string; error?: string }> = {};
-  const chainStatus: Record<
-    string,
-    { status: string; txHash?: string; error?: string; completedAt?: string }
-  > = {};
-
-  for (const chainId of exportReq.chain_ids) {
-    try {
-      const { txHash } = await transferCustody(
-        exportReq.user_id,
-        chainId,
-        exportReq.new_owner_address as Address,
-      );
-
-      chainResults[chainId] = { success: true, txHash };
-      chainStatus[chainId.toString()] = {
-        status: 'completed',
-        txHash,
-        completedAt: new Date().toISOString(),
-      };
-
-      logger.info('Chain export completed', { exportId, chainId, txHash });
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      chainResults[chainId] = { success: false, error: errorMsg };
-      chainStatus[chainId.toString()] = {
-        status: 'failed',
-        error: errorMsg,
-      };
-
-      logger.error('Chain export failed', error as Error, { exportId, chainId });
-    }
-
-    // Update chain status after each chain
-    await execute(
-      `UPDATE smart_account_exports SET chain_status = $1, updated_at = NOW() WHERE id = $2`,
-      [JSON.stringify(chainStatus), exportId],
-    );
-  }
+  const chainResults = await runExportTransfers(
+    exportId,
+    exportReq.user_id,
+    exportReq.new_owner_address as Address,
+    exportReq.chain_ids,
+    {},
+  );
 
   // Determine final status
   const results = Object.values(chainResults);
@@ -1335,37 +1240,14 @@ export async function retryExport(exportId: string): Promise<{
     [exportId],
   );
 
-  const chainResults: Record<number, { success: boolean; txHash?: string; error?: string }> = {};
   const chainStatus = { ...exportReq.chain_status };
-
-  for (const chainId of failedChainIds) {
-    try {
-      const { txHash } = await transferCustody(
-        exportReq.user_id,
-        chainId,
-        exportReq.new_owner_address as Address,
-      );
-
-      chainResults[chainId] = { success: true, txHash };
-      chainStatus[chainId.toString()] = {
-        status: 'completed',
-        txHash,
-        completedAt: new Date().toISOString(),
-      };
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      chainResults[chainId] = { success: false, error: errorMsg };
-      chainStatus[chainId.toString()] = {
-        status: 'failed',
-        error: errorMsg,
-      };
-    }
-
-    await execute(
-      `UPDATE smart_account_exports SET chain_status = $1, updated_at = NOW() WHERE id = $2`,
-      [JSON.stringify(chainStatus), exportId],
-    );
-  }
+  const chainResults = await runExportTransfers(
+    exportId,
+    exportReq.user_id,
+    exportReq.new_owner_address as Address,
+    failedChainIds,
+    chainStatus,
+  );
 
   // Check overall status (including previously successful chains)
   const allChainStatuses = exportReq.chain_ids.map(
@@ -1403,26 +1285,21 @@ export async function cancelExport(exportId: string): Promise<void> {
   logger.info('Export cancelled', { exportId });
 }
 
-/**
- * Get export status
- */
-export async function getExportStatus(exportId: string): Promise<ExportRequest | null> {
-  const row = await queryOne<{
-    id: string;
-    user_id: string;
-    new_owner_address: string;
-    chain_ids: number[];
-    chain_status: Record<string, { status: string; txHash?: string; error?: string }>;
-    status: string;
-    blocked_by_pending_ops: boolean;
-    pending_ops_details: { withdrawals: ExportBlocker[] } | null;
-    export_snapshot: ExportSnapshot | null;
-    user_confirmed_at: string | null;
-    created_at: string;
-  }>(`SELECT * FROM smart_account_exports WHERE id = $1`, [exportId]);
+interface ExportRequestRow {
+  id: string;
+  user_id: string;
+  new_owner_address: string;
+  chain_ids: number[];
+  chain_status: Record<string, { status: string; txHash?: string; error?: string }>;
+  status: string;
+  blocked_by_pending_ops: boolean;
+  pending_ops_details: { withdrawals: ExportBlocker[] } | null;
+  export_snapshot: ExportSnapshot | null;
+  user_confirmed_at: string | null;
+  created_at: string;
+}
 
-  if (!row) return null;
-
+function toExportRequest(row: ExportRequestRow): ExportRequest {
   return {
     id: row.id,
     userId: row.user_id,
@@ -1439,39 +1316,27 @@ export async function getExportStatus(exportId: string): Promise<ExportRequest |
 }
 
 /**
+ * Get export status
+ */
+export async function getExportStatus(exportId: string): Promise<ExportRequest | null> {
+  const row = await queryOne<ExportRequestRow>(
+    `SELECT * FROM smart_account_exports WHERE id = $1`,
+    [exportId],
+  );
+
+  return row ? toExportRequest(row) : null;
+}
+
+/**
  * Get user's export history
  */
 export async function getUserExports(userId: string): Promise<ExportRequest[]> {
-  const rows = await query<{
-    id: string;
-    user_id: string;
-    new_owner_address: string;
-    chain_ids: number[];
-    chain_status: Record<string, { status: string; txHash?: string; error?: string }>;
-    status: string;
-    blocked_by_pending_ops: boolean;
-    pending_ops_details: { withdrawals: ExportBlocker[] } | null;
-    export_snapshot: ExportSnapshot | null;
-    user_confirmed_at: string | null;
-    created_at: string;
-  }>(
+  const rows = await query<ExportRequestRow>(
     `SELECT * FROM smart_account_exports WHERE user_id = $1 ORDER BY created_at DESC`,
     [userId],
   );
 
-  return rows.map((row) => ({
-    id: row.id,
-    userId: row.user_id,
-    newOwnerAddress: row.new_owner_address as Address,
-    chainIds: row.chain_ids,
-    chainStatus: row.chain_status,
-    status: row.status as ExportRequest['status'],
-    blockedByPendingOps: row.blocked_by_pending_ops,
-    pendingOpsDetails: row.pending_ops_details,
-    exportSnapshot: row.export_snapshot,
-    userConfirmedAt: row.user_confirmed_at ? new Date(row.user_confirmed_at) : null,
-    createdAt: new Date(row.created_at),
-  }));
+  return rows.map(toExportRequest);
 }
 
 // ============================================================================

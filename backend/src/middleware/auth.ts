@@ -70,25 +70,3 @@ export async function requireAdmin(c: Context, next: Next) {
 
   await next();
 }
-
-// Middleware that checks if user has specific privacy mode
-export function requirePrivacyMode(allowedModes: string[]) {
-  return async (c: Context, next: Next) => {
-    const user = c.get('user');
-    if (!user) {
-      return c.json({ success: false, error: 'Authentication required' }, 401);
-    }
-
-    if (!allowedModes.includes(user.privacyMode)) {
-      return c.json(
-        {
-          success: false,
-          error: `This feature requires privacy mode to be one of: ${allowedModes.join(', ')}`,
-        },
-        403
-      );
-    }
-
-    await next();
-  };
-}

@@ -52,10 +52,6 @@ function cacheSet(text: string, model: string, result: EmbeddingResult): void {
   EMBEDDING_CACHE.set(key, result);
 }
 
-export function clearEmbeddingCache(): void {
-  EMBEDDING_CACHE.clear();
-}
-
 // ============================================================================
 // Embedding API
 // ============================================================================
@@ -242,43 +238,10 @@ export async function generateBatchEmbeddings(
 }
 
 /**
- * Compute cosine similarity between two embedding vectors
- */
-export function cosineSimilarity(a: number[], b: number[]): number {
-  if (a.length !== b.length) {
-    throw new Error('Embeddings must have same dimensions');
-  }
-
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-
-  const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
-  if (magnitude === 0) return 0;
-
-  return dotProduct / magnitude;
-}
-
-/**
  * Format embedding for PostgreSQL vector type
  */
 export function formatEmbeddingForPostgres(embedding: number[]): string {
   return `[${embedding.join(',')}]`;
-}
-
-/**
- * Parse PostgreSQL vector string to number array
- */
-export function parsePostgresEmbedding(vectorStr: string): number[] {
-  // Remove brackets and split by comma
-  const cleaned = vectorStr.replace(/[\[\]]/g, '');
-  return cleaned.split(',').map(Number);
 }
 
 // ============================================================================

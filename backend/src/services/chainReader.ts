@@ -64,6 +64,14 @@ const TESTNET_RPC_URLS: Record<number, string> = {
   421614: 'https://arbitrum-sepolia.drpc.org',
 };
 
+// Combined chain/RPC maps shared with other services (e.g. smartAccounts)
+export const VIEM_CHAINS = { ...MAINNET_CHAINS, ...TESTNET_CHAINS } as const;
+
+export const PUBLIC_RPC_URLS: Record<number, string> = {
+  ...MAINNET_RPC_URLS,
+  ...TESTNET_RPC_URLS,
+};
+
 // ============================================================================
 // Discovery roots and recognized implementations (same via CREATE2 on all chains)
 // ============================================================================
@@ -723,6 +731,28 @@ export async function fetchCurrentRuleset(
       };
     }
 
+    const decodedMetadata: RulesetMetadata = {
+      reservedPercent: metadata.reservedPercent,
+      cashOutTaxRate: metadata.cashOutTaxRate,
+      baseCurrency: metadata.baseCurrency,
+      pausePay: metadata.pausePay,
+      pauseCreditTransfers: metadata.pauseCreditTransfers,
+      allowOwnerMinting: metadata.allowOwnerMinting,
+      allowSetCustomToken: metadata.allowSetCustomToken,
+      allowTerminalMigration: metadata.allowTerminalMigration,
+      allowSetTerminals: metadata.allowSetTerminals,
+      allowSetController: metadata.allowSetController,
+      allowAddAccountingContext: metadata.allowAddAccountingContext,
+      allowAddPriceFeed: metadata.allowAddPriceFeed,
+      ownerMustSendPayouts: metadata.ownerMustSendPayouts,
+      holdFees: metadata.holdFees,
+      scopeCashOutsToLocalBalances: metadata.scopeCashOutsToLocalBalances,
+      useDataHookForPay: metadata.useDataHookForPay,
+      useDataHookForCashOut: metadata.useDataHookForCashOut,
+      dataHook: metadata.dataHook,
+      metadata: metadata.metadata,
+    };
+
     return {
       ruleset: {
         cycleNumber: Number(ruleset.cycleNumber),
@@ -733,49 +763,9 @@ export async function fetchCurrentRuleset(
         weightCutPercent: Number(ruleset.weightCutPercent),
         approvalHook: ruleset.approvalHook,
         basedOnId: String(ruleset.basedOnId),
-        metadata: {
-          reservedPercent: metadata.reservedPercent,
-          cashOutTaxRate: metadata.cashOutTaxRate,
-          baseCurrency: metadata.baseCurrency,
-          pausePay: metadata.pausePay,
-          pauseCreditTransfers: metadata.pauseCreditTransfers,
-          allowOwnerMinting: metadata.allowOwnerMinting,
-          allowSetCustomToken: metadata.allowSetCustomToken,
-          allowTerminalMigration: metadata.allowTerminalMigration,
-          allowSetTerminals: metadata.allowSetTerminals,
-          allowSetController: metadata.allowSetController,
-          allowAddAccountingContext: metadata.allowAddAccountingContext,
-          allowAddPriceFeed: metadata.allowAddPriceFeed,
-          ownerMustSendPayouts: metadata.ownerMustSendPayouts,
-          holdFees: metadata.holdFees,
-          scopeCashOutsToLocalBalances: metadata.scopeCashOutsToLocalBalances,
-          useDataHookForPay: metadata.useDataHookForPay,
-          useDataHookForCashOut: metadata.useDataHookForCashOut,
-          dataHook: metadata.dataHook,
-          metadata: metadata.metadata,
-        },
+        metadata: decodedMetadata,
       },
-      metadata: {
-        reservedPercent: metadata.reservedPercent,
-        cashOutTaxRate: metadata.cashOutTaxRate,
-        baseCurrency: metadata.baseCurrency,
-        pausePay: metadata.pausePay,
-        pauseCreditTransfers: metadata.pauseCreditTransfers,
-        allowOwnerMinting: metadata.allowOwnerMinting,
-        allowSetCustomToken: metadata.allowSetCustomToken,
-        allowTerminalMigration: metadata.allowTerminalMigration,
-        allowSetTerminals: metadata.allowSetTerminals,
-        allowSetController: metadata.allowSetController,
-        allowAddAccountingContext: metadata.allowAddAccountingContext,
-        allowAddPriceFeed: metadata.allowAddPriceFeed,
-        ownerMustSendPayouts: metadata.ownerMustSendPayouts,
-        holdFees: metadata.holdFees,
-        scopeCashOutsToLocalBalances: metadata.scopeCashOutsToLocalBalances,
-        useDataHookForPay: metadata.useDataHookForPay,
-        useDataHookForCashOut: metadata.useDataHookForCashOut,
-        dataHook: metadata.dataHook,
-        metadata: metadata.metadata,
-      },
+      metadata: decodedMetadata,
     };
   } catch (err) {
     console.error('Failed to fetch current ruleset:', err);

@@ -14,11 +14,9 @@ import {
   generateGroupKey,
   distributeGroupKeyToMembers,
   encryptMessage,
-  decryptMessage,
   getGroupKeyForMember,
   rotateGroupKey,
   getOrCreateUserKeypair,
-  type GroupKey,
 } from './encryption.ts';
 import {
   broadcastChatMessage,
@@ -106,37 +104,6 @@ export interface ChatMember {
   isActive: boolean;
   joinedAt: Date;
   leftAt?: Date;
-}
-
-/**
- * Chat Permission Levels (in order of increasing access):
- * 1. view-only: Can only read messages
- * 2. view-and-write: Can read and send messages
- * 3. view-and-write-and-invite: Can read, send, and create invites
- * 4. view-and-write-and-invite-and-caninvite: Can read, send, create invites that grant invite permission
- */
-export type ChatPermissionLevel =
-  | 'view-only'
-  | 'view-and-write'
-  | 'view-and-write-and-invite'
-  | 'view-and-write-and-invite-and-caninvite';
-
-/**
- * Get the permission level for a member
- */
-export function getMemberPermissionLevel(member: ChatMember): ChatPermissionLevel {
-  if (!member.canSendMessages) {
-    return 'view-only';
-  }
-  if (!member.canInvite) {
-    return 'view-and-write';
-  }
-  // If they have canInvite, check if they can pass on roles (determined by role or explicit flag)
-  // Founders and admins can always create invites that grant invite permission
-  if (member.role === 'founder' || member.role === 'admin') {
-    return 'view-and-write-and-invite-and-caninvite';
-  }
-  return 'view-and-write-and-invite';
 }
 
 export interface AttachmentMetadata {
@@ -522,15 +489,6 @@ export async function deleteChat(chatId: string, requestorAddress: string): Prom
 // Member Management
 // ============================================================================
 
-// Debug log to file
-async function debugLog(msg: string) {
-  const line = `${new Date().toISOString()} ${msg}\n`;
-  console.log(msg);
-  try {
-    await Deno.writeTextFile('/tmp/invite-debug.log', line, { append: true });
-  } catch {}
-}
-
 /**
  * Get a member record
  * Joins with juicy_identities to use identity username/emoji when available
@@ -539,7 +497,6 @@ export async function getMember(
   chatId: string,
   address: string
 ): Promise<ChatMember | null> {
-  await debugLog(`[getMember] Looking up chatId: ${chatId} address: ${address}`);
   const db = await queryOne<DbChatMember>(
     `SELECT m.id, m.chat_id, m.member_address, m.member_user_id, m.role,
             m.can_send_messages, m.can_invite, m.can_invoke_ai, m.can_manage_members,
@@ -551,7 +508,6 @@ export async function getMember(
      WHERE m.chat_id = $1 AND m.member_address = $2`,
     [chatId, address]
   );
-  await debugLog(`[getMember] Found: ${db ? 'yes' : 'no'} ${db ? `isActive: ${db.is_active}` : ''}`);
   return db ? dbToMember(db) : null;
 }
 
@@ -795,7 +751,6 @@ export async function addMemberViaInvite(
 
   if (existing) {
     // Reactivate existing member
-    await debugLog(`[addMemberViaInvite] Reactivating existing member: ${address}`);
     await execute(
       `UPDATE multi_chat_members
        SET is_active = TRUE, role = $1, can_send_messages = $2, can_invite = $3, can_invoke_ai = $4,
@@ -816,7 +771,6 @@ export async function addMemberViaInvite(
     );
   } else {
     // Insert new member
-    await debugLog(`[addMemberViaInvite] Inserting new member: ${address}`);
     await execute(
       `INSERT INTO multi_chat_members (
          chat_id, member_address, member_user_id, role,
@@ -836,7 +790,6 @@ export async function addMemberViaInvite(
         customEmoji,
       ]
     );
-    await debugLog(`[addMemberViaInvite] Insert completed for: ${address}`);
   }
 
   // If chat is encrypted, distribute group key to new member

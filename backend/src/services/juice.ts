@@ -1225,9 +1225,6 @@ export async function processSpends(): Promise<{
 /**
  * Process pending cash outs (send crypto to users)
  */
-// Credit expiration period (6 months)
-const CREDIT_EXPIRATION_MONTHS = 6;
-
 export async function processCashOuts(): Promise<{
   processed: number;
   failed: number;
@@ -1464,100 +1461,6 @@ export async function processCashOuts(): Promise<{
     failed,
     pending: parseInt(count),
   };
-}
-
-/**
- * Process expired credits (users inactive for 6+ months)
- * Credits are zeroed and recorded for tracking.
- * Future: Send expired credits to JUICY revnet as beneficiary.
- */
-export async function processExpiredCredits(): Promise<{
-  expired: number;
-  totalAmount: number;
-  failed: number;
-}> {
-  const expirationDate = new Date();
-  expirationDate.setMonth(expirationDate.getMonth() - CREDIT_EXPIRATION_MONTHS);
-
-  // Find users with positive balance and last activity older than expiration period
-  // Use row locking to prevent race conditions
-  const expiredBalances = await query<{
-    user_id: string;
-    balance: string;
-    last_activity_at: string;
-  }>(
-    `SELECT user_id, balance, last_activity_at
-     FROM juice_balances
-     WHERE balance > 0
-     AND last_activity_at < $1
-     LIMIT 100
-     FOR UPDATE SKIP LOCKED`,
-    [expirationDate.toISOString()],
-  );
-
-  let expired = 0;
-  let totalAmount = 0;
-  let failed = 0;
-
-  for (const balance of expiredBalances) {
-    try {
-      const amount = await transaction(async (client) => {
-        const { rows } = await client.queryObject<{
-          balance: string;
-          last_activity_at: string;
-        }>(
-          `SELECT balance, last_activity_at
-           FROM juice_balances
-           WHERE user_id = $1 AND balance > 0 AND last_activity_at < $2
-           FOR UPDATE`,
-          [balance.user_id, expirationDate.toISOString()],
-        );
-        if (!rows[0]) return null;
-
-        // Record the expiration
-        await client.queryObject(
-          `INSERT INTO credit_expirations (user_id, amount, last_activity_at)
-           VALUES ($1, $2, $3)`,
-          [balance.user_id, rows[0].balance, rows[0].last_activity_at],
-        );
-
-        // Zero the balance
-        await client.queryObject(
-          `UPDATE juice_balances
-           SET balance = 0,
-               updated_at = NOW()
-           WHERE user_id = $1`,
-          [balance.user_id],
-        );
-        return parseFloat(rows[0].balance);
-      });
-      if (amount === null) continue;
-
-      logger.info('Credits expired', {
-        userId: balance.user_id,
-        amount,
-        lastActivityAt: balance.last_activity_at,
-      });
-
-      expired++;
-      totalAmount += amount;
-    } catch (error) {
-      logger.error('Failed to expire credits', error as Error, {
-        userId: balance.user_id,
-      });
-      failed++;
-    }
-  }
-
-  if (expired > 0) {
-    logger.info('Credit expiration batch complete', {
-      expired,
-      totalAmount,
-      failed,
-    });
-  }
-
-  return { expired, totalAmount, failed };
 }
 
 /**

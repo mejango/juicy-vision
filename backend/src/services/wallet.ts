@@ -67,42 +67,6 @@ function getPublicClient(chainId: number) {
   });
 }
 
-export async function getTokenBalance(
-  address: Address,
-  chainId: number,
-  tokenAddress: Address,
-): Promise<{ balance: bigint; decimals: number; symbol: string }> {
-  const client = getPublicClient(chainId);
-
-  // Native token (ETH)
-  if (tokenAddress === '0x0000000000000000000000000000000000000000') {
-    const balance = await client.getBalance({ address });
-    return { balance, decimals: 18, symbol: 'ETH' };
-  }
-
-  // ERC20 token
-  const [balance, decimals, symbol] = await Promise.all([
-    client.readContract({
-      address: tokenAddress,
-      abi: ERC20_ABI,
-      functionName: 'balanceOf',
-      args: [address],
-    }),
-    client.readContract({
-      address: tokenAddress,
-      abi: ERC20_ABI,
-      functionName: 'decimals',
-    }),
-    client.readContract({
-      address: tokenAddress,
-      abi: ERC20_ABI,
-      functionName: 'symbol',
-    }),
-  ]);
-
-  return { balance, decimals, symbol };
-}
-
 // ============================================================================
 // Transfer Management (7-day hold for payment finalization)
 // ============================================================================

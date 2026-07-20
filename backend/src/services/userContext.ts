@@ -11,7 +11,7 @@
  * Mirror the user's language. Let them lead the complexity.
  */
 
-import { query, queryOne, execute } from '../db/index.ts';
+import { queryOne, execute } from '../db/index.ts';
 
 // ============================================================================
 // Types
@@ -260,38 +260,6 @@ export async function recordFamiliarTerm(userId: string, term: string): Promise<
 
   // Check if we should upgrade jargon level
   await maybeUpgradeJargonLevel(userId);
-}
-
-/**
- * Get the appropriate language for a term based on user's level
- */
-export async function getTermForUser(
-  userId: string,
-  jargonTerm: string
-): Promise<string> {
-  const context = await queryOne<{
-    jargon_level: string;
-    familiar_terms: string[];
-  }>(
-    'SELECT jargon_level, familiar_terms FROM user_contexts WHERE user_id = $1',
-    [userId]
-  );
-
-  const level = context?.jargon_level || 'beginner';
-  const familiarTerms = context?.familiar_terms || [];
-
-  // If user has used this term, they're familiar with it
-  if (familiarTerms.includes(jargonTerm.toLowerCase())) {
-    return jargonTerm;
-  }
-
-  // Otherwise, use appropriate alternative
-  const alternatives = JARGON_ALTERNATIVES[jargonTerm.toLowerCase()];
-  if (!alternatives) return jargonTerm;
-
-  return level === 'advanced' ? jargonTerm :
-         level === 'intermediate' ? alternatives.intermediate :
-         alternatives.beginner;
 }
 
 /**

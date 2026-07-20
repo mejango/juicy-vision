@@ -170,18 +170,6 @@ export const SUPPORTED_CHAINS = {
 } as const;
 
 /**
- * Bridge protocol used per chain pair
- */
-export const BRIDGE_PROTOCOLS: Record<string, string> = {
-  '1-10': 'OP Messenger (native)',
-  '1-8453': 'OP Messenger (native)',
-  '1-42161': 'Arbitrum Inbox/Outbox',
-  '10-42161': 'Chainlink CCIP',
-  '10-8453': 'Chainlink CCIP',
-  '8453-42161': 'Chainlink CCIP',
-};
-
-/**
  * Tool definitions for omnichain operations
  */
 export const OMNICHAIN_TOOLS = [
@@ -392,71 +380,6 @@ export const OMNICHAIN_TOOLS = [
     },
   },
 ];
-
-/**
- * V6 JBSucker ABI fragments for encoding transactions.
- * Note: beneficiaries are bytes32 (EVM addresses left-padded to 32 bytes),
- * and prepare/leaves carry an opaque bytes32 metadata field.
- */
-export const SUCKER_ABI = [
-  {
-    name: 'prepare',
-    type: 'function',
-    inputs: [
-      { name: 'projectTokenCount', type: 'uint256' },
-      { name: 'beneficiary', type: 'bytes32' },
-      { name: 'minTokensReclaimed', type: 'uint256' },
-      { name: 'token', type: 'address' },
-      { name: 'metadata', type: 'bytes32' },
-    ],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    name: 'toRemote',
-    type: 'function',
-    inputs: [{ name: 'token', type: 'address' }],
-    outputs: [],
-    stateMutability: 'payable',
-  },
-  {
-    name: 'claim',
-    type: 'function',
-    inputs: [
-      {
-        name: 'claimData',
-        type: 'tuple',
-        components: [
-          { name: 'token', type: 'address' },
-          {
-            name: 'leaf',
-            type: 'tuple',
-            components: [
-              { name: 'index', type: 'uint256' },
-              { name: 'beneficiary', type: 'bytes32' },
-              { name: 'projectTokenCount', type: 'uint256' },
-              { name: 'terminalTokenAmount', type: 'uint256' },
-              { name: 'metadata', type: 'bytes32' },
-            ],
-          },
-          { name: 'proof', type: 'bytes32[32]' },
-        ],
-      },
-    ],
-    outputs: [],
-    stateMutability: 'nonpayable',
-  },
-  {
-    name: 'outboxOf',
-    type: 'function',
-    inputs: [{ name: 'token', type: 'address' }],
-    outputs: [
-      { name: 'nonce', type: 'uint64' },
-      { name: 'balance', type: 'uint256' },
-    ],
-    stateMutability: 'view',
-  },
-] as const;
 
 /**
  * V6 JBSuckerRegistry ABI fragment (remote is bytes32 for cross-VM support)

@@ -316,16 +316,6 @@ export async function searchIdentities(searchQuery: string, limit = 10): Promise
   return results.map(dbToIdentity);
 }
 
-/**
- * Get all identities (for admin/debug)
- */
-export async function getAllIdentities(): Promise<JuicyIdentity[]> {
-  const results = await query<DbJuicyIdentity>(
-    `SELECT * FROM juicy_identities ORDER BY created_at DESC`
-  );
-  return results.map(dbToIdentity);
-}
-
 // ============================================================================
 // Resolution Utilities
 // ============================================================================
@@ -363,74 +353,5 @@ export function parseIdentityString(input: string): { emoji: string; username: s
   }
 
   return null;
-}
-
-/**
- * Format an identity for display
- */
-export function formatIdentity(emoji: string, username: string): string {
-  return `${emoji} ${username}`;
-}
-
-/**
- * Format an identity for use in text (with @ prefix)
- */
-export function formatIdentityMention(emoji: string, username: string): string {
-  return `@${emoji} ${username}`;
-}
-
-/**
- * Find all identity mentions in a text string
- * Returns array of { match, emoji, username, start, end }
- */
-export function findIdentityMentions(text: string): Array<{
-  match: string;
-  emoji: string;
-  username: string;
-  start: number;
-  end: number;
-}> {
-  const mentions: Array<{
-    match: string;
-    emoji: string;
-    username: string;
-    start: number;
-    end: number;
-  }> = [];
-
-  // Build regex pattern for all valid emojis (username first, then emoji)
-  const emojiPattern = VALID_EMOJIS.map(e => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
-  const pattern = new RegExp(`@([a-zA-Z][a-zA-Z0-9_]{2,19})(${emojiPattern})`, 'g');
-
-  let match;
-  while ((match = pattern.exec(text)) !== null) {
-    mentions.push({
-      match: match[0],
-      emoji: match[2],
-      username: match[1],
-      start: match.index,
-      end: match.index + match[0].length,
-    });
-  }
-
-  return mentions;
-}
-
-/**
- * Resolve all identity mentions in a text to addresses
- * Returns a map of mention -> address (or null if not found)
- */
-export async function resolveAllMentions(text: string): Promise<Map<string, string | null>> {
-  const mentions = findIdentityMentions(text);
-  const results = new Map<string, string | null>();
-
-  for (const mention of mentions) {
-    if (!results.has(mention.match)) {
-      const address = await resolveIdentity(mention.emoji, mention.username);
-      results.set(mention.match, address);
-    }
-  }
-
-  return results;
 }
 

@@ -43,17 +43,6 @@ export function getHookTemplate(type: HookType): HookTemplate {
 }
 
 /**
- * Get all available hook templates.
- */
-export function getAllTemplates(): Record<HookType, HookTemplate> {
-  return {
-    'pay-hook': PAY_HOOK_TEMPLATE,
-    'cash-out-hook': CASH_OUT_HOOK_TEMPLATE,
-    'split-hook': SPLIT_HOOK_TEMPLATE,
-  };
-}
-
-/**
  * Customize a template with project-specific values.
  */
 export function customizeTemplate(
@@ -109,43 +98,3 @@ export function customizeTemplate(
     files: customizedFiles,
   };
 }
-
-/**
- * Template metadata for UI display.
- */
-export const TEMPLATE_METADATA: Record<HookType, {
-  icon: string;
-  color: string;
-  useCases: string[];
-}> = {
-  'pay-hook': {
-    icon: '💰',
-    color: '#22c55e', // green
-    useCases: [
-      'Payment caps',
-      'Allowlists',
-      'NFT minting on payment',
-      'Custom token distribution',
-    ],
-  },
-  'cash-out-hook': {
-    icon: '📤',
-    color: '#f59e0b', // amber
-    useCases: [
-      'Redemption caps',
-      'Time-locked redemptions',
-      'Vesting schedules',
-      'Custom redemption curves',
-    ],
-  },
-  'split-hook': {
-    icon: '🔀',
-    color: '#8b5cf6', // purple
-    useCases: [
-      'Revenue sharing',
-      'Automatic token swaps',
-      'Multi-sig routing',
-      'Automated buybacks',
-    ],
-  },
-};

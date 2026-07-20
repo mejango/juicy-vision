@@ -6,10 +6,15 @@
  * - External wallets (SIWE session) for self-custody users
  */
 
-import { type Context, Hono, type Next } from 'hono';
+import { type Context, Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { optionalAuth } from '../middleware/auth.ts';
+import {
+  optionalWalletSession,
+  requireWalletOrAuth,
+  type WalletSession,
+} from '../middleware/walletSession.ts';
 import {
   addMember,
   addMemberViaInvite,
@@ -60,11 +65,11 @@ import {
   SUPPORTED_CHAINS,
 } from '../services/aiBilling.ts';
 import { archiveChat, fetchArchivedChat, getLatestArchiveCid } from '../services/ipfs.ts';
+import { invokeAiForChat } from '../services/aiInvocation.ts';
 import { getOrCreateSmartAccount } from '../services/smartAccounts.ts';
 import { getOnlineMembers } from '../services/websocket.ts';
 import { execute, query, queryOne } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
-import { getPrimaryChainId } from '@shared/chains.ts';
 import {
   getPseudoAddress,
   isTimestampValid,
@@ -72,9 +77,7 @@ import {
   verifyWalletSignature,
 } from '../utils/crypto.ts';
 import { rateLimitByWallet } from '../services/rateLimit.ts';
-import { parseConfidence } from '../services/claude.ts';
 import { parseEther } from 'viem';
-import { createEscalation, updateMessageConfidence } from '../services/escalation.ts';
 import {
   type ComponentState,
   getComponentState,
@@ -84,15 +87,8 @@ import {
 // Rate limiting removed - AI is free for everyone
 
 // ============================================================================
-// Middleware - Wallet Session Auth
+// Middleware - Wallet Session Auth (shared implementation)
 // ============================================================================
-
-interface WalletSession {
-  address: string;
-  userId?: string; // Linked user ID if managed wallet
-  sessionId?: string; // Anonymous session ID
-  isAnonymous?: boolean;
-}
 
 type ChatEnv = {
   Variables: {
@@ -102,160 +98,6 @@ type ChatEnv = {
 };
 
 const chatRouter = new Hono<ChatEnv>();
-
-declare module 'hono' {
-  interface ContextVariableMap {
-    walletSession?: WalletSession;
-  }
-}
-
-/**
- * Extract wallet session from header or query param
- */
-async function extractWalletSession(
-  authHeader: string | undefined,
-  sessionToken: string | undefined,
-): Promise<WalletSession | null> {
-  const token = sessionToken || authHeader?.replace('Bearer ', '');
-  if (!token) return null;
-
-  // First try JWT token validation (for managed wallets)
-  const { validateSession } = await import('../services/auth.ts');
-  const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
-
-  const jwtResult = await validateSession(token);
-  if (jwtResult) {
-    const config = getConfig();
-    const smartAccount = await getOrCreateSmartAccount(
-      jwtResult.user.id,
-      getPrimaryChainId(config.isTestnet),
-    );
-    return {
-      address: smartAccount.address,
-      userId: jwtResult.user.id,
-    };
-  }
-
-  // Try SIWE session token (for self-custody wallets)
-  const session = await queryOne<{
-    wallet_address: string;
-    expires_at: Date;
-  }>(
-    `SELECT wallet_address, expires_at FROM wallet_sessions
-     WHERE session_token = $1 AND expires_at > NOW()`,
-    [token],
-  );
-
-  if (session) {
-    // Check if this wallet is linked to a user
-    const user = await queryOne<{ id: string }>(
-      `SELECT u.id FROM users u
-       JOIN multi_chat_members mcm ON mcm.member_user_id = u.id
-       WHERE mcm.member_address = $1
-       LIMIT 1`,
-      [session.wallet_address],
-    );
-
-    return {
-      address: session.wallet_address,
-      userId: user?.id,
-    };
-  }
-
-  return null;
-}
-
-/**
- * Middleware that requires wallet session OR user auth OR anonymous session
- * Anonymous sessions use X-Session-ID header and get a pseudo-address
- */
-async function requireWalletOrAuth(c: Context<ChatEnv>, next: Next) {
-  // First try JWT auth
-  const authHeader = c.req.header('Authorization');
-  const user = c.get('user');
-
-  if (user) {
-    // User authenticated - get their smart account address
-    const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
-    const config = getConfig();
-    const smartAccount = await getOrCreateSmartAccount(
-      user.id,
-      getPrimaryChainId(config.isTestnet),
-    );
-    c.set('walletSession', { address: smartAccount.address, userId: user.id } as WalletSession);
-    return next();
-  }
-
-  // Try wallet session
-  const sessionToken = c.req.query('session') || c.req.header('X-Wallet-Session');
-  const walletSession = await extractWalletSession(authHeader, sessionToken);
-
-  if (walletSession) {
-    c.set('walletSession', walletSession);
-    return next();
-  }
-
-  // Try anonymous session (X-Session-ID header)
-  const sessionId = c.req.header('X-Session-ID');
-  if (sessionId && sessionId.startsWith('ses_')) {
-    // Create a pseudo-address using HMAC-SHA256 for anonymous users
-    // This allows them to own chats and create invites
-    const pseudoAddress = await getPseudoAddress(sessionId);
-    c.set('walletSession', {
-      address: pseudoAddress,
-      sessionId,
-      isAnonymous: true,
-    } as WalletSession);
-    return next();
-  }
-
-  return c.json({ success: false, error: 'Authentication required' }, 401);
-}
-
-/**
- * Middleware that optionally extracts wallet session without requiring it
- * Used for endpoints that have different behavior for authenticated vs anonymous users
- */
-async function optionalWalletSession(c: Context<ChatEnv>, next: Next) {
-  // First check if user is already authenticated via JWT
-  const user = c.get('user');
-  const authHeader = c.req.header('Authorization');
-
-  if (user) {
-    // User authenticated - get their smart account address
-    const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
-    const config = getConfig();
-    const smartAccount = await getOrCreateSmartAccount(
-      user.id,
-      getPrimaryChainId(config.isTestnet),
-    );
-    c.set('walletSession', { address: smartAccount.address, userId: user.id } as WalletSession);
-    return next();
-  }
-
-  // Try wallet session (SIWE)
-  const sessionToken = c.req.query('session') || c.req.header('X-Wallet-Session');
-  const walletSession = await extractWalletSession(authHeader, sessionToken);
-
-  if (walletSession) {
-    c.set('walletSession', walletSession);
-    return next();
-  }
-
-  // Try anonymous session (X-Session-ID header)
-  const sessionId = c.req.header('X-Session-ID');
-  if (sessionId && sessionId.startsWith('ses_')) {
-    const pseudoAddress = await getPseudoAddress(sessionId);
-    c.set('walletSession', {
-      address: pseudoAddress,
-      sessionId,
-      isAnonymous: true,
-    } as WalletSession);
-  }
-
-  // Continue even if no session found
-  return next();
-}
 
 // ============================================================================
 // Chat CRUD Routes
@@ -307,8 +149,7 @@ chatRouter.post(
 
       return c.json({ success: true, data: serializeChat(chat) });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to create chat';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to create chat');
     }
   },
 );
@@ -402,8 +243,7 @@ chatRouter.post(
       );
       return c.json({ success: true, data: folder });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to create folder';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to create folder');
     }
   },
 );
@@ -417,17 +257,10 @@ chatRouter.get(
     const folderId = c.req.param('folderId');
     const walletSession = c.get('walletSession')!;
 
-    const folder = await getFolder(folderId);
-    if (!folder) {
-      return c.json({ success: false, error: 'Folder not found' }, 404);
-    }
+    const owned = await loadOwnedFolder(c, folderId, walletSession.address);
+    if (owned.error) return owned.error;
 
-    // Check ownership
-    if (folder.userAddress !== walletSession.address) {
-      return c.json({ success: false, error: 'Access denied' }, 403);
-    }
-
-    return c.json({ success: true, data: folder });
+    return c.json({ success: true, data: owned.folder });
   },
 );
 
@@ -449,15 +282,8 @@ chatRouter.patch(
     const walletSession = c.get('walletSession')!;
     const body = c.req.valid('json');
 
-    const folder = await getFolder(folderId);
-    if (!folder) {
-      return c.json({ success: false, error: 'Folder not found' }, 404);
-    }
-
-    // Check ownership
-    if (folder.userAddress !== walletSession.address) {
-      return c.json({ success: false, error: 'Access denied' }, 403);
-    }
+    const owned = await loadOwnedFolder(c, folderId, walletSession.address);
+    if (owned.error) return owned.error;
 
     try {
       const updated = await updateFolder(folderId, {
@@ -468,8 +294,7 @@ chatRouter.patch(
       });
       return c.json({ success: true, data: updated });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update folder';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to update folder');
     }
   },
 );
@@ -483,22 +308,14 @@ chatRouter.delete(
     const folderId = c.req.param('folderId');
     const walletSession = c.get('walletSession')!;
 
-    const folder = await getFolder(folderId);
-    if (!folder) {
-      return c.json({ success: false, error: 'Folder not found' }, 404);
-    }
-
-    // Check ownership
-    if (folder.userAddress !== walletSession.address) {
-      return c.json({ success: false, error: 'Access denied' }, 403);
-    }
+    const owned = await loadOwnedFolder(c, folderId, walletSession.address);
+    if (owned.error) return owned.error;
 
     try {
       await deleteFolder(folderId);
       return c.json({ success: true });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to delete folder';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to delete folder');
     }
   },
 );
@@ -519,15 +336,8 @@ chatRouter.patch(
     const walletSession = c.get('walletSession')!;
     const body = c.req.valid('json');
 
-    const folder = await getFolder(folderId);
-    if (!folder) {
-      return c.json({ success: false, error: 'Folder not found' }, 404);
-    }
-
-    // Check ownership
-    if (folder.userAddress !== walletSession.address) {
-      return c.json({ success: false, error: 'Access denied' }, 403);
-    }
+    const owned = await loadOwnedFolder(c, folderId, walletSession.address);
+    if (owned.error) return owned.error;
 
     try {
       if (body.isPinned) {
@@ -538,8 +348,7 @@ chatRouter.patch(
       const updated = await getFolder(folderId);
       return c.json({ success: true, data: updated });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update pin status';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to update pin status');
     }
   },
 );
@@ -562,8 +371,7 @@ chatRouter.post(
       await reorderPinnedFolders(walletSession.address, body.folderIds);
       return c.json({ success: true });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to reorder folders';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to reorder folders');
     }
   },
 );
@@ -573,6 +381,64 @@ function debugLog(msg: string) {
   if (Deno.env.get('DENO_ENV') !== 'production') {
     console.log(`[Chat Debug] ${msg}`);
   }
+}
+
+/**
+ * Shared error response for route catch blocks: uses the error's message when
+ * available, otherwise the route-specific fallback, with the route's status code.
+ */
+function errorResponse(
+  c: Context,
+  error: unknown,
+  fallback: string,
+  status: 400 | 401 | 403 | 404 | 500 = 400,
+) {
+  const message = error instanceof Error ? error.message : fallback;
+  return c.json({ success: false, error: message }, status);
+}
+
+/**
+ * Check a chat permission for an address, falling back to the anonymous
+ * session's pseudo-address when the primary address is not authorized.
+ * Handles users who joined via invite with a session ID but now have a
+ * different wallet connected.
+ */
+async function checkChatAccess(
+  chatId: string,
+  address: string,
+  sessionId: string | undefined,
+  action: 'read' | 'write',
+): Promise<boolean> {
+  if (await checkPermission(chatId, address, action)) {
+    return true;
+  }
+  if (sessionId && sessionId.startsWith('ses_')) {
+    const pseudoAddress = await getPseudoAddress(sessionId);
+    if (pseudoAddress !== address) {
+      return await checkPermission(chatId, pseudoAddress, action);
+    }
+  }
+  return false;
+}
+
+/**
+ * Load a folder and verify it belongs to the given address.
+ * Returns either the folder or an error response to return directly.
+ */
+async function loadOwnedFolder(
+  c: Context,
+  folderId: string,
+  address: string,
+): Promise<{ folder: NonNullable<Awaited<ReturnType<typeof getFolder>>>; error?: never } | { folder?: never; error: Response }> {
+  const folder = await getFolder(folderId);
+  if (!folder) {
+    return { error: c.json({ success: false, error: 'Folder not found' }, 404) };
+  }
+  // Check ownership
+  if (folder.userAddress !== address) {
+    return { error: c.json({ success: false, error: 'Access denied' }, 403) };
+  }
+  return { folder };
 }
 
 // GET /chat/:chatId - Get chat details
@@ -601,20 +467,7 @@ chatRouter.get('/:chatId', optionalAuth, optionalWalletSession, async (c) => {
       return c.json({ success: false, error: 'Authentication required' }, 401);
     }
 
-    let canRead = await checkPermission(chatId, walletSession.address, 'read');
-    debugLog(`[Fetch Chat] Can read with primary address: ${canRead}`);
-
-    // If primary auth failed, try anonymous session ID as fallback
-    // This handles cases where user joined via invite with session ID but has a different wallet connected
-    if (!canRead && sessionId && sessionId.startsWith('ses_')) {
-      const pseudoAddress = await getPseudoAddress(sessionId);
-      if (pseudoAddress !== walletSession.address) {
-        debugLog(`[Fetch Chat] Trying fallback pseudo-address: ${pseudoAddress}`);
-        canRead = await checkPermission(chatId, pseudoAddress, 'read');
-        debugLog(`[Fetch Chat] Can read with pseudo-address: ${canRead}`);
-      }
-    }
-
+    const canRead = await checkChatAccess(chatId, walletSession.address, sessionId, 'read');
     if (!canRead) {
       debugLog(`[Fetch Chat] DENIED: No read permission for address ${walletSession.address}`);
       return c.json({ success: false, error: 'Access denied' }, 403);
@@ -624,10 +477,7 @@ chatRouter.get('/:chatId', optionalAuth, optionalWalletSession, async (c) => {
   const members = await getChatMembers(chatId);
   const onlineMembers = getOnlineMembers(chatId);
 
-  console.log(
-    `[FetchChat] Chat ${chatId} returning ${members.length} members:`,
-    members.map((m) => ({ address: m.memberAddress, role: m.role })),
-  );
+  debugLog(`[Fetch Chat] Chat ${chatId} returning ${members.length} members`);
 
   return c.json({
     success: true,
@@ -684,29 +534,16 @@ chatRouter.get(
     const sessionId = c.req.header('X-Session-ID');
 
     // Check read permission for private chats
-    if (!chat.isPublic && walletSession) {
-      let canRead = await checkPermission(chatId, walletSession.address, 'read');
-
-      // If primary auth failed, try anonymous session ID as fallback
-      if (!canRead && sessionId && sessionId.startsWith('ses_')) {
-        const pseudoAddress = await getPseudoAddress(sessionId);
-        if (pseudoAddress !== walletSession.address) {
-          canRead = await checkPermission(chatId, pseudoAddress, 'read');
-        }
-      }
-
+    if (!chat.isPublic) {
+      const canRead = walletSession &&
+        (await checkChatAccess(chatId, walletSession.address, sessionId, 'read'));
       if (!canRead) {
         return c.json({ success: false, error: 'Access denied' }, 403);
       }
-    } else if (!chat.isPublic) {
-      return c.json({ success: false, error: 'Access denied' }, 403);
     }
 
     const members = await getChatMembers(chatId);
-    console.log(
-      `[Members Endpoint] Chat ${chatId} returning ${members.length} members:`,
-      members.map((m) => ({ address: m.memberAddress, role: m.role })),
-    );
+    debugLog(`[Members Endpoint] Chat ${chatId} returning ${members.length} members`);
     return c.json({ success: true, data: members.map(serializeMember) });
   },
 );
@@ -737,8 +574,7 @@ chatRouter.post(
       );
       return c.json({ success: true, data: serializeMember(member) });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to add member';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to add member');
     }
   },
 );
@@ -757,8 +593,7 @@ chatRouter.delete(
       await removeMember(chatId, walletSession.address, targetAddress);
       return c.json({ success: true });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to remove member';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to remove member');
     }
   },
 );
@@ -792,8 +627,7 @@ chatRouter.patch(
       );
       return c.json({ success: true, data: serializeMember(member) });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update permissions';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to update permissions');
     }
   },
 );
@@ -821,8 +655,7 @@ chatRouter.patch(
 
       return c.json({ success: true });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update emoji';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to update emoji');
     }
   },
 );
@@ -911,26 +744,20 @@ chatRouter.post(
 
     try {
       // Pin attachments to IPFS before saving the message
+      // Failed attachments are skipped so they don't fail the message
       let attachmentMetadata:
         | Array<{ type: 'image' | 'document'; name: string; mimeType: string; cid: string }>
         | undefined;
       if (body.attachments && body.attachments.length > 0) {
-        const { pinFileToIpfs } = await import('../services/ipfs.ts');
-        attachmentMetadata = [];
-        for (const att of body.attachments) {
-          try {
-            const cid = await pinFileToIpfs(att.data, att.name, att.mimeType);
-            attachmentMetadata.push({
-              type: att.type,
-              name: att.name,
-              mimeType: att.mimeType,
-              cid,
-            });
-          } catch (err) {
-            console.error(`[IPFS] Failed to pin attachment ${att.name}:`, err);
-            // Skip failed attachments, don't fail the message
-          }
-        }
+        const { pinAttachments } = await import('../services/ipfs.ts');
+        attachmentMetadata = (await pinAttachments(body.attachments))
+          .filter((p): p is typeof p & { cid: string } => p.cid !== null)
+          .map((p) => ({
+            type: p.att.type,
+            name: p.att.name,
+            mimeType: p.att.mimeType,
+            cid: p.cid,
+          }));
         if (attachmentMetadata.length === 0) attachmentMetadata = undefined;
       }
 
@@ -945,8 +772,7 @@ chatRouter.post(
       });
       return c.json({ success: true, data: serializeMessage(message) });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to send message';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to send message');
     }
   },
 );
@@ -966,22 +792,12 @@ chatRouter.get('/:chatId/messages', optionalAuth, optionalWalletSession, async (
   const walletSession = c.get('walletSession');
   const sessionId = c.req.header('X-Session-ID');
 
-  if (!chat.isPublic && walletSession) {
-    let canRead = await checkPermission(chatId, walletSession.address, 'read');
-
-    // If primary auth failed, try anonymous session ID as fallback
-    if (!canRead && sessionId && sessionId.startsWith('ses_')) {
-      const pseudoAddress = await getPseudoAddress(sessionId);
-      if (pseudoAddress !== walletSession.address) {
-        canRead = await checkPermission(chatId, pseudoAddress, 'read');
-      }
-    }
-
+  if (!chat.isPublic) {
+    const canRead = walletSession &&
+      (await checkChatAccess(chatId, walletSession.address, sessionId, 'read'));
     if (!canRead) {
       return c.json({ success: false, error: 'Access denied' }, 403);
     }
-  } else if (!chat.isPublic) {
-    return c.json({ success: false, error: 'Access denied' }, 403);
   }
 
   const messages = await getChatMessages(chatId, limit, beforeId);
@@ -1001,8 +817,7 @@ chatRouter.delete(
       await deleteMessage(messageId, walletSession.address);
       return c.json({ success: true });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to delete message';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to delete message');
     }
   },
 );
@@ -1162,8 +977,7 @@ chatRouter.post(
         },
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to confirm payment';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to confirm payment');
     }
   },
 );
@@ -1264,380 +1078,19 @@ chatRouter.post(
 
       // AI is free for everyone - no rate limiting
 
-      // Build optimized context with summaries, state, and token budgeting
-      const { buildOptimizedContext, formatContextForClaude, logContextUsage } = await import(
-        '../services/contextManager.ts'
-      );
-      const { buildEnhancedPrompt } = await import('../services/aiProvider.ts');
-      const { logIntentDetection, createMetricsEntryFromResult } = await import(
-        '../services/intentMetrics.ts'
-      );
-
-      const optimizedContext = await buildOptimizedContext(chatId, walletSession.userId);
-      const chatHistory = formatContextForClaude(optimizedContext);
-
-      // Build enhanced system prompt with transaction state and user context
-      // Phase 1: Enable sub-modules for token efficiency
-      // Phase 2: Enable semantic detection when embeddings are available
-      const { systemPrompt: enhancedSystem, intents, semanticResult } = await buildEnhancedPrompt({
+      const aiMessage = await invokeAiForChat({
         chatId,
+        walletAddress: walletSession.address,
         userId: walletSession.userId,
-        includeOmnichain: true,
-        useSubModules: true, // Phase 1: Granular sub-module loading
-        useSemanticDetection: false, // Phase 2: Enable when embeddings are seeded
+        prompt: body.prompt,
+        attachments: body.attachments,
+        apiKey: body.apiKey,
+        savePrompt: body.savePrompt,
       });
-
-      // Log intent detection metrics for optimization
-      let metricsId = '';
-      if (semanticResult) {
-        const metricsEntry = createMetricsEntryFromResult(semanticResult, chatId);
-        metricsId = await logIntentDetection(metricsEntry);
-      } else if (intents) {
-        // Log keyword-only detection
-        metricsId = await logIntentDetection({
-          chatId,
-          detectedIntents: [
-            intents.needsDataQuery ? 'dataQuery' : '',
-            intents.needsHookDeveloper ? 'hookDeveloper' : '',
-            intents.needsTransaction ? 'transaction' : '',
-          ].filter(Boolean),
-          subModulesLoaded: intents.transactionSubModules || [],
-          detectionMethod: 'keyword',
-          detectionTimeMs: 0,
-        });
-      }
-
-      // Build multimodal content blocks for the new prompt
-      const contentBlocks: Array<
-        { type: 'text'; text: string } | {
-          type: 'image';
-          source: { type: 'base64'; media_type: string; data: string };
-        } | { type: 'document'; source: { type: 'base64'; media_type: string; data: string } }
-      > = [];
-
-      // Pin image attachments to IPFS first so we can include URIs in the prompt
-      const ipfsUris: Record<string, string> = {};
-      if (body.attachments && body.attachments.length > 0) {
-        const { pinFileToIpfs } = await import('../services/ipfs.ts');
-        for (const attachment of body.attachments) {
-          if (attachment.type === 'image') {
-            try {
-              const cid = await pinFileToIpfs(
-                attachment.data,
-                attachment.name || `image.${attachment.mimeType.split('/')[1] || 'png'}`,
-                attachment.mimeType,
-              );
-              // Extract field ID from attachment name (format: fieldId.ext)
-              const fieldId = attachment.name?.split('.')[0] || 'image';
-              ipfsUris[fieldId] = `ipfs://${cid}`;
-              console.log(`[IPFS] Pinned attachment ${fieldId} to ${ipfsUris[fieldId]}`);
-            } catch (err) {
-              console.error('Failed to pin image to IPFS:', err);
-            }
-          }
-        }
-      }
-
-      // Build prompt text, including IPFS URIs for any pinned images
-      let promptText = body.prompt || '';
-      if (Object.keys(ipfsUris).length > 0) {
-        const uriList = Object.entries(ipfsUris)
-          .map(([fieldId, uri]) => `- ${fieldId}: ${uri}`)
-          .join('\n');
-        promptText +=
-          `\n\n[Uploaded images pinned to IPFS - use these URIs in transaction parameters:\n${uriList}]`;
-      }
-
-      // Add text content if present
-      if (promptText.length > 0) {
-        contentBlocks.push({ type: 'text', text: promptText });
-      }
-
-      // Add attachments as content blocks (for Claude to see the image)
-      if (body.attachments && body.attachments.length > 0) {
-        for (const attachment of body.attachments) {
-          if (attachment.type === 'image') {
-            contentBlocks.push({
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: attachment.mimeType,
-                data: attachment.data,
-              },
-            });
-          } else if (attachment.type === 'document') {
-            contentBlocks.push({
-              type: 'document',
-              source: {
-                type: 'base64',
-                media_type: attachment.mimeType,
-                data: attachment.data,
-              },
-            });
-          }
-        }
-      }
-
-      // Add the new prompt to history (use string if no attachments, blocks otherwise)
-      const hasAttachments = body.attachments && body.attachments.length > 0;
-      if (hasAttachments) {
-        chatHistory.push({ role: 'user', content: contentBlocks });
-      } else {
-        chatHistory.push({ role: 'user', content: body.prompt });
-      }
-
-      // Import services
-      const { streamMessageWithTools } = await import('../services/aiProvider.ts');
-      const { importMessage } = await import('../services/chat.ts');
-      const { streamAiToken } = await import('../services/websocket.ts');
-
-      // When savePrompt is true, persist the hidden prompt to the database so it's
-      // available in future AI context. importMessage doesn't broadcast to the UI.
-      // This is critical for system messages (e.g. per-chain projectIds after deployment)
-      // that need to be in conversation history for subsequent operations like setUriOf.
-      if (body.savePrompt) {
-        await importMessage({
-          chatId,
-          senderAddress: walletSession.address,
-          role: 'user',
-          content: body.prompt,
-        });
-      }
-
-      // Generate a message ID upfront for streaming
-      const messageId = crypto.randomUUID();
-      const assistantAddress = '0x0000000000000000000000000000000000000000';
-
-      // Extract user's API key if provided (BYOK)
-      const userApiKey = body.apiKey;
-
-      // Stream Claude response with automatic tool execution
-      let fullContent = '';
-      let streamingStarted = false;
-
-      console.log(
-        `[AI] ${chatId}: Starting AI stream with ${chatHistory.length} messages (userApiKey: ${
-          userApiKey ? 'yes' : 'no'
-        })`,
-      );
-      console.log(`[AI] ${chatId}: System prompt length: ${enhancedSystem.length} chars`);
-      console.log(
-        `[AI] ${chatId}: Last user message: "${
-          (chatHistory[chatHistory.length - 1]?.content as string)?.substring(0, 100)
-        }..."`,
-      );
-      try {
-        for await (
-          const event of streamMessageWithTools(chatId, {
-            messages: chatHistory,
-            system: enhancedSystem,
-          }, userApiKey)
-        ) {
-          if (!streamingStarted) {
-            console.log(
-              `[AI] ${chatId}: First event received, type: ${event.type}, data preview: ${
-                JSON.stringify(event.data)?.substring(0, 100)
-              }`,
-            );
-          }
-          streamingStarted = true;
-          if (event.type === 'text') {
-            const token = event.data as string;
-            fullContent += token;
-
-            // Broadcast each token to connected clients
-            streamAiToken(chatId, messageId, token, false);
-          } else if (event.type === 'thinking') {
-            // Log tool usage for debugging (not shown to user)
-            console.log(`[AI] ${chatId}: ${event.data}`);
-          } else if (event.type === 'tool_result') {
-            // Optionally show tool results (could be verbose, so we keep it subtle)
-            const result = event.data as {
-              id: string;
-              name: string;
-              result?: string;
-              error?: string;
-            };
-            if (result.error) {
-              const errorText = `\n\n> ⚠️ Tool error: ${result.error}\n\n`;
-              fullContent += errorText;
-              streamAiToken(chatId, messageId, errorText, false);
-            }
-          }
-        }
-
-        // If the AI produced no text (e.g., tool calls exhausted token budget, or empty
-        // data from bendystraw for a freshly deployed project), surface a recovery message
-        if (!fullContent.trim()) {
-          console.warn(`[AI] ${chatId}: Stream completed with no text content`);
-          fullContent = "Sorry, I wasn't able to process that. Could you try again?";
-          streamAiToken(chatId, messageId, fullContent, false);
-        }
-      } catch (streamError) {
-        // Parse error and provide user-friendly message
-        const rawMsg = streamError instanceof Error ? streamError.message : 'Stream interrupted';
-        console.error(`[AI] ${chatId}: Stream error - ${rawMsg}`);
-
-        // Categorize the error for better UX
-        // BYOK users get specific messages about their own API key
-        const isUsingOwnKey = !!userApiKey;
-        let userFriendlyMsg: string;
-
-        if (rawMsg.includes('credit balance is too low') || rawMsg.includes('purchase credits')) {
-          userFriendlyMsg = isUsingOwnKey
-            ? "Your Anthropic API key has run out of credits. Please add credits at console.anthropic.com or remove your key to use Juicy's service."
-            : "I'm temporarily unavailable due to a service limit. The team has been notified - please try again shortly!";
-        } else if (rawMsg.includes('rate_limit') || rawMsg.includes('too many requests')) {
-          userFriendlyMsg = isUsingOwnKey
-            ? 'Your API key has hit a rate limit. Please wait a moment and try again.'
-            : "I'm getting a lot of requests right now. Please wait a moment and try again.";
-        } else if (rawMsg.includes('overloaded') || rawMsg.includes('capacity')) {
-          userFriendlyMsg =
-            'The AI service is a bit overloaded. Please try again in a few seconds.';
-        } else if (rawMsg.includes('invalid_api_key') || rawMsg.includes('authentication')) {
-          userFriendlyMsg = isUsingOwnKey
-            ? 'Your API key appears to be invalid. Please check your key in Settings.'
-            : "There's a configuration issue. The team has been notified.";
-        } else {
-          userFriendlyMsg = 'Something went wrong. Please try again.';
-        }
-
-        if (streamingStarted) {
-          fullContent += `\n\n*${userFriendlyMsg}*`;
-          streamAiToken(chatId, messageId, `\n\n*${userFriendlyMsg}*`, false);
-        }
-      } finally {
-        // Always signal streaming is done, even on error
-        streamAiToken(chatId, messageId, '', true);
-      }
-
-      // Parse and strip confidence tag from AI response
-      const { content: cleanedContent, confidence } = parseConfidence(fullContent);
-
-      // Debug: Log if content significantly changed (potential truncation)
-      if (fullContent.length > 0 && cleanedContent.length < fullContent.length * 0.9) {
-        console.warn(
-          `[AI] ${chatId}: Content significantly shortened after parseConfidence - original: ${fullContent.length} chars, cleaned: ${cleanedContent.length} chars`,
-        );
-        console.warn(`[AI] ${chatId}: First 100 chars before: ${fullContent.substring(0, 100)}`);
-        console.warn(`[AI] ${chatId}: First 100 chars after: ${cleanedContent.substring(0, 100)}`);
-      }
-
-      // Store the complete AI response as a message (with confidence tag stripped),
-      // reusing the streaming id so the client reconciles the streamed message with
-      // the persisted one instead of showing two replies.
-      const aiMessage = await importMessage({
-        chatId,
-        senderAddress: assistantAddress,
-        role: 'assistant',
-        content: cleanedContent,
-        id: messageId,
-      });
-
-      // Store confidence metadata and create escalation if low confidence
-      if (confidence) {
-        updateMessageConfidence({
-          messageId: aiMessage.id,
-          confidenceLevel: confidence.level,
-          confidenceReason: confidence.reason,
-        }).catch((err) => {
-          console.error('Failed to update message confidence:', err);
-        });
-
-        // Update intent metrics with AI confidence level
-        if (metricsId) {
-          const { updateIntentMetrics } = await import('../services/intentMetrics.ts');
-          updateIntentMetrics(metricsId, {
-            aiConfidenceLevel: confidence.level,
-          }).catch((err) => {
-            console.error('Failed to update intent metrics with confidence:', err);
-          });
-        }
-
-        // Auto-escalate low confidence responses for admin review
-        if (confidence.level === 'low') {
-          createEscalation({
-            chatId,
-            messageId: aiMessage.id,
-            userQuery: body.prompt,
-            aiResponse: cleanedContent,
-            confidenceLevel: confidence.level,
-            confidenceReason: confidence.reason,
-          }).catch((err) => {
-            console.error('Failed to create escalation:', err);
-          });
-        }
-      }
-
-      // Update fullContent for downstream processing (state extraction, etc.)
-      fullContent = cleanedContent;
-
-      // Context management: Extract transaction state and trigger summarization (async, non-blocking)
-      const { extractStateFromResponse } = await import('../services/transactionState.ts');
-      const { checkAndTriggerSummarization, queueAttachmentSummary } = await import(
-        '../services/summarization.ts'
-      );
-
-      // Extract project design decisions from the response
-      extractStateFromResponse(chatId, fullContent, aiMessage.id).catch((err) => {
-        console.error('Failed to extract transaction state:', err);
-      });
-
-      // Check if we need to summarize older messages
-      checkAndTriggerSummarization(chatId).catch((err) => {
-        console.error('Failed to check/trigger summarization:', err);
-      });
-
-      // Log context usage for analytics
-      logContextUsage(chatId, aiMessage.id, optimizedContext).catch((err) => {
-        console.error('Failed to log context usage:', err);
-      });
-
-      // Queue attachment summaries for the user's message if any
-      if (body.attachments && body.attachments.length > 0) {
-        // We need the user message ID - get the latest user message
-        const userMessages = await getChatMessages(chatId, 2);
-        const userMessage = userMessages.find((m) => m.role === 'user');
-        if (userMessage) {
-          for (let i = 0; i < body.attachments.length; i++) {
-            const att = body.attachments[i];
-            queueAttachmentSummary(userMessage.id, chatId, i, {
-              type: att.type,
-              mimeType: att.mimeType,
-              data: att.data,
-              filename: att.name,
-            });
-          }
-        }
-      }
-
-      // Auto-generate title if the chat has a generic name
-      const { isGenericName, generateChatTitle, setAutoGeneratedTitle } = await import(
-        '../services/chatCategorization.ts'
-      );
-      const currentChat = await getChatById(chatId);
-      if (currentChat && isGenericName(currentChat.name) && !currentChat.autoGeneratedTitle) {
-        // Get messages for title generation
-        const messagesForTitle = await getChatMessages(chatId, 10);
-        const titleMessages = messagesForTitle.map((m) => ({ role: m.role, content: m.content }));
-
-        // Generate title asynchronously (don't block response)
-        generateChatTitle(titleMessages).then(async (title) => {
-          if (title) {
-            await setAutoGeneratedTitle(chatId, title);
-            // Broadcast the new title to connected clients
-            const { broadcastChatUpdate } = await import('../services/websocket.ts');
-            broadcastChatUpdate(chatId, { autoGeneratedTitle: title });
-          }
-        }).catch((err) => {
-          console.error('Failed to generate chat title:', err);
-        });
-      }
 
       return c.json({ success: true, data: serializeMessage(aiMessage) });
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to invoke AI';
-      return c.json({ success: false, error: errorMessage }, 500);
+      return errorResponse(c, error, 'Failed to invoke AI', 500);
     }
   },
 );
@@ -1665,8 +1118,7 @@ chatRouter.post(
       const cid = await archiveChat(chatId);
       return c.json({ success: true, data: { cid } });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to archive';
-      return c.json({ success: false, error: message }, 500);
+      return errorResponse(c, error, 'Failed to archive', 500);
     }
   },
 );
@@ -1697,8 +1149,7 @@ chatRouter.get('/archive/:cid', async (c) => {
     const archive = await fetchArchivedChat(cid);
     return c.json({ success: true, data: archive });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to fetch archive';
-    return c.json({ success: false, error: message }, 500);
+    return errorResponse(c, error, 'Failed to fetch archive', 500);
   }
 });
 
@@ -1732,8 +1183,7 @@ chatRouter.post(
       );
       return c.json({ success: true });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to submit feedback';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to submit feedback');
     }
   },
 );
@@ -1773,8 +1223,7 @@ chatRouter.patch(
       const chat = await getChatById(chatId);
       return c.json({ success: true, data: serializeChat(chat!) });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to update pin status';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to update pin status');
     }
   },
 );
@@ -1805,8 +1254,7 @@ chatRouter.patch(
       const chat = await getChatById(chatId);
       return c.json({ success: true, data: serializeChat(chat!) });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to move chat';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to move chat');
     }
   },
 );
@@ -1836,8 +1284,7 @@ chatRouter.patch(
       const chat = await updateChatName(chatId, body.name);
       return c.json({ success: true, data: serializeChat(chat!) });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to rename chat';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to rename chat');
     }
   },
 );
@@ -1860,8 +1307,7 @@ chatRouter.post(
       await reorderPinnedChats(walletSession.address, body.chatIds);
       return c.json({ success: true });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to reorder chats';
-      return c.json({ success: false, error: message }, 400);
+      return errorResponse(c, error, 'Failed to reorder chats');
     }
   },
 );
@@ -2112,8 +1558,7 @@ chatRouter.get(
       const states = await getMessageComponentStates(messageId);
       return c.json({ success: true, data: states });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to get component states';
-      return c.json({ success: false, error: message }, 500);
+      return errorResponse(c, error, 'Failed to get component states', 500);
     }
   },
 );
@@ -2131,8 +1576,7 @@ chatRouter.get(
       const state = await getComponentState(messageId, componentKey);
       return c.json({ success: true, data: state });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to get component state';
-      return c.json({ success: false, error: message }, 500);
+      return errorResponse(c, error, 'Failed to get component state', 500);
     }
   },
 );
@@ -2152,8 +1596,7 @@ chatRouter.put(
       const savedState = await setComponentState(messageId, componentKey, state as ComponentState);
       return c.json({ success: true, data: savedState });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to set component state';
-      return c.json({ success: false, error: message }, 500);
+      return errorResponse(c, error, 'Failed to set component state', 500);
     }
   },
 );

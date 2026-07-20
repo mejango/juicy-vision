@@ -270,47 +270,12 @@ export function detectIntentsWithContext(
 }
 
 /**
- * Simpler sync version for cases without user/project context
+ * Simpler sync version for cases without user/project context.
+ * Same keyword core as detectIntentsWithContext, just without the
+ * transaction-state and jargon-level signals.
  */
 export function detectIntents(messages: ChatMessage[]): DetectedIntents {
-  const reasons: string[] = [];
-
-  const recentUserMessages = messages
-    .filter((m) => m.role === 'user')
-    .slice(-5)
-    .map((m) => typeof m.content === 'string' ? m.content.toLowerCase() : '')
-    .join(' ');
-
-  const checkHints = (hints: string[]): boolean =>
-    hints.some((hint) => recentUserMessages.includes(hint.toLowerCase()));
-
-  let needsDataQuery = checkHints(INTENT_HINTS.dataQuery);
-  const needsHookDeveloper = checkHints(INTENT_HINTS.hookDeveloper);
-  const needsTransaction = checkHints(INTENT_HINTS.transaction);
-
-  if (needsDataQuery) reasons.push('keywords: data query');
-  if (needsHookDeveloper) reasons.push('keywords: hook developer');
-  if (needsTransaction) reasons.push('keywords: transaction');
-
-  // Default: include data query for new conversations (users typically explore first)
-  if (!needsDataQuery && !needsHookDeveloper && !needsTransaction && messages.length <= 4) {
-    needsDataQuery = true;
-    reasons.push('new conversation default (exploration)');
-  }
-
-  // Detect transaction sub-modules
-  let transactionSubModules: string[] | undefined;
-  if (needsTransaction) {
-    transactionSubModules = matchSubModulesByKeywords(recentUserMessages);
-    if (transactionSubModules.length === 0) {
-      transactionSubModules = ['chains', 'v6_addresses'];
-      reasons.push('default transaction sub-modules');
-    } else {
-      reasons.push(`sub-modules: ${transactionSubModules.join(', ')}`);
-    }
-  }
-
-  return { needsDataQuery, needsHookDeveloper, needsTransaction, transactionSubModules, reasons };
+  return detectIntentsWithContext(messages);
 }
 
 /**

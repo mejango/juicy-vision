@@ -33,33 +33,6 @@ export const SessionSchema = z.object({
 export type Session = z.infer<typeof SessionSchema>;
 
 // ============================================================================
-// Auth Request/Response Types
-// ============================================================================
-
-export const RegisterRequestSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
-});
-
-export const LoginRequestSchema = z.object({
-  email: z.string().email(),
-  password: z.string(),
-});
-
-export const AuthResponseSchema = z.object({
-  user: z.object({
-    id: z.string().uuid(),
-    email: z.string().email(),
-    privacyMode: z.enum(['open_book', 'anonymous', 'private', 'ghost']),
-  }),
-  token: z.string(),
-});
-
-export type RegisterRequest = z.infer<typeof RegisterRequestSchema>;
-export type LoginRequest = z.infer<typeof LoginRequestSchema>;
-export type AuthResponse = z.infer<typeof AuthResponseSchema>;
-
-// ============================================================================
 // Custodial Wallet Types
 // ============================================================================
 
@@ -99,35 +72,6 @@ export const PendingTransferSchema = z.object({
 });
 
 export type PendingTransfer = z.infer<typeof PendingTransferSchema>;
-
-// ============================================================================
-// Payment Types
-// ============================================================================
-
-export const StripeCheckoutRequestSchema = z.object({
-  amountUsd: z.number().positive(),
-  projectId: z.number().positive(),
-  chainId: z.number(),
-  memo: z.string().optional(),
-});
-
-export type StripeCheckoutRequest = z.infer<typeof StripeCheckoutRequestSchema>;
-
-export const PaymentExecutionSchema = z.object({
-  id: z.string().uuid(),
-  userId: z.string().uuid(),
-  stripePaymentId: z.string(),
-  amountUsd: z.number(),
-  projectId: z.number(),
-  chainId: z.number(),
-  status: z.enum(['pending', 'processing', 'completed', 'failed']),
-  txHash: z.string().optional(),
-  tokensReceived: z.string().optional(), // BigInt as string
-  createdAt: z.date(),
-  completedAt: z.date().optional(),
-});
-
-export type PaymentExecution = z.infer<typeof PaymentExecutionSchema>;
 
 // ============================================================================
 // Chat & Events Types
@@ -247,24 +191,6 @@ export const PrivacyModes = {
 } as const;
 
 export type PrivacyMode = keyof typeof PrivacyModes;
-
-// ============================================================================
-// API Response Types
-// ============================================================================
-
-export interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-}
-
-export interface PaginatedResponse<T> {
-  items: T[];
-  total: number;
-  page: number;
-  pageSize: number;
-  hasMore: boolean;
-}
 
 // ============================================================================
 // Environment Config

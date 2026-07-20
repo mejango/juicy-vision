@@ -362,36 +362,6 @@ export async function updateRulesetStatus(
   );
 }
 
-/**
- * Invalidate (delete) current ruleset cache for a project
- * Used when cycle advances or ruleset changes detected
- */
-export async function invalidateCurrentRuleset(
-  chainId: number,
-  projectId: number,
-): Promise<void> {
-  await execute(
-    `DELETE FROM ruleset_cache
-     WHERE chain_id = $1 AND project_id = $2 AND status = 'current'`,
-    [chainId, projectId],
-  );
-}
-
-/**
- * Invalidate (delete) queued ruleset cache for a project
- * Used after user queues a new ruleset
- */
-export async function invalidateQueuedRuleset(
-  chainId: number,
-  projectId: number,
-): Promise<void> {
-  await execute(
-    `DELETE FROM ruleset_cache
-     WHERE chain_id = $1 AND project_id = $2 AND status = 'queued'`,
-    [chainId, projectId],
-  );
-}
-
 // ============================================================================
 // Splits Cache Operations
 // ============================================================================

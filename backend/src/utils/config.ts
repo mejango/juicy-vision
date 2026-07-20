@@ -123,18 +123,6 @@ export function validateConfigForStripe(config: EnvConfig): void {
   }
 }
 
-export function validateConfigForClaude(config: EnvConfig): void {
-  if (!config.anthropicApiKey) {
-    throw new Error('ANTHROPIC_API_KEY is required');
-  }
-}
-
-export function validateConfigForCron(config: EnvConfig): void {
-  if (config.env === 'production' && config.cronSecret === 'dev-cron-secret') {
-    throw new Error('CRON_SECRET must be set in production');
-  }
-}
-
 export function validateConfigForReserves(config: EnvConfig): void {
   if (!config.reservesPrivateKey) {
     throw new Error('RESERVES_PRIVATE_KEY is required for wallet operations');

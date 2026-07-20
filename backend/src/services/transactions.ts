@@ -1,4 +1,4 @@
-import { execute, query, queryOne } from '../db/index.ts';
+import { query, queryOne } from '../db/index.ts';
 
 // =============================================================================
 // Types
@@ -193,15 +193,6 @@ export async function getTransactionById(id: string): Promise<Transaction | null
   return row ? toTransaction(row) : null;
 }
 
-export async function getTransactionByHash(txHash: string): Promise<Transaction | null> {
-  const row = await queryOne<DbTransaction>(
-    'SELECT * FROM transactions WHERE tx_hash = $1',
-    [txHash.toLowerCase()],
-  );
-
-  return row ? toTransaction(row) : null;
-}
-
 export async function getTransactionsBySession(
   sessionId: string,
   limit = 50,
@@ -233,46 +224,6 @@ export async function getTransactionsByUser(
   return rows.map(toTransaction);
 }
 
-export async function getTransactionsByProject(
-  projectId: string,
-  chainId?: number,
-  limit = 50,
-): Promise<Transaction[]> {
-  let sql = `SELECT * FROM transactions WHERE project_id = $1`;
-  const params: unknown[] = [projectId];
-
-  if (chainId !== undefined) {
-    sql += ` AND chain_id = $2`;
-    params.push(chainId);
-  }
-
-  sql += ` ORDER BY created_at DESC LIMIT $${params.length + 1}`;
-  params.push(limit);
-
-  const rows = await query<DbTransaction>(sql, params);
-  return rows.map(toTransaction);
-}
-
-export async function getPendingTransactions(limit = 100): Promise<Transaction[]> {
-  const rows = await query<DbTransaction>(
-    `SELECT * FROM transactions
-     WHERE status IN ('pending', 'submitted')
-     ORDER BY created_at ASC
-     LIMIT $1`,
-    [limit],
-  );
-
-  return rows.map(toTransaction);
-}
-
 // =============================================================================
 // Cleanup
 // =============================================================================
-
-export async function cleanupOldTransactions(daysOld = 90): Promise<number> {
-  return await execute(
-    `DELETE FROM transactions
-     WHERE created_at < NOW() - INTERVAL '${daysOld} days'
-     AND status IN ('confirmed', 'failed', 'cancelled')`,
-  );
-}
