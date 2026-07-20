@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
-import { encodeFunctionData, keccak256, toBytes, createPublicClient, http, type Chain, type Address } from 'viem'
+import { encodeFunctionData, keccak256, toBytes, createPublicClient, http, type Chain } from 'viem'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
 import { GasBalanceStatus } from './GasBalanceStatus'
 import { useOmnichainDeployERC20 } from '../../hooks/relayr'
 import { ALL_VIEM_CHAINS, CHAINS as CHAIN_INFO, EXPLORER_URLS, RPC_ENDPOINTS } from '../../constants'
+import { JB_CONTROLLER_ABI } from '../../constants/abis/jbController'
+import { useProjectController, useStatusCallbacks } from './modalHooks'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
@@ -16,21 +18,6 @@ import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/t
 import { assertSafeErc20TokenMetadata } from '../../utils/erc20Safety'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 import { txErrorMessage } from '../../utils/txErrors'
-
-const CONTROLLER_DEPLOY_ERC20_ABI = [
-  {
-    name: 'deployERC20For',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'projectId', type: 'uint256' },
-      { name: 'name', type: 'string' },
-      { name: 'symbol', type: 'string' },
-      { name: 'salt', type: 'bytes32' },
-    ],
-    outputs: [{ name: 'token', type: 'address' }],
-  },
-] as const
 
 const CHAINS: Record<number, Chain> = ALL_VIEM_CHAINS
 
@@ -93,8 +80,9 @@ export default function DeployERC20Modal({
   const [txHash, setTxHash] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [warningsAcknowledged, setWarningsAcknowledged] = useState(false)
-  const [controllerAddress, setControllerAddress] = useState<Address | null>(null)
-  const [controllerLoading, setControllerLoading] = useState(false)
+
+  // Fetch the project's controller from JBDirectory
+  const { controllerAddress, controllerLoading } = useProjectController(isOpen, projectId, chainId, setError)
 
   // Omnichain mode
   const [useAllChains, setUseAllChains] = useState(false)
@@ -149,48 +137,7 @@ export default function DeployERC20Modal({
   }, [isOpen, resetOmnichain])
 
   // Call parent callbacks when status changes (for persistence)
-  useEffect(() => {
-    if (status === 'confirmed' && txHash) {
-      onConfirmed?.(txHash)
-    } else if (status === 'failed' && error) {
-      onError?.(error)
-    }
-  }, [status, txHash, error, onConfirmed, onError])
-
-  // Fetch the project's controller from JBDirectory
-  useEffect(() => {
-    if (!isOpen || !projectId || !chainId) {
-      setControllerAddress(null)
-      return
-    }
-
-    const fetchController = async () => {
-      setControllerLoading(true)
-      try {
-        const chain = CHAINS[chainId]
-        if (!chain) {
-          console.error('Unsupported chain for controller lookup:', chainId)
-          return
-        }
-
-        const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
-        const publicClient = createPublicClient({
-          chain,
-          transport: http(rpcUrl),
-        })
-
-        const controller = await getProjectController(publicClient, BigInt(projectId))
-        setControllerAddress(controller)
-      } catch (err) {
-        console.error('Failed to fetch project controller:', err)
-        setError(err instanceof Error ? err.message : 'Failed to fetch project controller')
-      } finally {
-        setControllerLoading(false)
-      }
-    }
-
-    fetchController()
-  }, [isOpen, projectId, chainId])
+  useStatusCallbacks(status, txHash, error, onConfirmed, onError)
 
   const handleConfirm = useCallback(async () => {
     try {
@@ -269,7 +216,7 @@ export default function DeployERC20Modal({
       const salt = keccak256(toBytes(saltInput))
 
       const callData = encodeFunctionData({
-        abi: CONTROLLER_DEPLOY_ERC20_ABI,
+        abi: JB_CONTROLLER_ABI,
         functionName: 'deployERC20For',
         args: [
           BigInt(projectId),

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useSignMessage } from 'wagmi'
 import { useTranslation } from 'react-i18next'
@@ -6,6 +6,8 @@ import { useThemeStore, useAuthStore } from '../../stores'
 import { signInWithWallet, hasValidWalletSession, getWalletSession } from '../../services/siwe'
 import { useEnsNameResolved } from '../../hooks/useEnsName'
 import { forgetPasskeyWallet } from '../../services/passkeyWallet'
+import { useAnchoredPopoverStyle } from '../ui/useAnchoredPopoverStyle'
+import { truncateAddress } from '../../utils/ens'
 
 export interface AnchorPosition {
   top: number
@@ -21,10 +23,6 @@ interface SaveModalProps {
   onPasskeySuccess?: () => void
   onWalletClick?: () => void
   anchorPosition?: AnchorPosition | null
-}
-
-function truncateAddress(address: string): string {
-  return `${address.slice(0, 6)}...${address.slice(-4)}`
 }
 
 export default function SaveModal({ isOpen, onClose, onSaved, onPasskeySuccess, onWalletClick, anchorPosition }: SaveModalProps) {
@@ -124,32 +122,7 @@ export default function SaveModal({ isOpen, onClose, onSaved, onPasskeySuccess, 
   }
 
   // Calculate popover position based on anchor
-  const popoverStyle = useMemo(() => {
-    if (!anchorPosition) {
-      // Fallback to top-right if no anchor
-      return { top: 16, right: 16 }
-    }
-
-    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
-    const gap = 8 // Gap between button and popover
-
-    // Check if button is in lower half of viewport
-    const isInLowerHalf = anchorPosition.top > viewportHeight / 2
-
-    if (isInLowerHalf) {
-      // Show above the button
-      return {
-        bottom: viewportHeight - anchorPosition.top + gap,
-        right: Math.max(16, typeof window !== 'undefined' ? window.innerWidth - anchorPosition.left - anchorPosition.width : 16),
-      }
-    } else {
-      // Show below the button
-      return {
-        top: anchorPosition.top + anchorPosition.height + gap,
-        right: Math.max(16, typeof window !== 'undefined' ? window.innerWidth - anchorPosition.left - anchorPosition.width : 16),
-      }
-    }
-  }, [anchorPosition])
+  const popoverStyle = useAnchoredPopoverStyle(anchorPosition)
 
   if (!isOpen) return null
 

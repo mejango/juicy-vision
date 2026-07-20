@@ -92,15 +92,15 @@ export default function MessageList({
     }
   }, [messages.length, messages])
 
+  // Find last assistant message index
+  const lastAssistantIndex = messages.reduce((acc, m, i) =>
+    m.role === 'assistant' ? i : acc, -1
+  )
+
   return (
     <div className="px-2 py-4 sm:px-4">
       <div className="max-w-5xl mx-auto">
         {messages.map((message, index) => {
-          // Find last assistant message index
-          const lastAssistantIndex = messages.reduce((acc, m, i) =>
-            m.role === 'assistant' ? i : acc, -1
-          )
-
           // Check if this assistant message has been "responded to"
           // (i.e., there's a user message after it, meaning any interactive components were submitted)
           const nextMessage = messages[index + 1]

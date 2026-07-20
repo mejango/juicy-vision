@@ -5,8 +5,8 @@ import { useThemeStore, useAuthStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
 import { hasValidWalletSession, signInWithWallet, getWalletSession } from '../../services/siwe'
 import { getPasskeyWallet } from '../../services/passkeyWallet'
-import { getSessionId } from '../../services/session'
-import { JuicyIdPopover, type JuicyIdentity, type AnchorPosition } from './WalletInfo'
+import { JuicyIdPopover, type AnchorPosition } from './WalletInfo'
+import { useJuicyIdentityDisplay } from './hooks/useJuicyIdentityDisplay'
 import type { Attachment } from '../../stores'
 
 const DEFAULT_PLACEHOLDER_KEY = 'chat.typeMessage'
@@ -26,9 +26,25 @@ interface ChatInputProps {
   chatId?: string // Unique per chat for draft caching
 }
 
-const generateId = () => Math.random().toString(36).substring(2, 15)
-
 const getDraftKey = (chatId?: string) => `juicy-input-draft-${chatId || 'home'}`
+
+// Pull pasted images out of clipboard items, naming them for attachment display
+const extractPastedImages = (items: DataTransferItemList): File[] => {
+  const imageItems: File[] = []
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile()
+      if (file) {
+        // Generate a name for pasted images
+        const ext = item.type.split('/')[1] || 'png'
+        const namedFile = new File([file], `pasted-image-${Date.now()}.${ext}`, { type: item.type })
+        imageItems.push(namedFile)
+      }
+    }
+  }
+  return imageItems
+}
 
 export default function ChatInput({ onSend, disabled, placeholder, hideBorder, hideWalletInfo, compact, showDockButtons, onThemeClick, onSettingsClick, walletInfoRightContent, onConnectedAsClick, chatId }: ChatInputProps) {
   const draftKey = getDraftKey(chatId)
@@ -82,50 +98,12 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   } = useWalletBalances(effectivePasskeyAddress)
 
   // Juicy ID state
-  const [identity, setIdentity] = useState<JuicyIdentity | null>(null)
+  const [identity, setIdentity] = useJuicyIdentityDisplay(
+    [address, passkeyWallet?.address, authToken, _hasHydrated],
+    { includeAuthToken: true, broadcast: true }
+  )
   const [juicyIdPopoverOpen, setJuicyIdPopoverOpen] = useState(false)
   const [juicyIdAnchorPosition, setJuicyIdAnchorPosition] = useState<AnchorPosition | null>(null)
-
-  // Fetch Juicy ID
-  useEffect(() => {
-    const fetchIdentity = async () => {
-      try {
-        const apiUrl = import.meta.env.VITE_API_URL || ''
-        const sessionId = getSessionId()
-        const walletSession = getWalletSession()
-        const headers: Record<string, string> = {
-          'X-Session-ID': sessionId,
-        }
-        if (authToken) {
-          headers['Authorization'] = `Bearer ${authToken}`
-        }
-        if (walletSession?.token) {
-          headers['X-Wallet-Session'] = walletSession.token
-        }
-        const res = await fetch(`${apiUrl}/identity/me`, { headers })
-        if (res.ok) {
-          const data = await res.json()
-          if (data.success && data.data) {
-            setIdentity(data.data)
-            // Notify other components of the loaded identity
-            window.dispatchEvent(new CustomEvent('juice:identity-changed', { detail: data.data }))
-          }
-        }
-      } catch {
-        // Ignore errors
-      }
-    }
-    fetchIdentity()
-  }, [address, passkeyWallet?.address, authToken, _hasHydrated])
-
-  // Listen for identity changes from other components
-  useEffect(() => {
-    const handleIdentityChange = (e: CustomEvent<JuicyIdentity>) => {
-      setIdentity(e.detail)
-    }
-    window.addEventListener('juice:identity-changed', handleIdentityChange as EventListener)
-    return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
-  }, [])
 
   // Get display identity: Juicy ID > ENS > null (no emoji fallback)
   const getDisplayIdentity = () => {
@@ -141,6 +119,22 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
     const files = e.target.files
     if (!files || files.length === 0) return
 
+    processFiles(files)
+
+    // Reset input so same file can be selected again
+    e.target.value = ''
+  }
+
+  // Remove attachment
+  const handleRemoveAttachment = (id: string) => {
+    setAttachments(prev => prev.filter(a => a.id !== id))
+  }
+
+  // Drag state for visual feedback
+  const [isDragging, setIsDragging] = useState(false)
+
+  // Process files from selection, paste, or drag-drop
+  const processFiles = (files: FileList | File[]) => {
     // Supported file types
     const imageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
     const documentTypes = ['application/pdf', 'text/plain', 'text/markdown', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
@@ -158,47 +152,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
         const data = base64.split(',')[1]
 
         const attachment: Attachment = {
-          id: generateId(),
-          type: isImage ? 'image' : 'document',
-          name: file.name,
-          mimeType: file.type,
-          data,
-        }
-        setAttachments(prev => [...prev, attachment])
-      }
-      reader.readAsDataURL(file)
-    })
-
-    // Reset input so same file can be selected again
-    e.target.value = ''
-  }
-
-  // Remove attachment
-  const handleRemoveAttachment = (id: string) => {
-    setAttachments(prev => prev.filter(a => a.id !== id))
-  }
-
-  // Drag state for visual feedback
-  const [isDragging, setIsDragging] = useState(false)
-
-  // Process files from paste or drag-drop
-  const processFiles = (files: FileList | File[]) => {
-    const imageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-    const documentTypes = ['application/pdf', 'text/plain', 'text/markdown', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
-
-    Array.from(files).forEach(file => {
-      const isImage = file.type.startsWith('image/') || imageTypes.includes(file.type)
-      const isDocument = documentTypes.includes(file.type)
-
-      if (!isImage && !isDocument) return
-
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        const base64 = event.target?.result as string
-        const data = base64.split(',')[1]
-
-        const attachment: Attachment = {
-          id: generateId(),
+          id: crypto.randomUUID(),
           type: isImage ? 'image' : 'document',
           name: file.name,
           mimeType: file.type,
@@ -215,19 +169,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
     const items = e.clipboardData?.items
     if (!items) return
 
-    const imageItems: File[] = []
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i]
-      if (item.type.startsWith('image/')) {
-        const file = item.getAsFile()
-        if (file) {
-          // Generate a name for pasted images
-          const ext = item.type.split('/')[1] || 'png'
-          const namedFile = new File([file], `pasted-image-${Date.now()}.${ext}`, { type: item.type })
-          imageItems.push(namedFile)
-        }
-      }
-    }
+    const imageItems = extractPastedImages(items)
 
     if (imageItems.length > 0) {
       e.preventDefault() // Prevent pasting image data as text
@@ -379,18 +321,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
       const items = clipboardEvent.clipboardData?.items
       if (!items) return
 
-      const imageItems: File[] = []
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i]
-        if (item.type.startsWith('image/')) {
-          const file = item.getAsFile()
-          if (file) {
-            const ext = item.type.split('/')[1] || 'png'
-            const namedFile = new File([file], `pasted-image-${Date.now()}.${ext}`, { type: item.type })
-            imageItems.push(namedFile)
-          }
-        }
-      }
+      const imageItems = extractPastedImages(items)
 
       if (imageItems.length > 0) {
         e.preventDefault()

@@ -1,9 +1,10 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { forgetPasskeyWallet } from '../../services/passkeyWallet'
 import type { DeviceHint } from '../../services/passkey'
+import { useAnchoredPopoverStyle } from '../ui/useAnchoredPopoverStyle'
 
 export interface AnchorPosition {
   top: number
@@ -62,44 +63,8 @@ export default function AuthOptionsModal({
     onClose()
   }
 
-  // Calculate popover position based on anchor
-  const popoverStyle = useMemo(() => {
-    if (!anchorPosition) {
-      // Fallback to top-right if no anchor
-      return { top: 16, right: 16 }
-    }
-
-    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
-    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200
-    const gap = 8 // Gap between button and popover
-    const popoverWidth = 320 // w-80 = 20rem = 320px
-
-    // Check if button is in lower half of viewport
-    const isInLowerHalf = anchorPosition.top > viewportHeight / 2
-
-    // Horizontal position: align left edge of popover with left edge of button
-    // but ensure it doesn't overflow the viewport
-    let left = anchorPosition.left
-    if (left + popoverWidth > viewportWidth - 16) {
-      // Would overflow right edge, align to right edge instead
-      left = viewportWidth - popoverWidth - 16
-    }
-    left = Math.max(16, left)
-
-    if (isInLowerHalf) {
-      // Show above the button
-      return {
-        bottom: viewportHeight - anchorPosition.top + gap,
-        left,
-      }
-    } else {
-      // Show below the button
-      return {
-        top: anchorPosition.top + anchorPosition.height + gap,
-        left,
-      }
-    }
-  }, [anchorPosition])
+  // Calculate popover position based on anchor (320 = w-80 = 20rem)
+  const popoverStyle = useAnchoredPopoverStyle(anchorPosition, 320)
 
   if (!isOpen) return null
 

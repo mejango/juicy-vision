@@ -11,6 +11,7 @@ import {
   fetchProjectCreationFee,
   type JBDeployTiersHookConfig,
 } from '../../services/omnichainDeployer'
+import { useSlowChains, useCreationFees } from './modalHooks'
 import { CHAINS, EXPLORER_URLS, JB_OMNICHAIN_DEPLOYER } from '../../constants'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
@@ -109,9 +110,15 @@ export default function LaunchProjectModal({
 
   const [hasStarted, setHasStarted] = useState(false)
   const [warningsAcknowledged, setWarningsAcknowledged] = useState(false)
-  const [creationFeesWei, setCreationFeesWei] = useState<Record<number, bigint>>({})
-  const [creationFeesLoading, setCreationFeesLoading] = useState(false)
-  const [creationFeeError, setCreationFeeError] = useState<string | null>(null)
+  const {
+    creationFeesWei,
+    setCreationFeesWei,
+    creationFeesLoading,
+    creationFeeError,
+    setCreationFeeError,
+    creationFeesReady,
+    totalCreationFee,
+  } = useCreationFees(isOpen, chainIds)
 
   const {
     launch,
@@ -135,32 +142,7 @@ export default function LaunchProjectModal({
   const allCompleted = isComplete || hasError
 
   // Slow-chain detection
-  const [tick, setTick] = useState(0)
-  const SLOW_CHAIN_THRESHOLD_MS = 90_000
-
-  useEffect(() => {
-    if (!isLaunching) return
-    const id = setInterval(() => setTick(t => t + 1), 5000)
-    return () => clearInterval(id)
-  }, [isLaunching])
-
-  const { slowChainIds, hasSlowChains } = useMemo(() => {
-    void tick
-    const startedAt = bundleState.processingStartedAt
-    if (!startedAt || !isLaunching) {
-      return { slowChainIds: [] as number[], hasSlowChains: false }
-    }
-    const elapsed = Date.now() - startedAt
-    if (elapsed < SLOW_CHAIN_THRESHOLD_MS) {
-      return { slowChainIds: [] as number[], hasSlowChains: false }
-    }
-    const hasConfirmed = bundleState.chainStates.some(cs => cs.status === 'confirmed')
-    const stuck = bundleState.chainStates
-      .filter(cs => cs.status === 'pending' || cs.status === 'submitted')
-      .map(cs => cs.chainId)
-    const hasSlow = hasConfirmed && stuck.length > 0
-    return { slowChainIds: hasSlow ? stuck : [], hasSlowChains: hasSlow }
-  }, [tick, bundleState.processingStartedAt, bundleState.chainStates, isLaunching])
+  const { slowChainIds, hasSlowChains } = useSlowChains(isLaunching, bundleState)
 
   // Verify transaction parameters
   const verificationResult = useMemo(() => {
@@ -176,37 +158,12 @@ export default function LaunchProjectModal({
 
   const hasWarnings = verificationResult.doubts.length > 0
   const hasCriticalDoubts = verificationResult.doubts.some(d => d.severity === 'critical')
-  const creationFeesReady = chainIds.every(chainId => creationFeesWei[chainId] !== undefined)
-  const totalCreationFee = Object.values(creationFeesWei).reduce((total, fee) => total + fee, 0n)
   const canProceed = !!effectiveOwner &&
     isAddress(effectiveOwner) &&
     !hasCriticalDoubts &&
     (!hasWarnings || warningsAcknowledged) &&
     creationFeesReady &&
     !creationFeesLoading
-
-  useEffect(() => {
-    if (!isOpen || chainIds.length === 0) return
-    let cancelled = false
-    setCreationFeesLoading(true)
-    setCreationFeeError(null)
-    Promise.all(chainIds.map(async chainId => [chainId, await fetchProjectCreationFee(chainId)] as const))
-      .then(entries => {
-        if (!cancelled) setCreationFeesWei(Object.fromEntries(entries))
-      })
-      .catch(err => {
-        if (!cancelled) {
-          setCreationFeesWei({})
-          setCreationFeeError(err instanceof Error ? err.message : 'Project creation fee unavailable')
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setCreationFeesLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [isOpen, chainIds])
 
   // Reset state when modal opens
   useEffect(() => {

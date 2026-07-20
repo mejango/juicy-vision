@@ -1,16 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore, useChatStore, type ChatMember, type ChatMessage } from '../../stores'
-import { useAuthStore } from '../../stores/authStore'
 import * as chatApi from '../../services/chat'
-import { getSessionId } from '../../services/session'
+import { getPseudoAddress, getSessionId } from '../../services/session'
 import { getEmojiFromAddress } from './ParticipantAvatars'
-
-// Helper to get the current user's pseudo-address (matches backend logic)
-function getCurrentUserAddress(): string {
-  const sessionId = getSessionId()
-  return `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
-}
 
 interface TypingUser {
   address: string
@@ -23,7 +16,6 @@ const EMPTY_MEMBERS: ChatMember[] = []
 export default function SharedChatContainer() {
   const { theme } = useThemeStore()
   const { t } = useTranslation()
-  const { user } = useAuthStore()
   const {
     activeChatId,
     getActiveChat,
@@ -39,8 +31,6 @@ export default function SharedChatContainer() {
   const [isSending, setIsSending] = useState(false)
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([])
   const [isLoadingMessages, setIsLoadingMessages] = useState(false)
-  const [showInviteModal, setShowInviteModal] = useState(false)
-  void showInviteModal // Used for invite modal visibility
   const [loadError, setLoadError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -48,12 +38,6 @@ export default function SharedChatContainer() {
   const chat = getActiveChat()
   const messages = chat?.messages || EMPTY_MESSAGES
   const members = chat?.members || EMPTY_MEMBERS
-
-  // Find current user's membership to check permissions
-  const currentUserMember = members.find(m => m.userId === user?.id)
-  const canInvite = currentUserMember?.role === 'founder' ||
-                    currentUserMember?.role === 'admin' ||
-                    currentUserMember?.canInvite === true
 
   // Load messages and connect WebSocket when chat changes
   useEffect(() => {
@@ -344,23 +328,6 @@ export default function SharedChatContainer() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Invite button - only show if user has permission */}
-          {canInvite && (
-            <button
-              onClick={() => setShowInviteModal(true)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm transition-colors ${
-                theme === 'dark'
-                  ? 'text-gray-300 hover:text-white hover:bg-white/10'
-                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-              </svg>
-              {t('chat.invite', 'Invite')}
-            </button>
-          )}
-
           {/* Members avatars */}
           <div className="flex -space-x-2">
           {members.slice(0, 5).map((member) => {
@@ -421,7 +388,7 @@ export default function SharedChatContainer() {
             // Assistant messages are always from the bot (left-aligned)
             // User messages are right-aligned only if from the current viewer
             const isAssistant = message.role === 'assistant'
-            const currentAddress = getCurrentUserAddress()
+            const currentAddress = getPseudoAddress(getSessionId())
             const isOwnMessage = !isAssistant && message.senderAddress === currentAddress
             const sender = members.find((m) => m.address === message.senderAddress)
 

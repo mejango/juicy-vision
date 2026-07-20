@@ -13,7 +13,7 @@ import ComponentRegistry from '../dynamic/ComponentRegistry'
 import ThinkingIndicator from './ThinkingIndicator'
 import { getEmojiForUser, MemberPopover } from './ParticipantAvatars'
 import { getWalletSession } from '../../services/siwe'
-import { getSessionId, getCachedPseudoAddress } from '../../services/session'
+import { getSessionId, getCachedPseudoAddress, getPseudoAddress } from '../../services/session'
 import { JuicyIdPopover, type AnchorPosition } from './WalletInfo'
 
 interface MessageBubbleProps {
@@ -136,8 +136,7 @@ export default function MessageBubble({
     const cached = getCachedPseudoAddress()
     if (cached) return cached
     // Fallback before cache is populated
-    const sessionId = getSessionId()
-    return `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+    return getPseudoAddress(getSessionId())
   }, [])
 
   // Find sender's custom emoji from members list

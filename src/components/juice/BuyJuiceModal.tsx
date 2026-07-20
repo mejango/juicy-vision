@@ -7,18 +7,15 @@
  * Flat rate: $1.05 per Pay Credit
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { loadStripe } from '@stripe/stripe-js'
 import {
   EmbeddedCheckoutProvider,
   EmbeddedCheckout,
 } from '@stripe/react-stripe-js'
 import { useTranslation } from 'react-i18next'
-import { useThemeStore, useAuthStore } from '../../stores'
-
-const API_BASE = import.meta.env.VITE_API_URL || ''
-const PAY_CREDITS_RATE = 1.05
+import { useThemeStore } from '../../stores'
+import { useStripeCheckout, PAY_CREDITS_RATE, PRESET_AMOUNTS } from './useStripeCheckout'
 
 interface BuyJuiceModalProps {
   isOpen: boolean
@@ -27,24 +24,25 @@ interface BuyJuiceModalProps {
   anchorRef?: React.RefObject<HTMLElement | null>
 }
 
-type PurchaseStep = 'amount' | 'checkout' | 'success' | 'error'
-
-// Preset credit amounts for quick selection
-const PRESET_AMOUNTS = [10, 25, 50, 100]
-
 export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }: BuyJuiceModalProps) {
   const { theme } = useThemeStore()
-  const { token } = useAuthStore()
   const { t } = useTranslation()
   const isDark = theme === 'dark'
 
-  const [step, setStep] = useState<PurchaseStep>('amount')
-  const [amount, setAmount] = useState<number>(25) // Credits amount
-  const [customAmount, setCustomAmount] = useState<string>('')
-  const [clientSecret, setClientSecret] = useState<string | null>(null)
-  const [stripePromise, setStripePromise] = useState<ReturnType<typeof loadStripe> | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const {
+    step,
+    amount,
+    customAmount,
+    clientSecret,
+    stripePromise,
+    error,
+    loading,
+    handleAmountSelect,
+    handleCustomAmountChange,
+    startCheckout,
+    handleCheckoutComplete,
+    reset,
+  } = useStripeCheckout({ enabled: isOpen, onSuccess })
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
   const modalRef = useRef<HTMLDivElement>(null)
 
@@ -100,34 +98,12 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }:
     }
   }, [isOpen, anchorRef])
 
-  // Fetch Stripe publishable key on mount
-  useEffect(() => {
-    if (!isOpen) return
-
-    fetch(`${API_BASE}/juice/stripe-config`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.data.publishableKey) {
-          setStripePromise(loadStripe(data.data.publishableKey))
-        } else {
-          setError('Payment system not available')
-        }
-      })
-      .catch(() => {
-        setError('Failed to load payment system')
-      })
-  }, [isOpen])
-
   // Reset state when modal opens
   useEffect(() => {
     if (isOpen) {
-      setStep('amount')
-      setAmount(25)
-      setCustomAmount('')
-      setClientSecret(null)
-      setError(null)
+      reset()
     }
-  }, [isOpen])
+  }, [isOpen, reset])
 
   // Handle mobile keyboard - scroll focused input into view
   useEffect(() => {
@@ -150,64 +126,6 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }:
     document.addEventListener('focusin', handleFocusIn)
     return () => document.removeEventListener('focusin', handleFocusIn)
   }, [isOpen])
-
-  const handleAmountSelect = (value: number) => {
-    setAmount(value)
-    setCustomAmount('')
-  }
-
-  const handleCustomAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
-    setCustomAmount(value)
-    const parsed = parseFloat(value)
-    if (!isNaN(parsed) && parsed >= 1 && parsed <= 10000) {
-      setAmount(parsed)
-    }
-  }
-
-  const startCheckout = useCallback(async () => {
-    if (!token) {
-      setError('Please sign in to purchase Pay Credits')
-      return
-    }
-
-    if (amount < 1 || amount > 10000) {
-      setError('Amount must be between $1 and $10,000')
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      const res = await fetch(`${API_BASE}/juice/purchase`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ amount }),
-      })
-
-      const data = await res.json()
-
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to create checkout session')
-      }
-
-      setClientSecret(data.data.clientSecret)
-      setStep('checkout')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start checkout')
-    } finally {
-      setLoading(false)
-    }
-  }, [amount, token])
-
-  const handleCheckoutComplete = useCallback(() => {
-    setStep('success')
-    onSuccess?.()
-  }, [onSuccess])
 
   if (!isOpen) return null
 
@@ -236,7 +154,6 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }:
             {step === 'amount' && t('wallet.buyPayCredits', 'Buy Pay Credits')}
             {step === 'checkout' && t('wallet.completePayment', 'Complete Payment')}
             {step === 'success' && t('wallet.purchaseComplete', 'Purchase Complete')}
-            {step === 'error' && t('wallet.purchaseFailed', 'Purchase Failed')}
           </h2>
           <button
             onClick={onClose}
@@ -397,31 +314,6 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }:
                 className="w-full py-2 text-sm font-bold bg-juice-orange text-black hover:bg-juice-orange/90 transition-all"
               >
                 {t('wallet.done', 'Done')}
-              </button>
-            </div>
-          )}
-
-          {/* Error Step */}
-          {step === 'error' && (
-            <div className="text-center py-6 space-y-3">
-              <div className={`w-12 h-12 mx-auto flex items-center justify-center ${isDark ? 'bg-red-500/20' : 'bg-red-100'}`}>
-                <svg className={`w-6 h-6 ${isDark ? 'text-red-400' : 'text-red-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </div>
-              <div>
-                <h3 className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {t('wallet.paymentFailed', 'Payment Failed')}
-                </h3>
-                <p className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {error || t('wallet.paymentFailedDescription', 'Something went wrong. Please try again.')}
-                </p>
-              </div>
-              <button
-                onClick={() => setStep('amount')}
-                className="w-full py-2 text-sm font-bold bg-juice-orange text-black hover:bg-juice-orange/90 transition-all"
-              >
-                {t('wallet.tryAgain', 'Try Again')}
               </button>
             </div>
           )}

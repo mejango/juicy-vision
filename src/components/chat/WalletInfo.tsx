@@ -5,8 +5,9 @@ import { useTranslation } from 'react-i18next'
 import { useThemeStore, useSettingsStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
 import { hasValidWalletSession, getWalletSession, clearWalletSession, signInWithWallet } from '../../services/siwe'
-import { getSessionId } from '../../services/session'
+import { getPseudoAddress, getSessionId } from '../../services/session'
 import { getEmojiFromAddress, FRUIT_EMOJIS } from './ParticipantAvatars'
+import { useAnchoredPopoverStyle } from '../ui/useAnchoredPopoverStyle'
 import { getPasskeyWallet, forgetPasskeyWallet, type PasskeyWallet } from '../../services/passkeyWallet'
 import { useAuthStore } from '../../stores'
 import { storage } from '../../services/storage'
@@ -93,8 +94,7 @@ export function JuicyIdPopover({
     if (connectedAddress) return connectedAddress
     const walletSession = getWalletSession()
     if (walletSession?.address) return walletSession.address
-    const sessionId = getSessionId()
-    return `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+    return getPseudoAddress(getSessionId())
   }, [connectedAddress])
   const defaultEmoji = getEmojiFromAddress(currentAddress)
   const currentEmoji = selectedFruit || defaultEmoji
@@ -321,27 +321,7 @@ export function JuicyIdPopover({
   }
 
   // Position popover
-  const popoverStyle = useMemo(() => {
-    if (!anchorPosition) return { top: 16, right: 16 }
-
-    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
-    const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1200
-    const gap = 8
-    const popoverWidth = 280
-
-    const isInLowerHalf = anchorPosition.top > viewportHeight / 2
-    let left = anchorPosition.left
-    if (left + popoverWidth > viewportWidth - 16) {
-      left = viewportWidth - popoverWidth - 16
-    }
-    left = Math.max(16, left)
-
-    if (isInLowerHalf) {
-      return { bottom: viewportHeight - anchorPosition.top + gap, left }
-    } else {
-      return { top: anchorPosition.top + anchorPosition.height + gap, left }
-    }
-  }, [anchorPosition])
+  const popoverStyle = useAnchoredPopoverStyle(anchorPosition, 280)
 
   // Reset state on close
   useEffect(() => {

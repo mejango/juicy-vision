@@ -59,6 +59,8 @@ vi.mock('../../services/chat', () => ({
 
 vi.mock('../../services/session', () => ({
   getSessionId: vi.fn(() => 'test-session-id-12345678901234567890'),
+  getPseudoAddress: vi.fn((sessionId: string) =>
+    `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`),
   getCachedPseudoAddress: vi.fn(() => null),
   getCurrentUserAddress: vi.fn(() => '0xtest1234567890abcdef1234567890abcdef1234'),
   getSessionPseudoAddress: vi.fn(() => Promise.resolve('0xtest1234567890abcdef1234567890abcdef1234')),

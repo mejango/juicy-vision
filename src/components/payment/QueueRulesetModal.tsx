@@ -13,7 +13,8 @@ import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { verifyQueueRulesetParams } from '../../utils/transactionVerification'
 import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
-import { EXPLORER_URLS, RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
+import { CHAINS as CHAIN_INFO, RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
+import { JB_CONTROLLER_ABI } from '../../constants/abis/jbController'
 import {
   assertRulesetConfigurationTrusted,
   resolveRulesetQueueRoute,
@@ -25,107 +26,8 @@ import {
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 import { txErrorMessage } from '../../utils/txErrors'
 import CopyTxButton from './CopyTxButton'
+import ChainStatusRow from './ChainStatusRow'
 import { buildTxLinkEntries } from '../../utils/txlink'
-
-// ABI for queueRulesetsOf
-const CONTROLLER_QUEUE_RULESETS_ABI = [
-  {
-    name: 'queueRulesetsOf',
-    type: 'function',
-    stateMutability: 'nonpayable',
-    inputs: [
-      { name: 'projectId', type: 'uint256' },
-      {
-        name: 'rulesetConfigurations',
-        type: 'tuple[]',
-        components: [
-          { name: 'mustStartAtOrAfter', type: 'uint48' },
-          { name: 'duration', type: 'uint32' },
-          { name: 'weight', type: 'uint112' },
-          { name: 'weightCutPercent', type: 'uint32' },
-          { name: 'approvalHook', type: 'address' },
-          {
-            name: 'metadata',
-            type: 'tuple',
-            components: [
-              { name: 'reservedPercent', type: 'uint16' },
-              { name: 'cashOutTaxRate', type: 'uint16' },
-              { name: 'baseCurrency', type: 'uint32' },
-              { name: 'pausePay', type: 'bool' },
-              { name: 'pauseCreditTransfers', type: 'bool' },
-              { name: 'allowOwnerMinting', type: 'bool' },
-              { name: 'allowSetCustomToken', type: 'bool' },
-              { name: 'allowTerminalMigration', type: 'bool' },
-              { name: 'allowSetTerminals', type: 'bool' },
-              { name: 'allowSetController', type: 'bool' },
-              { name: 'allowAddAccountingContext', type: 'bool' },
-              { name: 'allowAddPriceFeed', type: 'bool' },
-              { name: 'ownerMustSendPayouts', type: 'bool' },
-              { name: 'holdFees', type: 'bool' },
-              { name: 'scopeCashOutsToLocalBalances', type: 'bool' },
-              { name: 'useDataHookForPay', type: 'bool' },
-              { name: 'useDataHookForCashOut', type: 'bool' },
-              { name: 'dataHook', type: 'address' },
-              { name: 'metadata', type: 'uint16' },
-            ],
-          },
-          {
-            name: 'splitGroups',
-            type: 'tuple[]',
-            components: [
-              { name: 'groupId', type: 'uint256' },
-              {
-                name: 'splits',
-                type: 'tuple[]',
-                components: [
-                  { name: 'percent', type: 'uint32' },
-                  { name: 'projectId', type: 'uint64' },
-                  { name: 'beneficiary', type: 'address' },
-                  { name: 'preferAddToBalance', type: 'bool' },
-                  { name: 'lockedUntil', type: 'uint48' },
-                  { name: 'hook', type: 'address' },
-                ],
-              },
-            ],
-          },
-          {
-            name: 'fundAccessLimitGroups',
-            type: 'tuple[]',
-            components: [
-              { name: 'terminal', type: 'address' },
-              { name: 'token', type: 'address' },
-              {
-                name: 'payoutLimits',
-                type: 'tuple[]',
-                components: [
-                  { name: 'amount', type: 'uint224' },
-                  { name: 'currency', type: 'uint32' },
-                ],
-              },
-              {
-                name: 'surplusAllowances',
-                type: 'tuple[]',
-                components: [
-                  { name: 'amount', type: 'uint224' },
-                  { name: 'currency', type: 'uint32' },
-                ],
-              },
-            ],
-          },
-        ],
-      },
-      { name: 'memo', type: 'string' },
-    ],
-    outputs: [{ name: 'rulesetId', type: 'uint256' }],
-  },
-] as const
-
-const CHAIN_INFO: Record<number, { name: string; shortName: string; color: string }> = {
-  1: { name: 'Ethereum', shortName: 'ETH', color: '#627EEA' },
-  10: { name: 'Optimism', shortName: 'OP', color: '#FF0420' },
-  8453: { name: 'Base', shortName: 'BASE', color: '#0052FF' },
-  42161: { name: 'Arbitrum', shortName: 'ARB', color: '#28A0F0' },
-}
 
 interface ChainRulesetData {
   chainId: number
@@ -497,7 +399,7 @@ export default function QueueRulesetModal({
       const rulesetArgs = buildRulesetArgs(chainData.chainId)
 
       const callData = encodeFunctionData({
-        abi: CONTROLLER_QUEUE_RULESETS_ABI,
+        abi: JB_CONTROLLER_ABI,
         functionName: 'queueRulesetsOf',
         args: [
           BigInt(chainData.projectId),
@@ -704,77 +606,18 @@ export default function QueueRulesetModal({
 
           {/* Chain Status */}
           <div className="space-y-2">
-            {effectiveChainStates.map((cs, idx) => {
-              const chainInfo = CHAIN_INFO[cs.chainId]
-              const isCurrent = idx === currentChainIndex
-
-              return (
-                <div
-                  key={cs.chainId}
-                  className={`p-3 flex items-center justify-between ${
-                    isCurrent
-                      ? isDark ? 'bg-purple-500/20 border border-purple-500/50' : 'bg-purple-100 border border-purple-300'
-                      : isDark ? 'bg-white/5' : 'bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full"
-                      style={{ backgroundColor: chainInfo?.color || '#888' }}
-                    />
-                    <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {chainInfo?.name || `Chain ${cs.chainId}`}
-                    </span>
-                    <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                      Project #{cs.projectId}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {cs.status === 'pending' && (
-                      <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        Waiting...
-                      </span>
-                    )}
-                    {cs.status === 'signing' && (
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin w-3 h-3 border-2 border-purple-500 border-t-transparent rounded-full" />
-                        <span className={`text-xs ${isDark ? 'text-purple-300' : 'text-purple-600'}`}>
-                          Sign in wallet
-                        </span>
-                      </div>
-                    )}
-                    {cs.status === 'submitted' && (
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin w-3 h-3 border-2 border-juice-cyan border-t-transparent rounded-full" />
-                        <span className={`text-xs ${isDark ? 'text-juice-cyan' : 'text-cyan-600'}`}>
-                          Confirming...
-                        </span>
-                      </div>
-                    )}
-                    {cs.status === 'confirmed' && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-green-500">✓</span>
-                        {cs.txHash && (
-                          <a
-                            href={`${EXPLORER_URLS[cs.chainId]}${cs.txHash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-juice-cyan hover:underline"
-                          >
-                            View
-                          </a>
-                        )}
-                      </div>
-                    )}
-                    {cs.status === 'failed' && (
-                      <span className="text-xs text-red-400">
-                        Failed
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
+            {effectiveChainStates.map((cs, idx) => (
+              <ChainStatusRow
+                key={cs.chainId}
+                chainId={cs.chainId}
+                projectId={cs.projectId}
+                status={cs.status}
+                txHash={cs.txHash}
+                highlighted={idx === currentChainIndex}
+                accent="purple"
+                isDark={isDark}
+              />
+            ))}
           </div>
 
           {/* Error details */}
@@ -907,7 +750,7 @@ export default function QueueRulesetModal({
                     const perChain = await Promise.all(chainRulesetData.map(async (chainData) => {
                       const queueTarget = await validateFreshChainConfiguration(chainData)
                       const data = encodeFunctionData({
-                        abi: CONTROLLER_QUEUE_RULESETS_ABI,
+                        abi: JB_CONTROLLER_ABI,
                         functionName: 'queueRulesetsOf',
                         args: [BigInt(chainData.projectId), buildRulesetArgs(chainData.chainId), memo],
                       })

@@ -6,6 +6,7 @@ import { useChatStore, useSettingsStore, useThemeStore, LANGUAGES, type Message,
 import { useAuthStore } from '../../stores/authStore'
 import * as chatApi from '../../services/chat'
 import { useChatScroll, usePopoverPositioning } from './hooks'
+import { useJuicyIdentityDisplay } from './hooks/useJuicyIdentityDisplay'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import WelcomeScreen from './WelcomeScreen'
@@ -13,7 +14,7 @@ import WelcomeGreeting from './WelcomeGreeting'
 import ConversationHistory from './ConversationHistory'
 import ChatHistorySidebar from './ChatHistorySidebar'
 import { useIsMobile } from '../../hooks'
-import WalletInfo, { type JuicyIdentity } from './WalletInfo'
+import WalletInfo from './WalletInfo'
 import { SettingsPanel } from '../settings'
 import InviteModal from './InviteModal'
 import SaveModal from './SaveModal'
@@ -23,7 +24,6 @@ import { useAccount } from 'wagmi'
 import { type PasskeyWallet, getPasskeyWallet } from '../../services/passkeyWallet'
 import WalletPanel from '../wallet/WalletPanel'
 import { getSessionId, getSessionPseudoAddress, getCurrentUserAddress } from '../../services/session'
-import { getWalletSession } from '../../services/siwe'
 import { parseMessageContent } from '../../utils/messageParser'
 
 const CreateFlowWizard = lazy(() => import('../dynamic/CreateFlowWizard'))
@@ -34,6 +34,105 @@ const CreateFlowWizard = lazy(() => import('../dynamic/CreateFlowWizard'))
 const EMPTY_MESSAGES: ChatMessage[] = []
 const EMPTY_MEMBERS: ChatMember[] = []
 const EMPTY_ONLINE_MEMBERS: string[] = []
+
+// Dock control buttons shared by the welcome dock and the in-chat action bar:
+// history/attachments on the left, (optional extras +) theme/settings on the right.
+function DockControls({
+  className,
+  leftClassName,
+  rightClassName,
+  onHistoryClick,
+  settingsButtonRef,
+  onSettingsClick,
+  children,
+}: {
+  className: string
+  leftClassName: string
+  rightClassName: string
+  onHistoryClick: () => void
+  settingsButtonRef: React.MutableRefObject<HTMLButtonElement | null>
+  onSettingsClick: (e: React.MouseEvent<HTMLButtonElement>) => void
+  children?: React.ReactNode
+}) {
+  const { theme, toggleTheme } = useThemeStore()
+  const { t } = useTranslation()
+
+  return (
+    <div className={className}>
+      {/* Left side buttons */}
+      <div className={leftClassName}>
+        {/* History sidebar toggle */}
+        <button
+          onClick={onHistoryClick}
+          className={`p-1.5 transition-colors ${
+            theme === 'dark'
+              ? 'text-gray-400 hover:text-white'
+              : 'text-gray-500 hover:text-gray-900'
+          }`}
+          title={t('chat.chatHistory', 'Chat history')}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
+          </svg>
+        </button>
+        {/* Attachments button */}
+        <button
+          onClick={() => window.dispatchEvent(new CustomEvent('juice:trigger-file-upload'))}
+          className={`p-1.5 transition-colors ${
+            theme === 'dark'
+              ? 'text-gray-400 hover:text-white'
+              : 'text-gray-500 hover:text-gray-900'
+          }`}
+          title="Attach file"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+          </svg>
+        </button>
+      </div>
+      {/* Right side buttons */}
+      <div className={rightClassName}>
+        {children}
+        {/* Theme toggle */}
+        <button
+          onClick={toggleTheme}
+          className={`p-1.5 transition-colors ${
+            theme === 'dark'
+              ? 'text-gray-400 hover:text-white'
+              : 'text-gray-500 hover:text-gray-900'
+          }`}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {theme === 'dark' ? (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+          ) : (
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+            </svg>
+          )}
+        </button>
+        {/* Settings */}
+        <button
+          ref={settingsButtonRef}
+          onClick={onSettingsClick}
+          className={`p-1.5 transition-colors ${
+            theme === 'dark'
+              ? 'text-gray-400 hover:text-white'
+              : 'text-gray-500 hover:text-gray-900'
+          }`}
+          title="Settings"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  )
+}
 
 interface ChatContainerProps {
   topOnly?: boolean
@@ -50,7 +149,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const setWaitingForAiChatId = useChatStore(state => state.setWaitingForAiChatId)
 
   const { language, setLanguage, privateMode, setPrivateMode } = useSettingsStore()
-  const { theme, toggleTheme } = useThemeStore()
+  const { theme } = useThemeStore()
   const { isAuthenticated, user } = useAuthStore()
   const { isConnected: isWalletConnected } = useAccount()
   const { t } = useTranslation()
@@ -198,11 +297,15 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
   const [passkeyWallet, setPasskeyWallet] = useState<PasskeyWallet | null>(() => getPasskeyWallet())
   // Current user's Juicy ID (for displaying their name instead of "You")
   // Initialize from localStorage cache to prevent flicker on remount
-  const [currentUserIdentity, setCurrentUserIdentity] = useState<JuicyIdentity | null>(() => {
-    try {
-      const cached = localStorage.getItem('juicy-identity')
-      return cached ? JSON.parse(cached) : null
-    } catch { return null }
+  const [currentUserIdentity] = useJuicyIdentityDisplay([sessionId, passkeyWallet?.address], {
+    includeAuthToken: true,
+    cacheLocal: true,
+    initial: () => {
+      try {
+        const cached = localStorage.getItem('juicy-identity')
+        return cached ? JSON.parse(cached) : null
+      } catch { return null }
+    },
   })
   const [showBetaPopover, setShowBetaPopover] = useState(false)
   const [showCreateFlow, setShowCreateFlow] = useState(false)
@@ -277,6 +380,14 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     setShowBetaPopover(false)
     setSettingsOpen(false)
   }, [])
+
+  // Open the settings panel anchored to the clicked settings button
+  const handleSettingsClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    closeAllPopovers()
+    setSettingsAnchorPosition({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
+    setSettingsOpen(true)
+  }, [closeAllPopovers])
 
   // Handle reporting a chat
   const handleReport = useCallback(async () => {
@@ -411,6 +522,40 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assistantMessageCount, t])
 
+  // Invoke the AI for a message, then reconcile the streamed placeholder (if
+  // the WebSocket already created it under the same id) with the final
+  // persisted content instead of appending a second copy.
+  const invokeAiAndReconcile = useCallback(async (
+    chatId: string,
+    content: string,
+    attachmentData?: Array<{ type: string; name: string; mimeType: string; data: string }>,
+    savePrompt?: boolean,
+  ) => {
+    setWaitingForAiChatId(chatId)
+    try {
+      const aiMessage = await chatApi.invokeAi(chatId, content, attachmentData, savePrompt)
+      if (aiMessage) {
+        const chat = useChatStore.getState().chats.find(c => c.id === chatId)
+        if (chat?.messages?.some(m => m.id === aiMessage.id)) {
+          // The streamed placeholder already exists under this id — reconcile it
+          // with the final persisted content (cleaned, confidence tag stripped)
+          // instead of appending a second copy.
+          useChatStore.getState().updateMessage(chatId, aiMessage.id, {
+            content: aiMessage.content,
+            isStreaming: false,
+          })
+        } else {
+          addChatMessage(chatId, { ...aiMessage, isStreaming: false })
+        }
+        setWaitingForAiChatId(null)
+      }
+    } catch (aiErr) {
+      console.error('Failed to invoke AI:', aiErr)
+      setWaitingForAiChatId(null)
+      // Don't set error - the user message was sent successfully
+    }
+  }, [addChatMessage, setWaitingForAiChatId])
+
   const handleSend = useCallback(async (content: string, attachments?: Attachment[], bypassSkipAi?: boolean, hidden?: boolean) => {
     // IMPORTANT: Read chatId at execution time, not from closure
     // The forceActiveChatId prop is the most reliable source (comes from URL)
@@ -464,27 +609,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       // savePrompt: true tells the backend to persist the prompt in the database
       // so it's available in future AI context (e.g., per-chain projectIds after deployment)
       if (hidden && chatId) {
-        setWaitingForAiChatId(chatId)
-        try {
-          const aiMessage = await chatApi.invokeAi(chatId, content, undefined, true)
-          if (aiMessage) {
-            const chat = useChatStore.getState().chats.find(c => c.id === chatId)
-            if (chat?.messages?.some(m => m.id === aiMessage.id)) {
-              // Reconcile the streamed placeholder with the final persisted content
-              // instead of appending a second copy.
-              useChatStore.getState().updateMessage(chatId!, aiMessage.id, {
-                content: aiMessage.content,
-                isStreaming: false,
-              })
-            } else {
-              addChatMessage(chatId!, { ...aiMessage, isStreaming: false })
-            }
-            setWaitingForAiChatId(null)
-          }
-        } catch (aiErr) {
-          console.error('Failed to invoke AI for hidden message:', aiErr)
-          setWaitingForAiChatId(null)
-        }
+        await invokeAiAndReconcile(chatId, content, undefined, true)
         return
       }
 
@@ -530,31 +655,10 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       // bypassSkipAi allows form submissions to always invoke AI even if user has "Skip AI" on
       const shouldInvokeAi = bypassSkipAi ? chatAiEnabled : effectiveAiEnabled
       if (shouldInvokeAi) {
-        // Set waiting state NOW (after navigation for new chats, so state doesn't reset)
-        // Uses store state so it persists across navigation
-        setWaitingForAiChatId(chatId!)
-        try {
-          const aiMessage = await chatApi.invokeAi(chatId!, content, attachmentData)
-          if (aiMessage) {
-            const chat = useChatStore.getState().chats.find(c => c.id === chatId)
-            if (chat?.messages?.some(m => m.id === aiMessage.id)) {
-              // The streamed placeholder already exists under this id — reconcile it
-              // with the final persisted content (cleaned, confidence tag stripped)
-              // instead of appending a second copy.
-              useChatStore.getState().updateMessage(chatId!, aiMessage.id, {
-                content: aiMessage.content,
-                isStreaming: false,
-              })
-            } else {
-              addChatMessage(chatId!, { ...aiMessage, isStreaming: false })
-            }
-            setWaitingForAiChatId(null)
-          }
-        } catch (aiErr) {
-          console.error('Failed to invoke AI:', aiErr)
-          setWaitingForAiChatId(null)
-          // Don't set error - the user message was sent successfully
-        }
+        // Waiting state is set inside the helper NOW (after navigation for new
+        // chats, so state doesn't reset). Uses store state so it persists
+        // across navigation.
+        await invokeAiAndReconcile(chatId!, content, attachmentData)
       }
     } catch (err) {
       console.error('Failed to send message:', err)
@@ -567,7 +671,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     } finally {
       setIsStreaming(false)
     }
-  }, [forceActiveChatId, canWrite, navigate, addChat, addChatMessage, currentAddress, effectiveAiEnabled, chatAiEnabled, setPendingNewChat, setWaitingForAiChatId, privateMode])
+  }, [forceActiveChatId, canWrite, navigate, addChat, addChatMessage, currentAddress, effectiveAiEnabled, chatAiEnabled, setPendingNewChat, setWaitingForAiChatId, privateMode, invokeAiAndReconcile])
 
   const handleSuggestionClick = (text: string) => {
     handleSend(text)
@@ -621,6 +725,48 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     setShowInviteModal(true)
   }, [activeChatId])
 
+  // Merge anonymous-session chats into the signed-in account, then refresh the
+  // chat list, WebSocket connection, members, and messages. Shared by passkey
+  // and SIWE sign-in flows.
+  const mergeAndRefresh = useCallback(async (address: string, currentChatId: string | null) => {
+    const result = await chatApi.mergeSession(address)
+    console.log('[ChatContainer] Session merge result:', result)
+
+    // Refresh chat list to show merged chats
+    if (result.mergedChatIds.length > 0) {
+      const { chats } = await chatApi.fetchMyChats()
+      // Update store with fresh chats from server
+      chats.forEach(chat => {
+        const existing = useChatStore.getState().chats.find(c => c.id === chat.id)
+        if (!existing) {
+          addChat(chat)
+        }
+      })
+    }
+
+    // Reconnect WebSocket with new credentials if we're in a chat
+    if (currentChatId) {
+      console.log('[ChatContainer] Reconnecting WebSocket after sign-in')
+      chatApi.disconnectFromChat()
+      // Small delay to ensure disconnect completes
+      setTimeout(() => {
+        chatApi.connectToChat(currentChatId)
+      }, 100)
+      // Refresh members and messages to reflect merged identity
+      setTimeout(async () => {
+        try {
+          const mbrs = await chatApi.fetchMembers(currentChatId)
+          setMembers(currentChatId, mbrs)
+          // Also refresh messages since sender addresses were updated
+          const msgs = await chatApi.fetchMessages(currentChatId)
+          setChatMessages(currentChatId, msgs)
+        } catch (err) {
+          console.error('[ChatContainer] Failed to refresh data after sign-in:', err)
+        }
+      }, 300)
+    }
+  }, [addChat, setMembers, setChatMessages])
+
   // Handle successful passkey wallet creation/authentication
   const handlePasskeySuccess = useCallback(async () => {
     // Refresh passkey wallet state
@@ -660,47 +806,13 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
     // Merge anonymous session chats to the connected account
     try {
-      const result = await chatApi.mergeSession(smartAccountAddress)
-      console.log('[ChatContainer] Session merge result:', result)
-
-      // Refresh chat list to show merged chats
-      if (result.mergedChatIds.length > 0) {
-        const { chats } = await chatApi.fetchMyChats()
-        // Update store with fresh chats from server
-        chats.forEach(chat => {
-          const existing = useChatStore.getState().chats.find(c => c.id === chat.id)
-          if (!existing) {
-            addChat(chat)
-          }
-        })
-      }
-
-      // Reconnect WebSocket with new credentials if we're in a chat
-      if (currentChatId) {
-        console.log('[ChatContainer] Reconnecting WebSocket after passkey auth')
-        chatApi.disconnectFromChat()
-        setTimeout(() => {
-          chatApi.connectToChat(currentChatId)
-        }, 100)
-        // Refresh members and messages to reflect merged identity
-        setTimeout(async () => {
-          try {
-            const mbrs = await chatApi.fetchMembers(currentChatId)
-            setMembers(currentChatId, mbrs)
-            // Also refresh messages since sender addresses were updated
-            const msgs = await chatApi.fetchMessages(currentChatId)
-            setChatMessages(currentChatId, msgs)
-          } catch (err) {
-            console.error('[ChatContainer] Failed to refresh data after passkey auth:', err)
-          }
-        }, 300)
-      }
+      await mergeAndRefresh(smartAccountAddress, currentChatId)
     } catch (err) {
       console.error('[ChatContainer] Failed to merge session:', err)
       // Don't show error to user - passkey wallet was created successfully
       // The merge failing isn't critical
     }
-  }, [forceActiveChatId, addChat, setMembers, setChatMessages])
+  }, [forceActiveChatId, mergeAndRefresh])
 
   // Listen for passkey wallet connect/disconnect events
   useEffect(() => {
@@ -736,50 +848,6 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     }
   }, [isAuth, showAuthOptionsModal])
 
-  // Fetch current user's Juicy ID
-  useEffect(() => {
-    const fetchIdentity = async () => {
-      try {
-        const apiUrl = import.meta.env.VITE_API_URL || ''
-        const walletSession = getWalletSession()
-        const authToken = useAuthStore.getState().token
-        const headers: Record<string, string> = {
-          'X-Session-ID': sessionId,
-        }
-        // Include managed auth token (Touch ID)
-        if (authToken) {
-          headers['Authorization'] = `Bearer ${authToken}`
-        }
-        if (walletSession?.token) {
-          headers['X-Wallet-Session'] = walletSession.token
-        }
-        const res = await fetch(`${apiUrl}/identity/me`, { headers })
-        if (res.ok) {
-          const data = await res.json()
-          if (data.success && data.data) {
-            setCurrentUserIdentity(data.data)
-            // Cache for instant display on remount
-            try { localStorage.setItem('juicy-identity', JSON.stringify(data.data)) } catch {
-              // Identity caching is best-effort.
-            }
-          }
-        }
-      } catch {
-        // Ignore errors
-      }
-    }
-    fetchIdentity()
-  }, [sessionId, passkeyWallet?.address])
-
-  // Listen for identity changes from other components
-  useEffect(() => {
-    const handleIdentityChange = (e: CustomEvent<JuicyIdentity>) => {
-      setCurrentUserIdentity(e.detail)
-    }
-    window.addEventListener('juice:identity-changed', handleIdentityChange as EventListener)
-    return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
-  }, [])
-
   // Listen for SIWE wallet sign-in events and merge sessions
   useEffect(() => {
     const handleSiweSignIn = async (event: CustomEvent<{ address: string }>) => {
@@ -790,41 +858,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       const currentChatId = forceActiveChatId || useChatStore.getState().activeChatId
 
       try {
-        const result = await chatApi.mergeSession(address)
-        console.log('[ChatContainer] SIWE session merge result:', result)
-
-        // Refresh chat list to show merged chats
-        if (result.mergedChatIds.length > 0) {
-          const { chats } = await chatApi.fetchMyChats()
-          chats.forEach(chat => {
-            const existing = useChatStore.getState().chats.find(c => c.id === chat.id)
-            if (!existing) {
-              addChat(chat)
-            }
-          })
-        }
-
-        // Reconnect WebSocket with new SIWE credentials if we're in a chat
-        if (currentChatId) {
-          console.log('[ChatContainer] Reconnecting WebSocket with SIWE credentials')
-          chatApi.disconnectFromChat()
-          // Small delay to ensure disconnect completes
-          setTimeout(() => {
-            chatApi.connectToChat(currentChatId)
-          }, 100)
-          // Refresh members and messages to reflect merged identity
-          setTimeout(async () => {
-            try {
-              const mbrs = await chatApi.fetchMembers(currentChatId)
-              setMembers(currentChatId, mbrs)
-              // Also refresh messages since sender addresses were updated
-              const msgs = await chatApi.fetchMessages(currentChatId)
-              setChatMessages(currentChatId, msgs)
-            } catch (err) {
-              console.error('[ChatContainer] Failed to refresh data after SIWE auth:', err)
-            }
-          }, 300)
-        }
+        await mergeAndRefresh(address, currentChatId)
       } catch (err) {
         console.error('[ChatContainer] Failed to merge SIWE session:', err)
       }
@@ -834,7 +868,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
     return () => {
       window.removeEventListener('juice:siwe-signed-in', handleSiweSignIn as unknown as EventListener)
     }
-  }, [addChat, forceActiveChatId, setMembers, setChatMessages])
+  }, [forceActiveChatId, mergeAndRefresh])
 
   // Listen for dock scroll enable/disable events
   useEffect(() => {
@@ -1433,40 +1467,14 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                 </div>
 
                 {/* Controls above prompt area - hidden when dock is pinned (compact mode) */}
-                <div className={`flex justify-between items-center px-6 overflow-hidden transition-all duration-200 ${dockScrollEnabled ? 'max-h-0 opacity-0 py-0' : `max-h-20 opacity-100 ${isMobile ? 'mt-1' : ''}`}`}>
-                    {/* Left side: mobile-only sidebar and attachment icons */}
-                    <div className={`flex items-center gap-1 ${isMobile ? '' : 'invisible'}`}>
-                      {/* History sidebar toggle */}
-                      <button
-                        onClick={() => setShowHistorySidebar(true)}
-                        className={`p-1.5 transition-colors ${
-                          theme === 'dark'
-                            ? 'text-gray-400 hover:text-white'
-                            : 'text-gray-500 hover:text-gray-900'
-                        }`}
-                        title={t('chat.chatHistory', 'Chat history')}
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
-                        </svg>
-                      </button>
-                      {/* Attachments button */}
-                      <button
-                        onClick={() => window.dispatchEvent(new CustomEvent('juice:trigger-file-upload'))}
-                        className={`p-1.5 transition-colors ${
-                          theme === 'dark'
-                            ? 'text-gray-400 hover:text-white'
-                            : 'text-gray-500 hover:text-gray-900'
-                        }`}
-                        title="Attach file"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                        </svg>
-                      </button>
-                    </div>
-                    {/* Right side: language, theme, settings */}
-                    <div className="flex items-center gap-2">
+                <DockControls
+                  className={`flex justify-between items-center px-6 overflow-hidden transition-all duration-200 ${dockScrollEnabled ? 'max-h-0 opacity-0 py-0' : `max-h-20 opacity-100 ${isMobile ? 'mt-1' : ''}`}`}
+                  leftClassName={`flex items-center gap-1 ${isMobile ? '' : 'invisible'}`}
+                  rightClassName="flex items-center gap-2"
+                  onHistoryClick={() => setShowHistorySidebar(true)}
+                  settingsButtonRef={settingsButtonRef}
+                  onSettingsClick={handleSettingsClick}
+                >
                       {/* Language selector */}
                       <div className="relative">
                         <button
@@ -1529,49 +1537,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                           document.body
                         )}
                       </div>
-                      {/* Theme toggle */}
-                      <button
-                        onClick={toggleTheme}
-                        className={`p-1.5 transition-colors ${
-                          theme === 'dark'
-                            ? 'text-gray-400 hover:text-white'
-                            : 'text-gray-500 hover:text-gray-900'
-                        }`}
-                        title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-                      >
-                        {theme === 'dark' ? (
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                          </svg>
-                        ) : (
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                          </svg>
-                        )}
-                      </button>
-                      {/* Settings */}
-                      <button
-                        ref={settingsButtonRef}
-                        onClick={(e) => {
-                          const rect = e.currentTarget.getBoundingClientRect()
-                          closeAllPopovers()
-                          setSettingsAnchorPosition({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
-                          setSettingsOpen(true)
-                        }}
-                        className={`p-1.5 transition-colors ${
-                          theme === 'dark'
-                            ? 'text-gray-400 hover:text-white'
-                            : 'text-gray-500 hover:text-gray-900'
-                        }`}
-                        title="Settings"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
+                </DockControls>
 
                 {/* Sticky prompt area - only ChatInput stays pinned */}
                 <div
@@ -1760,85 +1726,16 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                 className={`${bottomOnly ? 'h-full' : 'absolute bottom-0 left-0 right-0'} flex flex-col justify-end transition-all duration-75`}
               >
                 {/* Attachments & Theme/Settings row - above prompt */}
-                <div className={`flex justify-between px-6 items-center transition-opacity duration-75 ${
-                  showActionBar ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                }`}>
-                  {/* Left side buttons */}
-                  <div className="flex items-center gap-1">
-                    {/* History sidebar toggle */}
-                    <button
-                      onClick={() => setShowHistorySidebar(true)}
-                      className={`p-1.5 transition-colors ${
-                        theme === 'dark'
-                          ? 'text-gray-400 hover:text-white'
-                          : 'text-gray-500 hover:text-gray-900'
-                      }`}
-                      title={t('chat.chatHistory', 'Chat history')}
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h7" />
-                      </svg>
-                    </button>
-                    {/* Attachments button */}
-                    <button
-                      onClick={() => window.dispatchEvent(new CustomEvent('juice:trigger-file-upload'))}
-                      className={`p-1.5 transition-colors ${
-                        theme === 'dark'
-                          ? 'text-gray-400 hover:text-white'
-                          : 'text-gray-500 hover:text-gray-900'
-                      }`}
-                      title="Attach file"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
-                      </svg>
-                    </button>
-                  </div>
-                  {/* Right side buttons */}
-                  <div className="flex items-center gap-1">
-                  {/* Theme toggle */}
-                  <button
-                    onClick={toggleTheme}
-                    className={`p-1.5 transition-colors ${
-                      theme === 'dark'
-                        ? 'text-gray-400 hover:text-white'
-                        : 'text-gray-500 hover:text-gray-900'
-                    }`}
-                    title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-                  >
-                    {theme === 'dark' ? (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-                      </svg>
-                    ) : (
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-                      </svg>
-                    )}
-                  </button>
-                  {/* Settings */}
-                  <button
-                    ref={settingsButtonRef}
-                    onClick={(e) => {
-                      const rect = e.currentTarget.getBoundingClientRect()
-                      closeAllPopovers()
-                      setSettingsAnchorPosition({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
-                      setSettingsOpen(true)
-                    }}
-                    className={`p-1.5 transition-colors ${
-                      theme === 'dark'
-                        ? 'text-gray-400 hover:text-white'
-                        : 'text-gray-500 hover:text-gray-900'
-                    }`}
-                    title="Settings"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    </svg>
-                  </button>
-                  </div>
-                </div>
+                <DockControls
+                  className={`flex justify-between px-6 items-center transition-opacity duration-75 ${
+                    showActionBar ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                  }`}
+                  leftClassName="flex items-center gap-1"
+                  rightClassName="flex items-center gap-1"
+                  onHistoryClick={() => setShowHistorySidebar(true)}
+                  settingsButtonRef={settingsButtonRef}
+                  onSettingsClick={handleSettingsClick}
+                />
 
                 {/* Input area with background */}
                 <div className={`backdrop-blur-sm ${

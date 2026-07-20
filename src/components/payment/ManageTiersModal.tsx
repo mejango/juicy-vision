@@ -17,7 +17,8 @@ import {
   type JB721HookFlags,
 } from '../../services/nft'
 import TechnicalDetails from '../shared/TechnicalDetails'
-import { ALL_VIEM_CHAINS, CHAINS as CHAIN_INFO, EXPLORER_URLS, RPC_ENDPOINTS } from '../../constants'
+import ChainStatusRow from './ChainStatusRow'
+import { ALL_VIEM_CHAINS, CHAINS as CHAIN_INFO, RPC_ENDPOINTS } from '../../constants'
 import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
 import { isUsdcCurrency } from '../../utils/technicalDetails'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
@@ -293,10 +294,6 @@ export default function ManageTiersModal({
     setCurrentChainIndex(-1)
   }, [address, chainStates, updateTiersOnChain, isManagedMode, managedAddress, validChainData, walletClient, assertCurrentAccount, onError])
 
-  const handleClose = useCallback(() => {
-    onClose()
-  }, [onClose])
-
   if (!isOpen) return null
 
   return createPortal(
@@ -304,7 +301,7 @@ export default function ManageTiersModal({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={!isStarted || allCompleted ? handleClose : undefined}
+        onClick={!isStarted || allCompleted ? onClose : undefined}
       />
 
       {/* Modal */}
@@ -342,7 +339,7 @@ export default function ManageTiersModal({
           </div>
           {(!isStarted || allCompleted) && (
             <button
-              onClick={handleClose}
+              onClick={onClose}
               className={`p-2 transition-colors ${
                 isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
               }`}
@@ -414,74 +411,19 @@ export default function ManageTiersModal({
 
           {/* Chain Status */}
           <div className="space-y-2">
-            {chainStates.map((cs, idx) => {
-              const chainInfo = CHAIN_INFO[cs.chainId]
-              const isCurrent = idx === currentChainIndex
-
-              return (
-                <div
-                  key={cs.chainId}
-                  className={`p-3 flex items-center justify-between ${
-                    isCurrent
-                      ? isDark ? 'bg-juice-orange/20 border border-juice-orange/50' : 'bg-orange-100 border border-orange-300'
-                      : isDark ? 'bg-white/5' : 'bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full"
-                      style={{ backgroundColor: chainInfo?.color || '#888' }}
-                    />
-                    <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {chainInfo?.name || `Chain ${cs.chainId}`}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {cs.status === 'pending' && (
-                      <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        Waiting...
-                      </span>
-                    )}
-                    {cs.status === 'authorizing' && (
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin w-3 h-3 border-2 border-juice-orange border-t-transparent rounded-full" />
-                        <span className={`text-xs ${isDark ? 'text-juice-orange' : 'text-orange-600'}`}>
-                          {isManagedMode ? 'Submitting...' : 'Confirm in wallet'}
-                        </span>
-                      </div>
-                    )}
-                    {cs.status === 'submitted' && (
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin w-3 h-3 border-2 border-juice-cyan border-t-transparent rounded-full" />
-                        <span className={`text-xs ${isDark ? 'text-juice-cyan' : 'text-cyan-600'}`}>
-                          Confirming...
-                        </span>
-                      </div>
-                    )}
-                    {cs.status === 'confirmed' && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-green-500">ok</span>
-                        {cs.txHash && (
-                          <a
-                            href={`${EXPLORER_URLS[cs.chainId]}${cs.txHash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-juice-cyan hover:underline"
-                          >
-                            View
-                          </a>
-                        )}
-                      </div>
-                    )}
-                    {cs.status === 'failed' && (
-                      <span className="text-xs text-red-400">
-                        Failed
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
+            {chainStates.map((cs, idx) => (
+              <ChainStatusRow
+                key={cs.chainId}
+                chainId={cs.chainId}
+                status={cs.status === 'authorizing' ? 'signing' : cs.status}
+                txHash={cs.txHash}
+                highlighted={idx === currentChainIndex}
+                accent="orange"
+                signingLabel={isManagedMode ? 'Submitting...' : 'Confirm in wallet'}
+                confirmedGlyph="ok"
+                isDark={isDark}
+              />
+            ))}
           </div>
 
           {/* Error details */}
@@ -561,7 +503,7 @@ export default function ManageTiersModal({
           {!isStarted && (
             <div className="flex gap-3">
               <button
-                onClick={handleClose}
+                onClick={onClose}
                 className={`flex-1 py-3 font-medium border-2 transition-colors ${
                   isDark
                     ? 'border-white/20 text-white hover:bg-white/10'
@@ -588,7 +530,7 @@ export default function ManageTiersModal({
 
           {allCompleted && (
             <button
-              onClick={handleClose}
+              onClick={onClose}
               className="w-full py-3 font-medium bg-juice-orange text-black hover:bg-juice-orange/90 transition-colors"
             >
               Done

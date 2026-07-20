@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores'
 import { createInvite, type ChatInvite, type CreateInviteParams } from '../../services/chat'
 import { copyToClipboard } from '../../utils/clipboard'
+import { useAnchoredPopoverStyle } from '../ui/useAnchoredPopoverStyle'
 
 export interface AnchorPosition {
   top: number
@@ -109,32 +110,7 @@ export default function InviteModal({
   }
 
   // Calculate popover position based on anchor
-  const popoverStyle = useMemo(() => {
-    if (!anchorPosition) {
-      // Fallback to top-right if no anchor
-      return { top: 16, right: 16 }
-    }
-
-    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
-    const gap = 8 // Gap between button and popover
-
-    // Check if button is in lower half of viewport
-    const isInLowerHalf = anchorPosition.top > viewportHeight / 2
-
-    if (isInLowerHalf) {
-      // Show above the button
-      return {
-        bottom: viewportHeight - anchorPosition.top + gap,
-        right: Math.max(16, typeof window !== 'undefined' ? window.innerWidth - anchorPosition.left - anchorPosition.width : 16),
-      }
-    } else {
-      // Show below the button
-      return {
-        top: anchorPosition.top + anchorPosition.height + gap,
-        right: Math.max(16, typeof window !== 'undefined' ? window.innerWidth - anchorPosition.left - anchorPosition.width : 16),
-      }
-    }
-  }, [anchorPosition])
+  const popoverStyle = useAnchoredPopoverStyle(anchorPosition)
 
   if (!isOpen) return null
 

@@ -2,7 +2,7 @@ import { useMemo, useState, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useThemeStore, useSettingsStore } from '../../stores'
 import { getWalletSession } from '../../services/siwe'
-import { getSessionId, getCachedPseudoAddress } from '../../services/session'
+import { getSessionId, getCachedPseudoAddress, getPseudoAddress } from '../../services/session'
 import { updateMemberPermissions } from '../../services/chat'
 import type { ChatMember } from '../../stores/chatStore'
 
@@ -304,8 +304,7 @@ export default function ParticipantAvatars({
     const cached = getCachedPseudoAddress()
     if (cached) return cached
     // Fallback before cache is populated
-    const sessionId = getSessionId()
-    return `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+    return getPseudoAddress(getSessionId())
   }, [])
 
   const onlineSet = useMemo(() => new Set((onlineMembers || []).map(a => a?.toLowerCase()).filter(Boolean)), [onlineMembers])

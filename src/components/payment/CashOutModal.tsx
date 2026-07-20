@@ -9,6 +9,7 @@ import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 import { txErrorMessage } from '../../utils/txErrors'
 import { GasBalanceStatus } from './GasBalanceStatus'
+import { useStatusCallbacks } from './modalHooks'
 import { ALL_VIEM_CHAINS, CHAINS as CHAIN_INFO, JB_CONTRACTS, MAINNET_CHAINS, RPC_ENDPOINTS } from '../../constants'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
@@ -236,13 +237,7 @@ export default function CashOutModal({
   }, [isOpen, projectId, chainId, reclaimToken, expectedTerminal])
 
   // Call parent callbacks when status changes (for persistence)
-  useEffect(() => {
-    if (status === 'confirmed' && txHash) {
-      onConfirmed?.(txHash)
-    } else if (status === 'failed' && error) {
-      onError?.(error)
-    }
-  }, [status, txHash, error, onConfirmed, onError])
+  useStatusCallbacks(status, txHash, error, onConfirmed, onError)
 
   // Fetch the project's terminal from JBDirectory
   useEffect(() => {

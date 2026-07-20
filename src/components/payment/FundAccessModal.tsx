@@ -17,7 +17,7 @@ import {
   type FundAccessKind,
 } from '../../services/fundAccess'
 import { fetchProjectSplits, type JBSplitData } from '../../services/bendystraw'
-import { assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
+import { assertSafeStoredSplitGroups as assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
 import { waitForSuccessfulTransaction } from '../../utils/transactionSafety'
 import { verifySendPayoutsParams, verifyUseAllowanceParams } from '../../utils/transactionVerification'
 import { buildTxLinkEntries, type TxLinkEntry } from '../../utils/txlink'

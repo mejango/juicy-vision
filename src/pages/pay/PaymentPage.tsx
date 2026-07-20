@@ -16,6 +16,7 @@ import Button from '../../components/ui/Button'
 import { getChainName } from '../../components/dynamic/charts/utils'
 import { RPC_ENDPOINTS, USDC_ADDRESSES, VIEM_CHAINS, type SupportedChainId } from '../../constants'
 import { getPaymentTerminal } from '../../utils/paymentTerminal'
+import { truncateAddress } from '../../utils/ens'
 import {
   assertCurrentProjectPayConfigurationTrusted,
   requireRecognizedRuntimeHook,
@@ -877,7 +878,7 @@ export default function PaymentPage() {
                   onClick={handlePayWithWallet}
                   className="w-full py-3"
                 >
-                  {isConnected ? `Pay with ${walletAddress?.slice(0, 6)}...${walletAddress?.slice(-4)}` : 'Connect Wallet'}
+                  {isConnected && walletAddress ? `Pay with ${truncateAddress(walletAddress)}` : 'Connect Wallet'}
                 </Button>
               ) : (
                 <div className="space-y-2">

@@ -1,19 +1,20 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
-import { encodeFunctionData, createPublicClient, http, type Chain, type Address, zeroAddress } from 'viem'
+import { encodeFunctionData, createPublicClient, http, type Chain, zeroAddress } from 'viem'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
 import { GasBalanceStatus } from './GasBalanceStatus'
 import { useOmnichainDistribute } from '../../hooks/relayr'
 import { ALL_VIEM_CHAINS, CHAINS as CHAIN_INFO, RPC_ENDPOINTS } from '../../constants'
+import { useProjectController, useStatusCallbacks } from './modalHooks'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { ProjectSplitRoute } from '../dynamic/ProjectSplitRoute'
 import { verifySendReservedTokensParams } from '../../utils/transactionVerification'
 import { getProjectController } from '../../utils/paymentTerminal'
 import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
-import { assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
+import { assertSafeStoredSplitGroups as assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
 import {
   fetchPendingReservedTokens,
   fetchProjectSplits,
@@ -109,8 +110,9 @@ export default function SendReservedTokensModal({
   const [txHash, setTxHash] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [warningAcknowledged, setWarningAcknowledged] = useState(false)
-  const [controllerAddress, setControllerAddress] = useState<Address | null>(null)
-  const [controllerLoading, setControllerLoading] = useState(false)
+
+  // Fetch the project's controller from JBDirectory
+  const { controllerAddress, controllerLoading } = useProjectController(isOpen, projectId, chainId, setError)
 
   // Omnichain mode
   const [useAllChains, setUseAllChains] = useState(false)
@@ -172,48 +174,7 @@ export default function SendReservedTokensModal({
   }, [isOpen, resetOmnichain])
 
   // Call parent callbacks when status changes (for persistence)
-  useEffect(() => {
-    if (status === 'confirmed' && txHash) {
-      onConfirmed?.(txHash)
-    } else if (status === 'failed' && error) {
-      onError?.(error)
-    }
-  }, [status, txHash, error, onConfirmed, onError])
-
-  // Fetch the project's controller from JBDirectory
-  useEffect(() => {
-    if (!isOpen || !projectId || !chainId) {
-      setControllerAddress(null)
-      return
-    }
-
-    const fetchController = async () => {
-      setControllerLoading(true)
-      try {
-        const chain = CHAINS[chainId]
-        if (!chain) {
-          console.error('Unsupported chain for controller lookup:', chainId)
-          return
-        }
-
-        const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
-        const publicClient = createPublicClient({
-          chain,
-          transport: http(rpcUrl),
-        })
-
-        const controller = await getProjectController(publicClient, BigInt(projectId))
-        setControllerAddress(controller)
-      } catch (err) {
-        console.error('Failed to fetch project controller:', err)
-        setError(err instanceof Error ? err.message : 'Failed to fetch project controller')
-      } finally {
-        setControllerLoading(false)
-      }
-    }
-
-    fetchController()
-  }, [isOpen, projectId, chainId])
+  useStatusCallbacks(status, txHash, error, onConfirmed, onError)
 
   const handleConfirm = useCallback(async () => {
     let reviewedPendingAmount = 0n

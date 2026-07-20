@@ -2,22 +2,21 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useAccount, useConnect, useDisconnect, useSignMessage } from 'wagmi'
-import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
 import { useThemeStore, useAuthStore, useSettingsStore } from '../../stores'
 import { useManagedWallet, useEnsNameResolved, useJuiceBalance } from '../../hooks'
-import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
-import { CHAINS, ALL_CHAIN_IDS } from '../../constants'
 import { hasValidWalletSession, signInWithWallet, clearWalletSession } from '../../services/siwe'
-import { loadStripe } from '@stripe/stripe-js'
 import {
   EmbeddedCheckoutProvider,
   EmbeddedCheckout,
 } from '@stripe/react-stripe-js'
 import { getPasskeyWallet, clearPasskeyWallet, forgetPasskeyWallet, type PasskeyWallet } from '../../services/passkeyWallet'
 import { FRUIT_EMOJIS, getEmojiFromAddress } from '../chat/ParticipantAvatars'
-import { getSessionId } from '../../services/session'
+import { getSessionId, getPseudoAddress } from '../../services/session'
 import { getWalletSession } from '../../services/siwe'
+import { useJuicyIdentityDisplay } from '../chat/hooks/useJuicyIdentityDisplay'
+import { useStripeCheckout, PAY_CREDITS_RATE, PRESET_AMOUNTS } from '../juice/useStripeCheckout'
 import { AccountLinkingBanner } from './AccountLinkingBanner'
+import { useAllChainBalances } from './useAllChainBalances'
 import { walletDappUrl, mobileWalletLinks, isMobileDevice } from '../../utils/walletLinks'
 
 export interface AnchorPosition {
@@ -25,13 +24,6 @@ export interface AnchorPosition {
   left: number
   width: number
   height: number
-}
-
-interface ChainBalance {
-  chainId: number
-  chainName: string
-  eth: string
-  usdc: string
 }
 
 // Payment context when opened from a pay intent
@@ -588,28 +580,16 @@ function EmailAuth({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =>
   const [error, setError] = useState<string | null>(null)
   const [devCode, setDevCode] = useState<string | null>(null)
 
-  const API_BASE_URL = import.meta.env.VITE_API_URL || ''
-
   const handleRequestCode = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError(null)
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/request-code`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      })
+      const data = await useAuthStore.getState().requestOtp(email)
 
-      const data = await response.json()
-
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to send code')
-      }
-
-      if (data.data.code) {
-        setDevCode(data.data.code)
+      if (data.code) {
+        setDevCode(data.code)
       }
 
       setStep('code')
@@ -626,18 +606,6 @@ function EmailAuth({ onBack, onSuccess }: { onBack: () => void; onSuccess: () =>
     setError(null)
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/verify-code`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, code }),
-      })
-
-      const data = await response.json()
-
-      if (!data.success) {
-        throw new Error(data.error || 'Invalid code')
-      }
-
       const authStore = useAuthStore.getState()
       authStore.setMode('managed')
       await authStore.login(email, code)
@@ -765,46 +733,13 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsuff
   const { address, chainId } = useAccount()
   const { signMessageAsync } = useSignMessage()
   const { ensName } = useEnsNameResolved(address)
-  const [balances, setBalances] = useState<ChainBalance[]>([])
-  const [loading, setLoading] = useState(true)
+  const { balances, loading } = useAllChainBalances(address)
   const [signingIn, setSigningIn] = useState(false)
   const [signInError, setSignInError] = useState<string | null>(null)
   const [justSignedIn, setJustSignedIn] = useState(false)
-  const [identity, setIdentity] = useState<{ emoji: string; username: string; formatted: string } | null>(null)
 
   // Fetch identity (Juicy ID)
-  useEffect(() => {
-    const fetchIdentity = async () => {
-      try {
-        const apiUrl = import.meta.env.VITE_API_URL || ''
-        const sessionId = getSessionId()
-        const walletSession = getWalletSession()
-        const headers: Record<string, string> = {
-          'X-Session-ID': sessionId,
-        }
-        if (walletSession?.token) {
-          headers['X-Wallet-Session'] = walletSession.token
-        }
-        const res = await fetch(`${apiUrl}/identity/me`, { headers })
-        if (res.ok) {
-          const data = await res.json()
-          if (data.success && data.data) {
-            setIdentity(data.data)
-          }
-        }
-      } catch {
-        // Ignore identity fetch errors
-      }
-    }
-    fetchIdentity()
-
-    // Listen for identity changes
-    const handleIdentityChange = (e: CustomEvent<{ emoji: string; username: string; formatted: string }>) => {
-      setIdentity(e.detail)
-    }
-    window.addEventListener('juice:identity-changed', handleIdentityChange as EventListener)
-    return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
-  }, [address])
+  const [identity] = useJuicyIdentityDisplay([address])
 
   // Handle SIWE sign-in
   const handleSignIn = async () => {
@@ -832,69 +767,6 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsuff
 
   // Derived signed-in state (includes just-signed-in)
   const effectivelySignedIn = isSignedIn || justSignedIn
-
-  // Fetch balances across all chains
-  const fetchAllBalances = useCallback(async () => {
-    if (!address) return
-    setLoading(true)
-
-    const results: ChainBalance[] = []
-
-    await Promise.all(
-      ALL_CHAIN_IDS.map(async (chainId) => {
-        const chain = VIEM_CHAINS[chainId as SupportedChainId]
-        const chainInfo = CHAINS[chainId]
-        if (!chain || !chainInfo) return
-
-        try {
-          const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
-          const publicClient = createPublicClient({
-            chain,
-            transport: http(rpcUrl),
-          })
-
-          // Fetch ETH balance
-          const ethBalance = await publicClient.getBalance({
-            address: address as `0x${string}`,
-          })
-
-          // Fetch USDC balance
-          const usdcAddress = USDC_ADDRESSES[chainId as SupportedChainId]
-          let usdcBalance = BigInt(0)
-          if (usdcAddress) {
-            try {
-              usdcBalance = await publicClient.readContract({
-                address: usdcAddress,
-                abi: erc20Abi,
-                functionName: 'balanceOf',
-                args: [address as `0x${string}`],
-              })
-            } catch {
-              // USDC might not exist on this chain
-            }
-          }
-
-          results.push({
-            chainId,
-            chainName: chainInfo.shortName,
-            eth: formatEther(ethBalance),
-            usdc: (Number(usdcBalance) / 1e6).toString(),
-          })
-        } catch (err) {
-          console.error(`Failed to fetch balance for chain ${chainId}:`, err)
-        }
-      })
-    )
-
-    // Sort by chainId for consistent ordering
-    results.sort((a, b) => a.chainId - b.chainId)
-    setBalances(results)
-    setLoading(false)
-  }, [address])
-
-  useEffect(() => {
-    fetchAllBalances()
-  }, [fetchAllBalances])
 
   // Report insufficient funds state to parent for title change
   useEffect(() => {
@@ -1200,103 +1072,10 @@ function PasskeyWalletView({ wallet, onTopUp, onDisconnect }: {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { ensName } = useEnsNameResolved(wallet.address as `0x${string}`)
-  const [balances, setBalances] = useState<ChainBalance[]>([])
-  const [loading, setLoading] = useState(true)
-  const [identity, setIdentity] = useState<{ emoji: string; username: string; formatted: string } | null>(null)
+  const { balances, loading } = useAllChainBalances(wallet.address)
 
   // Fetch identity (Juicy ID)
-  useEffect(() => {
-    const fetchIdentity = async () => {
-      try {
-        const apiUrl = import.meta.env.VITE_API_URL || ''
-        const sessionId = getSessionId()
-        const walletSession = getWalletSession()
-        const headers: Record<string, string> = {
-          'X-Session-ID': sessionId,
-        }
-        if (walletSession?.token) {
-          headers['X-Wallet-Session'] = walletSession.token
-        }
-        const res = await fetch(`${apiUrl}/identity/me`, { headers })
-        if (res.ok) {
-          const data = await res.json()
-          if (data.success && data.data) {
-            setIdentity(data.data)
-          }
-        }
-      } catch {
-        // Ignore identity fetch errors
-      }
-    }
-    fetchIdentity()
-
-    // Listen for identity changes
-    const handleIdentityChange = (e: CustomEvent<{ emoji: string; username: string; formatted: string }>) => {
-      setIdentity(e.detail)
-    }
-    window.addEventListener('juice:identity-changed', handleIdentityChange as EventListener)
-    return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
-  }, [wallet.address])
-
-  // Fetch balances across all chains
-  const fetchAllBalances = useCallback(async () => {
-    setLoading(true)
-    const results: ChainBalance[] = []
-
-    await Promise.all(
-      ALL_CHAIN_IDS.map(async (chainId) => {
-        const chain = VIEM_CHAINS[chainId as SupportedChainId]
-        const chainInfo = CHAINS[chainId]
-        if (!chain || !chainInfo) return
-
-        try {
-          const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
-          const publicClient = createPublicClient({
-            chain,
-            transport: http(rpcUrl),
-          })
-
-          // Fetch ETH balance
-          const ethBalance = await publicClient.getBalance({
-            address: wallet.address as `0x${string}`,
-          })
-
-          // Fetch USDC balance
-          const usdcAddress = USDC_ADDRESSES[chainId as SupportedChainId]
-          let usdcBalance = BigInt(0)
-          if (usdcAddress) {
-            try {
-              usdcBalance = await publicClient.readContract({
-                address: usdcAddress,
-                abi: erc20Abi,
-                functionName: 'balanceOf',
-                args: [wallet.address as `0x${string}`],
-              })
-            } catch {
-              // USDC might not exist on this chain
-            }
-          }
-
-          results.push({
-            chainId,
-            chainName: chainInfo.shortName,
-            eth: formatEther(ethBalance),
-            usdc: (Number(usdcBalance) / 1e6).toString(),
-          })
-        } catch (err) {
-          console.error(`Failed to fetch balance for chain ${chainId}:`, err)
-        }
-      })
-    )
-
-    results.sort((a, b) => a.chainId - b.chainId)
-    setBalances(results)
-    setLoading(false)
-  }, [wallet.address])
-
-  useEffect(() => {
-    fetchAllBalances()
-  }, [fetchAllBalances])
+  const [identity] = useJuicyIdentityDisplay([wallet.address])
 
   // Calculate totals
   const totalEth = balances.reduce((sum, b) => sum + parseFloat(b.eth || '0'), 0)
@@ -1421,46 +1200,9 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSetJuicyId }: {
   const { address, balances, loading, error: walletError, refetch: refetchWallet } = useManagedWallet()
   const { balance: juiceBalance, loading: juiceLoading } = useJuiceBalance()
   const [copied, setCopied] = useState(false)
-  const [identity, setIdentity] = useState<{ emoji: string; username: string; formatted: string } | null>(null)
 
   // Fetch identity with auth token
-  useEffect(() => {
-    const fetchIdentity = async () => {
-      try {
-        const apiUrl = import.meta.env.VITE_API_URL || ''
-        const sessionId = getSessionId()
-        const walletSession = getWalletSession()
-        const headers: Record<string, string> = {
-          'X-Session-ID': sessionId,
-        }
-        if (token) {
-          headers['Authorization'] = `Bearer ${token}`
-        }
-        if (walletSession?.token) {
-          headers['X-Wallet-Session'] = walletSession.token
-        }
-        const res = await fetch(`${apiUrl}/identity/me`, { headers })
-        if (res.ok) {
-          const data = await res.json()
-          if (data.success && data.data) {
-            setIdentity(data.data)
-            // Notify other components (like ChatInput) of the loaded identity
-            window.dispatchEvent(new CustomEvent('juice:identity-changed', { detail: data.data }))
-          }
-        }
-      } catch {
-        // Ignore identity fetch errors
-      }
-    }
-    fetchIdentity()
-
-    // Listen for identity changes from other components
-    const handleIdentityChange = (e: CustomEvent<{ emoji: string; username: string; formatted: string }>) => {
-      setIdentity(e.detail)
-    }
-    window.addEventListener('juice:identity-changed', handleIdentityChange as EventListener)
-    return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
-  }, [token, address])
+  const [identity] = useJuicyIdentityDisplay([token, address], { includeAuthToken: true, broadcast: true })
 
   if (!user) return null
 
@@ -1575,19 +1317,12 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSetJuicyId }: {
   )
 }
 
-// Juicy ID view - just the emoji picker and username input
-function JuicyIdView({ onBack }: { onBack: () => void }) {
-  const { theme } = useThemeStore()
-  const isDark = theme === 'dark'
-  const { selectedFruit, setSelectedFruit } = useSettingsStore()
+// Shared Juicy ID edit state (cached identity, availability checks, API headers)
+// used by JuicyIdView and SettingsView. Each view keeps its own save flow.
+function useJuicyIdentity() {
   const { token } = useAuthStore()
 
-  // Wallet hooks for SIWE sign-in
-  const { address: walletAddress, chainId, isConnected: isWalletConnected } = useAccount()
-  const { signMessageAsync } = useSignMessage()
-  const [signingIn, setSigningIn] = useState(false)
-
-  // Juicy ID state
+  // Juicy ID state - initialize from localStorage cache for instant display
   const [identityUsername, setIdentityUsername] = useState(() => {
     try {
       const cached = localStorage.getItem('juicy-identity')
@@ -1605,7 +1340,7 @@ function JuicyIdView({ onBack }: { onBack: () => void }) {
     } catch { return null }
   })
 
-  // Get API headers
+  // Get API headers for identity requests
   const getApiHeaders = useCallback(() => {
     const sessionId = getSessionId()
     const walletSession = getWalletSession()
@@ -1622,7 +1357,7 @@ function JuicyIdView({ onBack }: { onBack: () => void }) {
     return headers
   }, [token])
 
-  // Check availability
+  // Check identity availability
   const checkAvailability = useCallback(async (emoji: string, username: string) => {
     if (!username || username.length < 3) {
       setIdentityAvailable(null)
@@ -1646,12 +1381,47 @@ function JuicyIdView({ onBack }: { onBack: () => void }) {
     }
   }, [getApiHeaders])
 
+  return {
+    identityUsername, setIdentityUsername,
+    identityLoading, setIdentityLoading,
+    identityError, setIdentityError,
+    identityAvailable, setIdentityAvailable,
+    checkingAvailability,
+    identity, setIdentity,
+    getApiHeaders,
+    checkAvailability,
+  }
+}
+
+// Juicy ID view - just the emoji picker and username input
+function JuicyIdView({ onBack }: { onBack: () => void }) {
+  const { theme } = useThemeStore()
+  const isDark = theme === 'dark'
+  const { selectedFruit, setSelectedFruit } = useSettingsStore()
+
+  // Wallet hooks for SIWE sign-in
+  const { address: walletAddress, chainId, isConnected: isWalletConnected } = useAccount()
+  const { signMessageAsync } = useSignMessage()
+  const [signingIn, setSigningIn] = useState(false)
+
+  // Juicy ID state
+  const {
+    identityUsername, setIdentityUsername,
+    identityLoading, setIdentityLoading,
+    identityError, setIdentityError,
+    identityAvailable, setIdentityAvailable,
+    checkingAvailability,
+    identity, setIdentity,
+    getApiHeaders,
+    checkAvailability,
+  } = useJuicyIdentity()
+
   // Save identity (with SIWE sign-in if needed)
   const saveIdentity = useCallback(async () => {
     let walletSession = getWalletSession()
     const sessionId = getSessionId()
     const addr = walletSession?.address || walletAddress ||
-      `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+      getPseudoAddress(sessionId)
     const emoji = selectedFruit || getEmojiFromAddress(addr)
 
     if (!identityUsername || identityUsername.length < 3) {
@@ -1723,7 +1493,7 @@ function JuicyIdView({ onBack }: { onBack: () => void }) {
     const walletSession = getWalletSession()
     const sessionId = getSessionId()
     const addr = walletSession?.address ||
-      `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+      getPseudoAddress(sessionId)
     const currentEmoji = selectedFruit || getEmojiFromAddress(addr)
 
     // Don't check if same as current identity
@@ -1744,7 +1514,7 @@ function JuicyIdView({ onBack }: { onBack: () => void }) {
   const walletSession = getWalletSession()
   const sessionId = getSessionId()
   const currentAddress = walletSession?.address ||
-    `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+    getPseudoAddress(sessionId)
   const defaultEmoji = getEmojiFromAddress(currentAddress)
   const currentEmoji = identity?.emoji || selectedFruit || defaultEmoji
 
@@ -1873,7 +1643,6 @@ function SettingsView({ onBack }: { onBack: () => void }) {
     loginWithPasskey,
     registerPasskey,
     loadPasskeys,
-    token,
   } = useAuthStore()
   const isLoggedIn = isAuthenticated()
 
@@ -1902,41 +1671,18 @@ function SettingsView({ onBack }: { onBack: () => void }) {
   const [newPasskeyName, setNewPasskeyName] = useState('')
 
   // Juicy ID state - initialize from localStorage cache for instant display
-  const [identityUsername, setIdentityUsername] = useState(() => {
-    try {
-      const cached = localStorage.getItem('juicy-identity')
-      return cached ? JSON.parse(cached).username : ''
-    } catch { return '' }
-  })
-  const [identityLoading, setIdentityLoading] = useState(false)
-  const [identityError, setIdentityError] = useState<string | null>(null)
-  const [identityAvailable, setIdentityAvailable] = useState<boolean | null>(null)
-  const [checkingAvailability, setCheckingAvailability] = useState(false)
-  const [identity, setIdentity] = useState<{ emoji: string; username: string; formatted: string } | null>(() => {
-    try {
-      const cached = localStorage.getItem('juicy-identity')
-      return cached ? JSON.parse(cached) : null
-    } catch { return null }
-  })
+  const {
+    identityUsername, setIdentityUsername,
+    identityLoading, setIdentityLoading,
+    identityError, setIdentityError,
+    identityAvailable, setIdentityAvailable,
+    checkingAvailability,
+    identity, setIdentity,
+    getApiHeaders,
+    checkAvailability,
+  } = useJuicyIdentity()
   const [pendingIdentity, setPendingIdentity] = useState<{ emoji: string; username: string } | null>(null)
   const [showSignInPrompt, setShowSignInPrompt] = useState(false)
-
-  // Get API headers for identity requests
-  const getApiHeaders = useCallback(() => {
-    const sessionId = getSessionId()
-    const walletSession = getWalletSession()
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-      'X-Session-ID': sessionId,
-    }
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`
-    }
-    if (walletSession?.token) {
-      headers['X-Wallet-Session'] = walletSession.token
-    }
-    return headers
-  }, [token])
 
   // Load current identity
   const loadIdentity = useCallback(async () => {
@@ -1961,36 +1707,12 @@ function SettingsView({ onBack }: { onBack: () => void }) {
     }
   }, [getApiHeaders])
 
-  // Check identity availability
-  const checkAvailability = useCallback(async (emoji: string, username: string) => {
-    if (!username || username.length < 3) {
-      setIdentityAvailable(null)
-      return
-    }
-    setCheckingAvailability(true)
-    try {
-      const apiUrl = import.meta.env.VITE_API_URL || ''
-      const params = new URLSearchParams({ emoji, username })
-      const res = await fetch(`${apiUrl}/identity/check?${params}`, {
-        headers: getApiHeaders(),
-      })
-      if (res.ok) {
-        const data = await res.json()
-        setIdentityAvailable(data.data?.available ?? null)
-      }
-    } catch (err) {
-      console.error('Failed to check availability:', err)
-    } finally {
-      setCheckingAvailability(false)
-    }
-  }, [getApiHeaders])
-
   // Save identity (will prompt sign-in if not authenticated)
   const saveIdentity = useCallback(async (overrideEmoji?: string, overrideUsername?: string) => {
     const walletSession = getWalletSession()
     const sessionId = getSessionId()
     const addr = walletSession?.address ||
-      `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+      getPseudoAddress(sessionId)
     const emoji = overrideEmoji || selectedFruit || getEmojiFromAddress(addr)
     const username = overrideUsername || identityUsername
 
@@ -2079,7 +1801,7 @@ function SettingsView({ onBack }: { onBack: () => void }) {
     const walletSession = getWalletSession()
     const sessionId = getSessionId()
     const addr = walletSession?.address ||
-      `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+      getPseudoAddress(sessionId)
     const currentEmoji = selectedFruit || getEmojiFromAddress(addr)
 
     // Don't check if it's the current identity
@@ -2483,7 +2205,7 @@ function SettingsView({ onBack }: { onBack: () => void }) {
             const walletSession = getWalletSession()
             const sessionId = getSessionId()
             const currentAddress = walletSession?.address ||
-              `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+              getPseudoAddress(sessionId)
             const defaultEmoji = getEmojiFromAddress(currentAddress)
             const emoji = identity?.emoji || selectedFruit || defaultEmoji
             const name = identityUsername || identity?.username || ''
@@ -2498,7 +2220,7 @@ function SettingsView({ onBack }: { onBack: () => void }) {
             const walletSession = getWalletSession()
             const sessionId = getSessionId()
             const currentAddress = walletSession?.address ||
-              `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+              getPseudoAddress(sessionId)
             const defaultEmoji = getEmojiFromAddress(currentAddress)
             const isSelected = selectedFruit === fruit || (!selectedFruit && fruit === defaultEmoji)
 
@@ -2657,97 +2379,23 @@ function SettingsView({ onBack }: { onBack: () => void }) {
 }
 
 // Buy Pay Credits view - inline with back button
-const PRESET_AMOUNTS = [10, 25, 50, 100]
-const API_BASE = import.meta.env.VITE_API_URL || ''
-const PAY_CREDITS_RATE = 1.05 // Flat rate: $1.05 per Pay Credit
-
 function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: () => void }) {
   const { theme } = useThemeStore()
-  const { token } = useAuthStore()
   const isDark = theme === 'dark'
 
-  const [step, setStep] = useState<'amount' | 'checkout' | 'success' | 'error'>('amount')
-  const [amount, setAmount] = useState<number>(25) // Credits amount
-  const [customAmount, setCustomAmount] = useState<string>('')
-  const [clientSecret, setClientSecret] = useState<string | null>(null)
-  const [stripePromise, setStripePromise] = useState<ReturnType<typeof loadStripe> | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  // Fetch Stripe publishable key on mount
-  useEffect(() => {
-    fetch(`${API_BASE}/juice/stripe-config`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.data.publishableKey) {
-          setStripePromise(loadStripe(data.data.publishableKey))
-        } else {
-          setError('Payment system not available')
-        }
-      })
-      .catch(() => {
-        setError('Failed to load payment system')
-      })
-  }, [])
-
-
-  const handleAmountSelect = (value: number) => {
-    setAmount(value)
-    setCustomAmount('')
-  }
-
-  const handleCustomAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value
-    setCustomAmount(value)
-    const parsed = parseFloat(value)
-    if (!isNaN(parsed) && parsed >= 1 && parsed <= 10000) {
-      setAmount(parsed)
-    }
-  }
-
-  const startCheckout = useCallback(async () => {
-    if (!token) {
-      setError('Please sign in to purchase Pay Credits')
-      return
-    }
-
-    if (amount < 1 || amount > 10000) {
-      setError('Amount must be between $1 and $10,000')
-      return
-    }
-
-    setLoading(true)
-    setError(null)
-
-    try {
-      const res = await fetch(`${API_BASE}/juice/purchase`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ amount }),
-      })
-
-      const data = await res.json()
-
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to create checkout session')
-      }
-
-      setClientSecret(data.data.clientSecret)
-      setStep('checkout')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to start checkout')
-    } finally {
-      setLoading(false)
-    }
-  }, [amount, token])
-
-  const handleCheckoutComplete = useCallback(() => {
-    setStep('success')
-    onSuccess?.()
-  }, [onSuccess])
+  const {
+    step,
+    amount,
+    customAmount,
+    clientSecret,
+    stripePromise,
+    error,
+    loading,
+    handleAmountSelect,
+    handleCustomAmountChange,
+    startCheckout,
+    handleCheckoutComplete,
+  } = useStripeCheckout({ onSuccess })
 
   return (
     <div className="space-y-3">
@@ -2904,31 +2552,6 @@ function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: (
             className="w-full py-2 text-xs font-bold bg-green-500 text-white hover:bg-green-600 transition-all"
           >
             Done
-          </button>
-        </div>
-      )}
-
-      {/* Error Step */}
-      {step === 'error' && (
-        <div className="text-center py-4 space-y-3">
-          <div className={`w-10 h-10 mx-auto flex items-center justify-center ${isDark ? 'bg-red-500/20' : 'bg-red-100'}`}>
-            <svg className={`w-5 h-5 ${isDark ? 'text-red-400' : 'text-red-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </div>
-          <div>
-            <p className={`text-xs font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Payment Failed
-            </p>
-            <p className={`text-[10px] mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              {error || 'Something went wrong. Please try again.'}
-            </p>
-          </div>
-          <button
-            onClick={() => setStep('amount')}
-            className="w-full py-2 text-xs font-bold bg-green-500 text-white hover:bg-green-600 transition-all"
-          >
-            Try Again
           </button>
         </div>
       )}

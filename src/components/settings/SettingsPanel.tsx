@@ -1,12 +1,14 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount, useDisconnect } from 'wagmi'
 import { useSettingsStore, useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
 // Note: signInWithPasskey removed - use authStore.loginWithPasskey() instead for managed mode
 import { FRUIT_EMOJIS, getEmojiFromAddress } from '../chat/ParticipantAvatars'
-import { getSessionId } from '../../services/session'
+import { getSessionId, getPseudoAddress } from '../../services/session'
 import { getWalletSession } from '../../services/siwe'
+import { useAnchoredPopoverStyle } from '../ui/useAnchoredPopoverStyle'
+import { truncateAddress } from '../../utils/ens'
 
 interface JuicyIdentity {
   id: string
@@ -183,7 +185,7 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
       const walletSession = getWalletSession()
       const sessionId = getSessionId()
       const addr = walletSession?.address ||
-        `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+        getPseudoAddress(sessionId)
       return getEmojiFromAddress(addr)
     })()
     const username = overrideUsername || identityUsername
@@ -283,7 +285,7 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
       const walletSession = getWalletSession()
       const sessionId = getSessionId()
       const addr = walletSession?.address ||
-        `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+        getPseudoAddress(sessionId)
       return getEmojiFromAddress(addr)
     })()
 
@@ -391,31 +393,8 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
     }
   }
 
-  const truncateAddress = (addr: string) => `${addr.slice(0, 6)}...${addr.slice(-4)}`
-
   // Calculate popover position based on anchor
-  const popoverStyle = useMemo(() => {
-    if (!anchorPosition) {
-      return { top: 16, right: 16 }
-    }
-
-    const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 800
-    const gap = 8
-
-    const isInLowerHalf = anchorPosition.top > viewportHeight / 2
-
-    if (isInLowerHalf) {
-      return {
-        bottom: viewportHeight - anchorPosition.top + gap,
-        right: Math.max(16, typeof window !== 'undefined' ? window.innerWidth - anchorPosition.left - anchorPosition.width : 16),
-      }
-    } else {
-      return {
-        top: anchorPosition.top + anchorPosition.height + gap,
-        right: Math.max(16, typeof window !== 'undefined' ? window.innerWidth - anchorPosition.left - anchorPosition.width : 16),
-      }
-    }
-  }, [anchorPosition])
+  const popoverStyle = useAnchoredPopoverStyle(anchorPosition)
 
   const contentRef = useRef<HTMLDivElement>(null)
 
@@ -850,7 +829,7 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
                     const walletSession = getWalletSession()
                     const sessionId = getSessionId()
                     const currentAddress = walletSession?.address ||
-                      `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+                      getPseudoAddress(sessionId)
                     const defaultEmoji = getEmojiFromAddress(currentAddress)
                     // Use identity emoji first (saved on server), then local selection, then default
                     const emoji = identity?.emoji || selectedFruit || defaultEmoji
@@ -867,7 +846,7 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
                     const walletSession = getWalletSession()
                     const sessionId = getSessionId()
                     const currentAddress = walletSession?.address ||
-                      `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+                      getPseudoAddress(sessionId)
                     const defaultEmoji = getEmojiFromAddress(currentAddress)
                     // Use identity emoji (saved on server) as source of truth, then local selection, then default
                     const currentEmoji = identity?.emoji || selectedFruit || defaultEmoji
@@ -1017,7 +996,7 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
                     if (walletSession?.address) return walletSession.address
                     if (managedAddress) return managedAddress
                     const sessionId = getSessionId()
-                    return `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+                    return getPseudoAddress(sessionId)
                   })()}
                 </p>
               </div>

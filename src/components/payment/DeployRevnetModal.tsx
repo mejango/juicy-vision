@@ -9,6 +9,7 @@ import {
   fetchProjectCreationFee,
   type JBDeployTiersHookConfig,
 } from '../../services/omnichainDeployer'
+import { useSlowChains, useCreationFees } from './modalHooks'
 import { CHAINS, EXPLORER_URLS, REV_DEPLOYER } from '../../constants'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
@@ -16,13 +17,6 @@ import TransactionWarning from '../shared/TransactionWarning'
 import { verifyDeployRevnetParams } from '../../utils/transactionVerification'
 import { isIpfsUri } from '../../utils/ipfs'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
-
-const CHAIN_NAMES: Record<number, string> = {
-  1: 'Ethereum',
-  10: 'Optimism',
-  8453: 'Base',
-  42161: 'Arbitrum',
-}
 
 function revnetDeploymentKey(value: unknown): string {
   return keccak256(toBytes(JSON.stringify(
@@ -73,9 +67,15 @@ export default function DeployRevnetModal({
 
   const [hasStarted, setHasStarted] = useState(false)
   const [warningsAcknowledged, setWarningsAcknowledged] = useState(false)
-  const [creationFeesWei, setCreationFeesWei] = useState<Record<number, bigint>>({})
-  const [creationFeesLoading, setCreationFeesLoading] = useState(false)
-  const [creationFeeError, setCreationFeeError] = useState<string | null>(null)
+  const {
+    creationFeesWei,
+    setCreationFeesWei,
+    creationFeesLoading,
+    creationFeeError,
+    setCreationFeeError,
+    creationFeesReady,
+    totalCreationFee,
+  } = useCreationFees(isOpen, chainIds)
   const deploymentKey = useMemo(() => revnetDeploymentKey({
     chainIds,
     stageConfigurations,
@@ -124,33 +124,7 @@ export default function DeployRevnetModal({
   const hasError = revnetError
 
   // Slow-chain detection
-  const [tick, setTick] = useState(0)
-  const SLOW_CHAIN_THRESHOLD_MS = 90_000
-
-  useEffect(() => {
-    if (!isDeploying) return
-    const id = setInterval(() => setTick(t => t + 1), 5000)
-    return () => clearInterval(id)
-  }, [isDeploying])
-
-  const { slowChainIds, hasSlowChains } = useMemo(() => {
-    void tick
-    const bs = revnetBundleState
-    const startedAt = bs.processingStartedAt
-    if (!startedAt || !isDeploying) {
-      return { slowChainIds: [] as number[], hasSlowChains: false }
-    }
-    const elapsed = Date.now() - startedAt
-    if (elapsed < SLOW_CHAIN_THRESHOLD_MS) {
-      return { slowChainIds: [] as number[], hasSlowChains: false }
-    }
-    const hasConfirmed = bs.chainStates.some(cs => cs.status === 'confirmed')
-    const stuck = bs.chainStates
-      .filter(cs => cs.status === 'pending' || cs.status === 'submitted')
-      .map(cs => cs.chainId)
-    const hasSlow = hasConfirmed && stuck.length > 0
-    return { slowChainIds: hasSlow ? stuck : [], hasSlowChains: hasSlow }
-  }, [tick, revnetBundleState, isDeploying])
+  const { slowChainIds, hasSlowChains } = useSlowChains(isDeploying, revnetBundleState)
 
   // Verify transaction parameters
   const verificationResult = useMemo(() => {
@@ -167,8 +141,6 @@ export default function DeployRevnetModal({
 
   const hasWarnings = verificationResult.doubts.length > 0
   const hasCriticalDoubts = verificationResult.doubts.some(d => d.severity === 'critical')
-  const creationFeesReady = chainIds.every(chainId => creationFeesWei[chainId] !== undefined)
-  const totalCreationFee = Object.values(creationFeesWei).reduce((total, fee) => total + fee, 0n)
   const operatorMatchesManagedAccount = !!managedAddress &&
     isAddress(splitOperator) &&
     splitOperator.toLowerCase() === managedAddress.toLowerCase()
@@ -179,29 +151,6 @@ export default function DeployRevnetModal({
     creationFeesReady &&
     !creationFeesLoading &&
     isIpfsUri(projectUri, false)
-
-  useEffect(() => {
-    if (!isOpen || chainIds.length === 0) return
-    let cancelled = false
-    setCreationFeesLoading(true)
-    setCreationFeeError(null)
-    Promise.all(chainIds.map(async chainId => [chainId, await fetchProjectCreationFee(chainId)] as const))
-      .then(entries => {
-        if (!cancelled) setCreationFeesWei(Object.fromEntries(entries))
-      })
-      .catch(err => {
-        if (!cancelled) {
-          setCreationFeesWei({})
-          setCreationFeeError(err instanceof Error ? err.message : 'Project creation fee unavailable')
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setCreationFeesLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [isOpen, chainIds])
 
   // Reset state when modal opens
   useEffect(() => {
@@ -521,7 +470,7 @@ export default function DeployRevnetModal({
                 isDark={isDark}
                 allChains={chainIds.map(cid => ({
                   chainId: cid,
-                  chainName: CHAIN_NAMES[cid] || `Chain ${cid}`,
+                  chainName: CHAINS[cid]?.name || `Chain ${cid}`,
                 }))}
               />
 

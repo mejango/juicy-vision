@@ -8,7 +8,7 @@ import { GasBalanceStatus } from './GasBalanceStatus'
 import { useOmnichainSetSplits, type ChainState } from '../../hooks/relayr'
 import { JB_CONTROLLER_ABI } from '../../constants/abis/jbController'
 import { SPLIT_GROUP_RESERVED } from '../../constants/abis/jbSplits'
-import { EXPLORER_URLS, RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
+import { CHAINS as CHAIN_INFO, RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
 import { getProjectController } from '../../utils/paymentTerminal'
 import { assertCurrentRulesetId } from '../../utils/projectTrust'
 import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
@@ -17,13 +17,7 @@ import { fetchProjectSplits, type JBSplitData } from '../../services/bendystraw'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 import { txErrorMessage } from '../../utils/txErrors'
-
-const CHAIN_INFO: Record<number, { name: string; shortName: string; color: string }> = {
-  1: { name: 'Ethereum', shortName: 'ETH', color: '#627EEA' },
-  10: { name: 'Optimism', shortName: 'OP', color: '#FF0420' },
-  8453: { name: 'Base', shortName: 'BASE', color: '#0052FF' },
-  42161: { name: 'Arbitrum', shortName: 'ARB', color: '#28A0F0' },
-}
+import ChainStatusRow from './ChainStatusRow'
 
 // Data passed from the form
 interface ChainSplitsData {
@@ -522,77 +516,18 @@ export default function SetSplitsModal({
 
           {/* Chain Status */}
           <div className="space-y-2">
-            {effectiveChainStates.map((cs: ChainTxState, idx: number) => {
-              const chainInfo = CHAIN_INFO[cs.chainId]
-              const isCurrent = idx === currentChainIndex
-
-              return (
-                <div
-                  key={cs.chainId}
-                  className={`p-3 flex items-center justify-between ${
-                    isCurrent
-                      ? isDark ? 'bg-green-500/20 border border-green-500/50' : 'bg-green-100 border border-green-300'
-                      : isDark ? 'bg-white/5' : 'bg-gray-50'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full"
-                      style={{ backgroundColor: chainInfo?.color || '#888' }}
-                    />
-                    <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                      {chainInfo?.name || `Chain ${cs.chainId}`}
-                    </span>
-                    <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                      Project #{cs.projectId}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {cs.status === 'pending' && (
-                      <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                        Waiting...
-                      </span>
-                    )}
-                    {cs.status === 'signing' && (
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin w-3 h-3 border-2 border-green-500 border-t-transparent rounded-full" />
-                        <span className={`text-xs ${isDark ? 'text-green-300' : 'text-green-600'}`}>
-                          Sign in wallet
-                        </span>
-                      </div>
-                    )}
-                    {cs.status === 'submitted' && (
-                      <div className="flex items-center gap-2">
-                        <div className="animate-spin w-3 h-3 border-2 border-juice-cyan border-t-transparent rounded-full" />
-                        <span className={`text-xs ${isDark ? 'text-juice-cyan' : 'text-cyan-600'}`}>
-                          Confirming...
-                        </span>
-                      </div>
-                    )}
-                    {cs.status === 'confirmed' && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-green-500">✓</span>
-                        {cs.txHash && (
-                          <a
-                            href={`${EXPLORER_URLS[cs.chainId]}${cs.txHash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-juice-cyan hover:underline"
-                          >
-                            View
-                          </a>
-                        )}
-                      </div>
-                    )}
-                    {cs.status === 'failed' && (
-                      <span className="text-xs text-red-400">
-                        Failed
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )
-            })}
+            {effectiveChainStates.map((cs: ChainTxState, idx: number) => (
+              <ChainStatusRow
+                key={cs.chainId}
+                chainId={cs.chainId}
+                projectId={cs.projectId}
+                status={cs.status}
+                txHash={cs.txHash}
+                highlighted={idx === currentChainIndex}
+                accent="green"
+                isDark={isDark}
+              />
+            ))}
           </div>
 
           {/* Error details */}

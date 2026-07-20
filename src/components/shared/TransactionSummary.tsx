@@ -1,5 +1,7 @@
 // Human-readable transaction summary component
 
+import { truncateAddress } from '../../utils/ens'
+
 export type TransactionType =
   | 'pay'
   | 'cashOut'
@@ -147,11 +149,6 @@ const CHAIN_NAMES: Record<number, string> = {
   10: 'Optimism',
   8453: 'Base',
   42161: 'Arbitrum',
-}
-
-function truncateAddress(address: string): string {
-  if (address.length <= 12) return address
-  return `${address.slice(0, 6)}...${address.slice(-4)}`
 }
 
 // Summary components for each transaction type

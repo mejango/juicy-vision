@@ -8,10 +8,7 @@
 import { useState } from 'react'
 import { useAccountLinking } from '../../hooks'
 import { useThemeStore } from '../../stores'
-
-function shortenAddress(address: string, chars = 4): string {
-  return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
-}
+import { truncateAddress } from '../../utils/ens'
 
 interface AccountLinkingBannerProps {
   onLinkComplete?: () => void
@@ -98,13 +95,13 @@ export function AccountLinkingBanner({ onLinkComplete }: AccountLinkingBannerPro
             <div className="flex justify-between">
               <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Touch ID Account:</span>
               <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                {managedAccountAddress ? shortenAddress(managedAccountAddress) : '-'}
+                {managedAccountAddress ? truncateAddress(managedAccountAddress) : '-'}
               </span>
             </div>
             <div className="flex justify-between">
               <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Connected Wallet:</span>
               <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                {connectedWalletAddress ? shortenAddress(connectedWalletAddress) : '-'}
+                {connectedWalletAddress ? truncateAddress(connectedWalletAddress) : '-'}
               </span>
             </div>
           </div>

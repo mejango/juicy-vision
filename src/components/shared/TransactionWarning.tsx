@@ -36,7 +36,7 @@ export default function TransactionWarning({
       }`}>
         <div className="flex items-center gap-2">
           <span className="text-lg">
-            {hasCritical ? '!' : '!'}
+            !
           </span>
           <h3 className={`font-semibold ${
             hasCritical
