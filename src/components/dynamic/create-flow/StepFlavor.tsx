@@ -9,9 +9,9 @@ import { erc20Abi, isAddress } from 'viem'
 import { ALL_CHAIN_IDS, CHAINS } from '../../../constants'
 import { getSafetyPublicClient } from '../../../utils/transactionSafety'
 import type { AcceptKind, CreateFlowState, ProjectType, SuckerType } from './state'
-import { chainName, stepsFor } from './state'
+import { chainName, customAccounting, stepsFor, tickerLabel } from './state'
 import {
-  EnsAddressInput, FieldBlock, Hint, InfoNote, InlineToggleLink, PinkNote, Select, StepHead, WarnNote, useIsDark,
+  EnsAddressInput, FieldBlock, Hint, InfoNote, InlineToggleLink, Pill, PinkNote, Select, StepHead, WarnNote, useIsDark,
 } from './controls'
 import { PerChainAddrControl } from './pickers'
 
@@ -25,19 +25,11 @@ interface StepProps {
 // tickerLabel / applyAccountingDefaults / uncoveredPairs
 // ---------------------------------------------------------------------------
 
-function customAccounting(state: CreateFlowState): boolean {
-  return state.accepts[0] === 'custom'
-}
-
 // A custom ERC-20's currency id = uint32(uint160(address)) — so every ruleset/shop
 // currency equals it and no JBPrices feed is needed.
 function customCurrencyId(state: CreateFlowState): number {
   const a = state.customToken.address
   return isAddress(a, { strict: false }) ? Number(BigInt(a) % (1n << 32n)) : 0
-}
-
-function tickerLabel(state: CreateFlowState): string {
-  return state.details.ticker || 'TOKEN'
 }
 
 // Point every ruleset/shop currency at the right base id. A custom ERC-20 → its own currency id. Otherwise,
@@ -104,26 +96,6 @@ function ChainPill(props: { id: number; selected: boolean; onClick: () => void }
     >
       <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: CHAINS[props.id]?.color }} />
       {CHAINS[props.id]?.shortName || String(props.id)}
-    </button>
-  )
-}
-
-// Simple accounting pill (label-only, mirrors the website's create-pill row)
-function AcceptPill(props: { label: string; selected: boolean; onClick: () => void }) {
-  const isDark = useIsDark()
-  return (
-    <button
-      type="button"
-      onClick={props.onClick}
-      className={`px-3 py-1.5 text-sm border transition-colors ${
-        props.selected
-          ? 'border-teal-400 text-teal-400 bg-teal-400/10'
-          : isDark
-            ? 'border-white/15 text-gray-400 hover:border-white/30'
-            : 'border-gray-300 text-gray-500 hover:border-gray-400'
-      }`}
-    >
-      {props.label}
     </button>
   )
 }
@@ -386,7 +358,7 @@ function AccountingBlock({ state, update }: StepProps) {
     <FieldBlock label="Accounting">
       <div className="flex flex-wrap gap-2">
         {opts.map((o) => (
-          <AcceptPill
+          <Pill
             key={o.key}
             label={o.label}
             selected={state.accepts.includes(o.key)}

@@ -10,14 +10,16 @@ import {
   fetchProjectTokenSymbol,
   type Project,
   type JBSplitData,
-  type ProjectRuleset,
 } from '../../services/bendystraw'
 import { resolveIpfsUri } from '../../utils/ipfs'
-import { resolveEnsName, truncateAddress } from '../../utils/ens'
+import { truncateAddress } from '../../utils/ens'
+import { MAINNET_CHAINS } from '../../constants'
 import { SendReservedTokensModal } from '../payment'
+import InlineChainSelector from './InlineChainSelector'
+import { resolveSplitEnsNames } from './resolveSplitEnsNames'
 import { ProjectLink } from './ProjectLink'
 import { ProjectSplitRoute } from './ProjectSplitRoute'
-import { assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
+import { assertSafeStoredSplitGroups as assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
 import { useManagedWallet } from '../../hooks'
 import { resolveProjectChains } from '../../utils/projectChains'
 import { ChainMappingWarning } from './ChainMappingWarning'
@@ -30,12 +32,7 @@ interface SendReservedTokensFormProps {
 }
 
 // Chain info for display
-const CHAIN_INFO: Record<number, { name: string; shortName: string; slug: string; color: string }> = {
-  1: { name: 'Ethereum', shortName: 'ETH', slug: 'eth', color: '#627EEA' },
-  10: { name: 'Optimism', shortName: 'OP', slug: 'op', color: '#FF0420' },
-  8453: { name: 'Base', shortName: 'BASE', slug: 'base', color: '#0052FF' },
-  42161: { name: 'Arbitrum', shortName: 'ARB', slug: 'arb', color: '#28A0F0' },
-}
+const CHAIN_INFO = MAINNET_CHAINS
 
 // Per-chain reserved tokens data
 interface ChainReservedData {
@@ -44,57 +41,7 @@ interface ChainReservedData {
   pendingReserved: string | null
   reservedSplits: JBSplitData[]
   reservedPercent: number
-  ruleset: ProjectRuleset | null
   configurationError?: string
-}
-
-// Inline chain selector component
-function InlineChainSelector({
-  chainData,
-  selectedChainId,
-  onSelect,
-  isDark,
-}: {
-  chainData: ChainReservedData[]
-  selectedChainId: number | null
-  onSelect: (chainId: number) => void
-  isDark: boolean
-}) {
-  if (chainData.length <= 1) return null
-
-  return (
-    <div className="flex items-center gap-1 flex-wrap">
-      {chainData.map(cd => {
-        const chain = CHAIN_INFO[cd.chainId] || { name: `Chain ${cd.chainId}`, shortName: String(cd.chainId), color: '#888888' }
-        const isSelected = selectedChainId === cd.chainId
-        const hasPending = cd.pendingReserved !== null && BigInt(cd.pendingReserved) > 0n
-        return (
-          <button
-            key={cd.chainId}
-            onClick={() => onSelect(cd.chainId)}
-            className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium transition-colors ${
-              isSelected
-                ? isDark
-                  ? 'bg-white/20 text-white'
-                  : 'bg-gray-200 text-gray-900'
-                : isDark
-                  ? 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-                  : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-900'
-            }`}
-          >
-            <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ backgroundColor: chain.color }}
-            />
-            {chain.shortName}
-            {hasPending && (
-              <span className="w-1.5 h-1.5 bg-amber-400 rounded-full" title="Has pending tokens" />
-            )}
-          </button>
-        )
-      })}
-    </div>
-  )
 }
 
 export default function SendReservedTokensForm({ projectId, chainId = '1', messageId }: SendReservedTokensFormProps) {
@@ -223,7 +170,6 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
               pendingReserved,
               reservedSplits,
               reservedPercent: chainProject?.currentRuleset?.reservedPercent || 0,
-              ruleset: chainProject?.currentRuleset || null,
             }
           } catch (err) {
             console.error(`Failed to fetch reserved data for chain ${chain.chainId}:`, err)
@@ -233,7 +179,6 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
               pendingReserved: null,
               reservedSplits: [],
               reservedPercent: 0,
-              ruleset: null,
               configurationError: err instanceof Error ? err.message : 'Reserved split configuration unavailable',
             }
           }
@@ -249,26 +194,7 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
         setSelectedChainId(chainWithPending?.chainId || primaryChainId)
 
         // Resolve ENS names for split beneficiaries
-        const allBeneficiaries = new Set<string>()
-        allChainData.forEach(cd => {
-          cd.reservedSplits.forEach(split => {
-            if (split.beneficiary && split.projectId === 0) {
-              allBeneficiaries.add(split.beneficiary.toLowerCase())
-            }
-          })
-        })
-
-        const ensPromises = Array.from(allBeneficiaries).map(async addr => {
-          const ens = await resolveEnsName(addr)
-          return { addr, ens }
-        })
-
-        const ensResults = await Promise.all(ensPromises)
-        const ensMap: Record<string, string> = {}
-        ensResults.forEach(({ addr, ens }) => {
-          if (ens) ensMap[addr] = ens
-        })
-        setSplitEnsNames(ensMap)
+        setSplitEnsNames(await resolveSplitEnsNames(allChainData.map(cd => cd.reservedSplits)))
 
       } catch (err) {
         console.error('Failed to load project:', err)
@@ -347,9 +273,15 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
               Select chain:
             </div>
             <InlineChainSelector
-              chainData={chainReservedData}
-              selectedChainId={selectedChainId}
-              onSelect={setSelectedChainId}
+              options={chainReservedData.map(cd => ({
+                key: cd.chainId,
+                chainId: cd.chainId,
+                selected: selectedChainId === cd.chainId,
+                suffix: cd.pendingReserved !== null && BigInt(cd.pendingReserved) > 0n && (
+                  <span className="w-1.5 h-1.5 bg-amber-400 rounded-full" title="Has pending tokens" />
+                ),
+              }))}
+              onSelect={option => setSelectedChainId(option.chainId)}
               isDark={isDark}
             />
           </div>

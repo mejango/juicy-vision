@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useThemeStore } from '../../stores'
 import { useProjectDraftStore } from '../../stores/projectDraftStore'
-import { useComponentCollaboration } from '../../hooks/useComponentCollaboration'
+import { useComponentCollaboration, type RemoteSelection, type RemoteTyping } from '../../hooks/useComponentCollaboration'
 import { RemoteCursors } from '../collaboration/RemoteCursors'
 
 interface Option {
@@ -56,6 +56,69 @@ const DONE_WORDS = ['Great', 'Super', 'Got it', 'Ok', 'Nice']
 
 // Normalize value for comparison (lowercase, trim, collapse spaces)
 const normalizeValue = (value: string) => value.toLowerCase().trim().replace(/[\s_-]+/g, ' ')
+
+// Loading spinner shared by generating states and the streaming submit button
+function Spinner({ className }: { className: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+    </svg>
+  )
+}
+
+// Remote typing indicator shared by text, textarea, and memo fields
+function TypingIndicator({ typing, isDark }: { typing: RemoteTyping[]; isDark: boolean }) {
+  if (typing.length === 0) return null
+  return (
+    <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+      {typing.map((rt, i) => (
+        <span key={rt.address} className="animate-fade-in">
+          {i > 0 && ', '}
+          <span className="text-xs">{rt.emoji}</span>
+          <span className="italic"> {rt.text || 'typing...'}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
+// Remote selection indicator badges shared by chips and radio options
+function SelectionBadges({
+  selections,
+  wrapperClassName,
+  emojiClassName,
+  overflowClassName,
+}: {
+  selections: RemoteSelection[]
+  wrapperClassName: string
+  emojiClassName: string
+  overflowClassName: string
+}) {
+  if (selections.length === 0) return null
+  return (
+    <span className={wrapperClassName}>
+      {selections.slice(0, 3).map((rs, i) => (
+        <span
+          key={rs.address}
+          className={emojiClassName}
+          style={{
+            marginLeft: i > 0 ? '-2px' : 0,
+            zIndex: 3 - i,
+          }}
+          title={`Selected by ${rs.address.slice(0, 6)}...`}
+        >
+          {rs.emoji}
+        </span>
+      ))}
+      {selections.length > 3 && (
+        <span className={overflowClassName}>
+          +{selections.length - 3}
+        </span>
+      )}
+    </span>
+  )
+}
 
 export default function OptionsPicker({ groups, submitLabel = 'Continue', allSelectedLabel, onSubmit, expectedGroupCount, isStreaming, chatId, messageId, creative, userResponse }: OptionsPickerProps) {
   const { theme } = useThemeStore()
@@ -273,6 +336,20 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
     // Only exact matches - don't use includes() which caused "custom" to match partial values
     return OTHER_VALUES.some(v => normalizeValue(v) === normalized)
   }
+
+  // Build context from other selections for auto-generation prompts
+  const buildGenerationContext = () => groups.map(g => {
+    const sel = selections[g.id]
+    if (!sel || (Array.isArray(sel) && sel.length === 0)) return null
+    const options = g.options || []
+    if (Array.isArray(sel)) {
+      const labels = sel.map(v => options.find(o => o.value === v)?.label || v)
+      return `${g.label}: ${labels.join(', ')}`
+    }
+    if (g.type === 'file') return null
+    const opt = options.find(o => o.value === sel)
+    return `${g.label}: ${opt?.label || sel}`
+  }).filter(Boolean).join('. ')
 
   const handleSelect = (groupId: string, value: string) => {
     // Toggle selection on/off
@@ -545,28 +622,12 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                           </span>
                         )}
                         {/* Remote selection indicators */}
-                        {remoteSelectionsForOption.length > 0 && (
-                          <span className="absolute -top-1 -right-1 flex">
-                            {remoteSelectionsForOption.slice(0, 3).map((rs, i) => (
-                              <span
-                                key={rs.address}
-                                className="text-[10px] leading-none animate-fade-in"
-                                style={{
-                                  marginLeft: i > 0 ? '-2px' : 0,
-                                  zIndex: 3 - i,
-                                }}
-                                title={`Selected by ${rs.address.slice(0, 6)}...`}
-                              >
-                                {rs.emoji}
-                              </span>
-                            ))}
-                            {remoteSelectionsForOption.length > 3 && (
-                              <span className="text-[8px] text-gray-400 ml-0.5">
-                                +{remoteSelectionsForOption.length - 3}
-                              </span>
-                            )}
-                          </span>
-                        )}
+                        <SelectionBadges
+                          selections={remoteSelectionsForOption}
+                          wrapperClassName="absolute -top-1 -right-1 flex"
+                          emojiClassName="text-[10px] leading-none animate-fade-in"
+                          overflowClassName="text-[8px] text-gray-400 ml-0.5"
+                        />
                       </button>
                     )
                   })}
@@ -732,28 +793,12 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                           )}
                         </div>
                         {/* Remote selection indicators */}
-                        {remoteSelectionsForOption.length > 0 && (
-                          <span className="flex items-center shrink-0">
-                            {remoteSelectionsForOption.slice(0, 3).map((rs, i) => (
-                              <span
-                                key={rs.address}
-                                className="text-xs leading-none animate-fade-in"
-                                style={{
-                                  marginLeft: i > 0 ? '-2px' : 0,
-                                  zIndex: 3 - i,
-                                }}
-                                title={`Selected by ${rs.address.slice(0, 6)}...`}
-                              >
-                                {rs.emoji}
-                              </span>
-                            ))}
-                            {remoteSelectionsForOption.length > 3 && (
-                              <span className="text-[10px] text-gray-400 ml-0.5">
-                                +{remoteSelectionsForOption.length - 3}
-                              </span>
-                            )}
-                          </span>
-                        )}
+                        <SelectionBadges
+                          selections={remoteSelectionsForOption}
+                          wrapperClassName="flex items-center shrink-0"
+                          emojiClassName="text-xs leading-none animate-fade-in"
+                          overflowClassName="text-[10px] text-gray-400 ml-0.5"
+                        />
                       </div>
                     )
                   })}
@@ -841,17 +886,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                     </div>
                   )}
                   {/* Remote typing indicators */}
-                  {groupTyping.length > 0 && (
-                    <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      {groupTyping.map((rt, i) => (
-                        <span key={rt.address} className="animate-fade-in">
-                          {i > 0 && ', '}
-                          <span className="text-xs">{rt.emoji}</span>
-                          <span className="italic"> {rt.text || 'typing...'}</span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <TypingIndicator typing={groupTyping} isDark={isDark} />
                 </div>
               )
             })()}
@@ -865,19 +900,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
 
               const handleAutoGenerate = () => {
                 setGenerating(prev => ({ ...prev, [group.id]: true }))
-                // Build context from other selections
-                const context = groups.map(g => {
-                  const sel = selections[g.id]
-                  if (!sel || (Array.isArray(sel) && sel.length === 0)) return null
-                  const options = g.options || []
-                  if (Array.isArray(sel)) {
-                    const labels = sel.map(v => options.find(o => o.value === v)?.label || v)
-                    return `${g.label}: ${labels.join(', ')}`
-                  }
-                  if (g.type === 'file') return null
-                  const opt = options.find(o => o.value === sel)
-                  return `${g.label}: ${opt?.label || sel}`
-                }).filter(Boolean).join('. ')
+                const context = buildGenerationContext()
 
                 const customPrompt = typeof group.autoGenerate === 'string' ? group.autoGenerate : null
                 const prompt = customPrompt || `Generate a brief, compelling ${group.label.toLowerCase()} based on: ${context}`
@@ -929,25 +952,12 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                   )}
                   {isGenerating && (
                     <div className={`flex items-center gap-1.5 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
+                      <Spinner className="w-3 h-3 animate-spin" />
                       Generating...
                     </div>
                   )}
                   {/* Remote typing indicators */}
-                  {groupTyping.length > 0 && (
-                    <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      {groupTyping.map((rt, i) => (
-                        <span key={rt.address} className="animate-fade-in">
-                          {i > 0 && ', '}
-                          <span className="text-xs">{rt.emoji}</span>
-                          <span className="italic"> {rt.text || 'typing...'}</span>
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <TypingIndicator typing={groupTyping} isDark={isDark} />
                 </div>
               )
             })()}
@@ -1021,19 +1031,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
 
               const handleAutoGenerateImage = () => {
                 setGenerating(prev => ({ ...prev, [group.id]: true }))
-                // Build context from other selections
-                const context = groups.map(g => {
-                  const sel = selections[g.id]
-                  if (!sel || (Array.isArray(sel) && sel.length === 0)) return null
-                  const options = g.options || []
-                  if (Array.isArray(sel)) {
-                    const labels = sel.map(v => options.find(o => o.value === v)?.label || v)
-                    return `${g.label}: ${labels.join(', ')}`
-                  }
-                  if (g.type === 'file') return null
-                  const opt = options.find(o => o.value === sel)
-                  return `${g.label}: ${opt?.label || sel}`
-                }).filter(Boolean).join('. ')
+                const context = buildGenerationContext()
 
                 const customPrompt = typeof group.autoGenerate === 'string' ? group.autoGenerate : null
                 const prompt = customPrompt || `Generate an image for: ${context}`
@@ -1087,10 +1085,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                     <div className={`w-48 h-48 border flex flex-col items-center justify-center gap-2 animate-pulse ${
                       isDark ? 'border-white/20 bg-white/5' : 'border-gray-200 bg-gray-50'
                     }`}>
-                      <svg className={`w-8 h-8 animate-spin ${isDark ? 'text-gray-500' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
+                      <Spinner className={`w-8 h-8 animate-spin ${isDark ? 'text-gray-500' : 'text-gray-400'}`} />
                       <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Generating...</span>
                     </div>
                   ) : isLocked ? (
@@ -1271,30 +1266,14 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                     </span>
                   ) : stillStreaming ? (
                     <span className="flex items-center gap-1.5">
-                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
+                      <Spinner className="w-4 h-4 animate-spin" />
                       Loading...
                     </span>
                   ) : buttonLabel}
                 </button>
               </div>
               {/* Remote typing indicators */}
-              {(() => {
-                const memoTyping = getRemoteTypingForGroup('_memo')
-                return memoTyping.length > 0 && (
-                  <div className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                    {memoTyping.map((rt, i) => (
-                      <span key={rt.address} className="animate-fade-in">
-                        {i > 0 && ', '}
-                        <span className="text-xs">{rt.emoji}</span>
-                        <span className="italic"> {rt.text || 'typing...'}</span>
-                      </span>
-                    ))}
-                  </div>
-                )
-              })()}
+              <TypingIndicator typing={getRemoteTypingForGroup('_memo')} isDark={isDark} />
             </div>
             {/* Generate more ideas button for creative brainstorming */}
             {creative && !hasSubmitted && !stillStreaming && (

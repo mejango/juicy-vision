@@ -18,6 +18,7 @@ import {
   type JB721HookFlags,
 } from '../../services/nft'
 import { isUsdcCurrency } from '../../utils/technicalDetails'
+import { MAINNET_CHAINS } from '../../constants'
 import type {
   JB721DiscountPercentConfig,
   JB721TierConfigInput,
@@ -38,12 +39,7 @@ interface ManageTiersFormProps {
 }
 
 // Chain info for display
-const CHAIN_INFO: Record<number, { name: string; shortName: string; slug: string; color: string }> = {
-  1: { name: 'Ethereum', shortName: 'ETH', slug: 'eth', color: '#627EEA' },
-  10: { name: 'Optimism', shortName: 'OP', slug: 'op', color: '#FF0420' },
-  8453: { name: 'Base', shortName: 'BASE', slug: 'base', color: '#0052FF' },
-  42161: { name: 'Arbitrum', shortName: 'ARB', slug: 'arb', color: '#28A0F0' },
-}
+const CHAIN_INFO = MAINNET_CHAINS
 
 // Pending changes state
 interface PendingChanges {

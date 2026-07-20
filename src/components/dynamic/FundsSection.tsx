@@ -24,10 +24,12 @@ import {
   readFundAccessContexts,
   type FundAccessContextSnapshot,
 } from '../../services/fundAccess'
-import { resolveEnsName, truncateAddress } from '../../utils/ens'
+import { truncateAddress } from '../../utils/ens'
 import { resolveProjectChains } from '../../utils/projectChains'
+import { CHAINS, MAINNET_CHAINS } from '../../constants'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { ProjectSplitRoute } from './ProjectSplitRoute'
+import { resolveSplitEnsNames } from './resolveSplitEnsNames'
 
 interface FundsSectionProps {
   projectId: string
@@ -41,16 +43,7 @@ interface FundsSectionProps {
 }
 
 // Chain info for display (ALL CAPS for symbols)
-const CHAIN_INFO: Record<number, { name: string; shortName: string; color: string }> = {
-  1: { name: 'Ethereum', shortName: 'ETH', color: '#627EEA' },
-  10: { name: 'Optimism', shortName: 'OP', color: '#FF0420' },
-  8453: { name: 'Base', shortName: 'BASE', color: '#0052FF' },
-  42161: { name: 'Arbitrum', shortName: 'ARB', color: '#28A0F0' },
-  11155111: { name: 'Sepolia', shortName: 'SEP', color: '#627EEA' },
-  11155420: { name: 'OP Sepolia', shortName: 'OP-SEP', color: '#FF0420' },
-  84532: { name: 'Base Sepolia', shortName: 'BASE-SEP', color: '#0052FF' },
-  421614: { name: 'Arb Sepolia', shortName: 'ARB-SEP', color: '#28A0F0' },
-}
+const CHAIN_INFO = { ...MAINNET_CHAINS, ...CHAINS }
 
 // Per-chain funds data
 interface ChainFundsData {
@@ -94,6 +87,75 @@ function formatBalance(value: string, decimals: number = 18): string {
 function formatCurrency(value: string, decimals: number, symbol: string): string {
   const formatted = formatBalance(value, decimals)
   return `${formatted} ${symbol}`
+}
+
+const formatTaxRate = (rate: number) => `${(rate / 100).toFixed(2).replace(/\.?0+$/, '') || '0'}%`
+
+// Disclosure chevron that rotates when expanded
+function Chevron({ expanded, sizeClass = 'w-3 h-3' }: { expanded: boolean; sizeClass?: string }) {
+  return (
+    <svg
+      className={`${sizeClass} transition-transform ${expanded ? 'rotate-180' : ''}`}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+    </svg>
+  )
+}
+
+// Single payout-split row, shared by the recipients list ("sm") and the per-chain breakdown ("xs")
+function PayoutSplitRow({
+  split,
+  chainId,
+  splitEnsNames,
+  isDark,
+  size,
+}: {
+  split: JBSplitData
+  chainId: number
+  splitEnsNames: Record<string, string>
+  isDark: boolean
+  size: 'sm' | 'xs'
+}) {
+  const percent = (split.percent / 10000000).toFixed(2)
+  const beneficiary = split.beneficiary?.toLowerCase() || ''
+  const displayName = splitEnsNames[beneficiary] || truncateAddress(split.beneficiary || '')
+
+  return (
+    <div className={size === 'sm' ? 'flex items-start justify-between gap-3 text-sm' : 'flex items-start justify-between gap-2 text-xs'}>
+      {split.projectId > 0 ? (
+        <ProjectSplitRoute
+          projectId={split.projectId}
+          chainId={chainId}
+          beneficiary={split.beneficiary}
+          kind="payout"
+          preferAddToBalance={split.preferAddToBalance}
+          hook={split.hook}
+          isDark={isDark}
+        />
+      ) : (
+        <span className={`font-mono ${size === 'sm'
+          ? isDark ? 'text-gray-300' : 'text-gray-600'
+          : isDark ? 'text-gray-400' : 'text-gray-500'
+        }`}>
+          {displayName}
+        </span>
+      )}
+      <div className="flex shrink-0 items-center gap-1">
+        <span className={`font-mono ${size === 'sm'
+          ? isDark ? 'text-white' : 'text-gray-900'
+          : isDark ? 'text-gray-300' : 'text-gray-600'
+        }`}>
+          {percent}%
+        </span>
+        {split.lockedUntil > Math.floor(Date.now() / 1000) && (
+          <span className="text-[10px] text-amber-500">Locked</span>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // Selected-chain baseline calculator. Execution uses the terminal's fresh preview instead.
@@ -145,14 +207,7 @@ function CashOutCalculator({
         }`}
       >
         <span>Cash out calculator</span>
-        <svg
-          className={`w-4 h-4 transition-transform ${expanded ? 'rotate-180' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        <Chevron expanded={expanded} sizeClass="w-4 h-4" />
       </button>
 
       {expanded && (
@@ -235,14 +290,7 @@ function PerChainBreakdown({
         className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
       >
         <span>Breakdown</span>
-        <svg
-          className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        <Chevron expanded={expanded} />
       </button>
       {expanded && (
         <div className="mt-2 space-y-1">
@@ -291,14 +339,7 @@ function PayoutSplitsBreakdown({
         className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
       >
         <span>Breakdown</span>
-        <svg
-          className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
+        <Chevron expanded={expanded} />
       </button>
       {expanded && (
         <div className="mt-2 space-y-3">
@@ -317,38 +358,16 @@ function PayoutSplitsBreakdown({
                   </span>
                 </div>
                 <div className="ml-3.5 space-y-1">
-                  {cd.payoutSplits.map((split, idx) => {
-                    const percent = (split.percent / 10000000).toFixed(2)
-                    const beneficiary = split.beneficiary?.toLowerCase() || ''
-                    const displayName = splitEnsNames[beneficiary] || (split.beneficiary ? `${split.beneficiary.slice(0, 6)}...${split.beneficiary.slice(-4)}` : '')
-                    return (
-                      <div key={idx} className="flex items-start justify-between gap-2 text-xs">
-                        {split.projectId > 0 ? (
-                          <ProjectSplitRoute
-                            projectId={split.projectId}
-                            chainId={cd.chainId}
-                            beneficiary={split.beneficiary}
-                            kind="payout"
-                            preferAddToBalance={split.preferAddToBalance}
-                            hook={split.hook}
-                            isDark={isDark}
-                          />
-                        ) : (
-                          <span className={`font-mono ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                            {displayName}
-                          </span>
-                        )}
-                        <div className="flex shrink-0 items-center gap-1">
-                          <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                            {percent}%
-                          </span>
-                          {split.lockedUntil > Math.floor(Date.now() / 1000) && (
-                            <span className="text-[10px] text-amber-500">Locked</span>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
+                  {cd.payoutSplits.map((split, idx) => (
+                    <PayoutSplitRow
+                      key={idx}
+                      split={split}
+                      chainId={cd.chainId}
+                      splitEnsNames={splitEnsNames}
+                      isDark={isDark}
+                      size="xs"
+                    />
+                  ))}
                 </div>
               </div>
             )
@@ -359,72 +378,24 @@ function PayoutSplitsBreakdown({
   )
 }
 
-// Cash out tax rate display with per-chain breakdown
+// Cash out tax rate display
 function CashOutTaxRateDisplay({
-  cashOutEnabledChains,
   unifiedTaxRate,
   isDark,
 }: {
-  cashOutEnabledChains: ChainFundsData[]
-  unifiedTaxRate: number | null
+  unifiedTaxRate: number
   isDark: boolean
 }) {
-  const [showBreakdown, setShowBreakdown] = useState(false)
-
-  const formatTaxRate = (rate: number) => `${(rate / 100).toFixed(2).replace(/\.?0+$/, '') || '0'}%`
-
   return (
     <div className="mb-3">
       <div className="flex items-center gap-2">
         <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
           Current cash-out curve rate:
         </span>
-        {unifiedTaxRate !== null ? (
-          <span className={`text-xs font-mono font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {formatTaxRate(unifiedTaxRate)}
-          </span>
-        ) : (
-          <button
-            onClick={() => setShowBreakdown(!showBreakdown)}
-            className={`flex items-center gap-1 text-xs font-mono font-medium ${isDark ? 'text-white hover:text-gray-300' : 'text-gray-900 hover:text-gray-600'}`}
-          >
-            <span>Varies by chain</span>
-            <svg
-              className={`w-3 h-3 transition-transform ${showBreakdown ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-        )}
+        <span className={`text-xs font-mono font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          {formatTaxRate(unifiedTaxRate)}
+        </span>
       </div>
-      {/* Per-chain breakdown when rates differ */}
-      {unifiedTaxRate === null && showBreakdown && (
-        <div className="mt-2 space-y-1">
-          {cashOutEnabledChains.map(cd => {
-            const chainInfo = CHAIN_INFO[cd.chainId]
-            if (!chainInfo) return null
-            return (
-              <div key={cd.chainId} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="w-1.5 h-1.5 rounded-full"
-                    style={{ backgroundColor: chainInfo.color }}
-                  />
-                  <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    {chainInfo.shortName}
-                  </span>
-                </div>
-                <span className={`text-xs font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {formatTaxRate(cd.cashOutTaxRate)}
-                </span>
-              </div>
-            )
-          })}
-        </div>
-      )}
     </div>
   )
 }
@@ -578,26 +549,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
         }
 
         // Resolve ENS names for split beneficiaries
-        const allBeneficiaries = new Set<string>()
-        allChainData.forEach(cd => {
-          cd.payoutSplits.forEach(split => {
-            if (split.beneficiary && split.projectId === 0) {
-              allBeneficiaries.add(split.beneficiary.toLowerCase())
-            }
-          })
-        })
-
-        const ensPromises = Array.from(allBeneficiaries).map(async addr => {
-          const ens = await resolveEnsName(addr)
-          return { addr, ens }
-        })
-
-        const ensResults = await Promise.all(ensPromises)
-        const ensMap: Record<string, string> = {}
-        ensResults.forEach(({ addr, ens }) => {
-          if (ens) ensMap[addr] = ens
-        })
-        setSplitEnsNames(ensMap)
+        setSplitEnsNames(await resolveSplitEnsNames(allChainData.map(cd => cd.payoutSplits)))
 
       } catch (err) {
         console.error('Failed to load funds:', err)
@@ -833,7 +785,6 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
 
             {/* Current cash out tax rate */}
             <CashOutTaxRateDisplay
-              cashOutEnabledChains={[activeCashOut]}
               unifiedTaxRate={activeCashOut.cashOutTaxRate}
               isDark={isDark}
             />
@@ -876,8 +827,6 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
               if (currentTax === upcomingTax) return null
 
               const isIncreasing = upcomingTax > currentTax
-              const currentTaxPercent = (currentTax / 100).toFixed(2).replace(/\.?0+$/, '') || '0'
-              const upcomingTaxPercent = (upcomingTax / 100).toFixed(2).replace(/\.?0+$/, '') || '0'
               const effectiveDate = new Date(upcomingRuleset.start * 1000)
               const dateStr = effectiveDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 
@@ -899,7 +848,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                       ? isDark ? 'text-purple-300/80' : 'text-purple-600'
                       : isDark ? 'text-green-300/80' : 'text-green-600'
                   }`}>
-                    Curve rate changing from {currentTaxPercent}% to {upcomingTaxPercent}% on {dateStr}.
+                    Curve rate changing from {formatTaxRate(currentTax)} to {formatTaxRate(upcomingTax)} on {dateStr}.
                     {upcomingTax >= 10000
                       ? ' Cash outs will be disabled.'
                       : isIncreasing
@@ -1040,51 +989,21 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
             }`}
           >
             <span>Payout recipients ({activeChainData.payoutSplits.length})</span>
-            <svg
-              className={`w-3 h-3 transition-transform ${showSplits ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
+            <Chevron expanded={showSplits} />
           </button>
 
           {showSplits && (
             <div className="mt-2 space-y-2">
-              {activeChainData.payoutSplits.map((split, idx) => {
-                const percent = (split.percent / 10000000).toFixed(2)
-                const beneficiary = split.beneficiary?.toLowerCase() || ''
-                const displayName = splitEnsNames[beneficiary] || truncateAddress(split.beneficiary || '')
-
-                return (
-                  <div key={idx} className="flex items-start justify-between gap-3 text-sm">
-                    {split.projectId > 0 ? (
-                      <ProjectSplitRoute
-                        projectId={split.projectId}
-                        chainId={activeChainData.chainId}
-                        beneficiary={split.beneficiary}
-                        kind="payout"
-                        preferAddToBalance={split.preferAddToBalance}
-                        hook={split.hook}
-                        isDark={isDark}
-                      />
-                    ) : (
-                      <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                        {displayName}
-                      </span>
-                    )}
-                    <div className="flex shrink-0 items-center gap-1">
-                      <span className={`font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                        {percent}%
-                      </span>
-                      {split.lockedUntil > Math.floor(Date.now() / 1000) && (
-                        <span className="text-[10px] text-amber-500">Locked</span>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
+              {activeChainData.payoutSplits.map((split, idx) => (
+                <PayoutSplitRow
+                  key={idx}
+                  split={split}
+                  chainId={activeChainData.chainId}
+                  splitEnsNames={splitEnsNames}
+                  isDark={isDark}
+                  size="sm"
+                />
+              ))}
               {/* Per-chain breakdown for multi-chain projects */}
               {visibleChainFundsData.length > 1 && (
                 <PayoutSplitsBreakdown

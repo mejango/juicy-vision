@@ -8,7 +8,7 @@ import { useRef, useState, type ReactNode } from 'react'
 import { CHAINS } from '../../../constants'
 import type { CreateFlowState, RecipientRow } from './state'
 import {
-  AddLink, CurrencySelect, EnsAddressInput, Hint, InfoNote, NumberInput, Select, TextInput, useIsDark,
+  CurrencySelect, EnsAddressInput, Hint, InfoNote, NumberInput, Select, TextInput, useIsDark,
 } from './controls'
 
 // ---------------------------------------------------------------------------
@@ -165,9 +165,6 @@ function perChainOps(state: CreateFlowState, update: (fn: (s: CreateFlowState) =
         Object.values(s.perChain).forEach((c) => { if (c[kind]) delete c[kind]![key] })
       })
     },
-    hasAny(kind: 'addr' | 'num', key: string): boolean {
-      return Object.values(state.perChain).some((c) => !!c[kind]?.[key])
-    },
   }
 }
 
@@ -180,7 +177,7 @@ export function PerChainControl(props: {
   renderField: (chainId: number, value: string, setValue: (v: string) => void) => ReactNode
 }) {
   const isDark = useIsDark()
-  const [open, setOpen] = useState(props.state.perChain && perChainHasAny(props.state, props.kind, props.fieldKey))
+  const [open, setOpen] = useState(perChainHasAny(props.state, props.kind, props.fieldKey))
   const pc = perChainOps(props.state, props.update)
   if (props.state.chainIds.length < 2) return null
   if (!open) {
@@ -588,5 +585,3 @@ export function PayoutRow(props: {
     </div>
   )
 }
-
-export { AddLink }

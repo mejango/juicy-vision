@@ -9,7 +9,10 @@
 import { useCallback, useState } from 'react'
 
 import { pinFileToBackend } from '../../../services/ipfsPinning'
-import { itemDraft, surplusTokenLabel, type CreateFlowState, type ItemState } from './state'
+import {
+  customAccounting, customAcctSym, itemDraft, lockedCurrencySym, round2, surplusTokenLabel,
+  type CreateFlowState, type ItemState,
+} from './state'
 import {
   AddLink, Collapse, CurrencySelect, EnsAddressInput, FieldBlock, Hint, IdleToggle, ImagePicker,
   InfoNote, NumberInput, Select, StepHead, TextArea, TextInput, ToggleRow, WarnNote,
@@ -26,25 +29,8 @@ interface StepProps {
 }
 
 // ---------------------------------------------------------------------------
-// Store currency helpers — mirrors of the website's storeCur / storeUnit /
-// lockedCurrencySym chain (customAccounting / customAcctSym / usdcAccounting).
+// Store currency helpers — mirrors of the website's storeCur / storeUnit.
 // ---------------------------------------------------------------------------
-
-function customAccounting(state: CreateFlowState): boolean {
-  return state.accepts[0] === 'custom'
-}
-
-function customAcctSym(state: CreateFlowState): string | null {
-  return customAccounting(state) ? (state.customToken.symbol || 'TOKEN') : null
-}
-
-function usdcAccounting(state: CreateFlowState): boolean {
-  return !customAccounting(state) && state.accepts.includes('usdc')
-}
-
-function lockedCurrencySym(state: CreateFlowState): string | null {
-  return customAcctSym(state) || (usdcAccounting(state) ? 'USD' : null)
-}
 
 function storeCur(state: CreateFlowState): number {
   return state.storePricingCurrency || 1
@@ -56,10 +42,6 @@ function storeUnit(state: CreateFlowState): string {
 
 function anyTokenCashOut(state: CreateFlowState): boolean {
   return state.stages.some((s) => s.cashOutEnabled)
-}
-
-function round2(n: number): number {
-  return Math.round((Number(n) || 0) * 100) / 100
 }
 
 function itemFileSize(bytes: number): string {

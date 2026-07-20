@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo } from 'react'
-import { formatEther } from 'viem'
 import { useThemeStore } from '../../stores'
 import { fetchEthPrice, fetchProject, type Project } from '../../services/bendystraw'
 import { getProjectDataHook, fetchResolvedNFTTiers, type ResolvedNFTTier } from '../../services/nft'
@@ -36,7 +35,6 @@ export default function Storefront({
   const [sort, setSort] = useState<SortOption>(sortBy as SortOption || 'tierId')
   const [selectedCategory, setSelectedCategory] = useState<string>(filterCategory)
   const [includeSoldOut, setIncludeSoldOut] = useState(showSoldOut === 'true')
-  const [priceRange] = useState<[number, number] | null>(null)
 
   const chainIdNum = parseInt(chainId)
 
@@ -60,14 +58,6 @@ export default function Storefront({
       result = result.filter(t => t.remainingSupply > 0)
     }
 
-    // Filter by price range
-    if (priceRange) {
-      result = result.filter(t => {
-        const price = parseFloat(formatEther(t.price))
-        return price >= priceRange[0] && price <= priceRange[1]
-      })
-    }
-
     // Sort
     switch (sort) {
       case 'price-asc':
@@ -86,7 +76,7 @@ export default function Storefront({
     }
 
     return result
-  }, [tiers, selectedCategory, includeSoldOut, priceRange, sort])
+  }, [tiers, selectedCategory, includeSoldOut, sort])
 
   useEffect(() => {
     // Skip fetch if no projectId provided

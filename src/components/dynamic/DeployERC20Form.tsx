@@ -9,7 +9,9 @@ import {
   type Project,
 } from '../../services/bendystraw'
 import { resolveIpfsUri } from '../../utils/ipfs'
+import { MAINNET_CHAINS } from '../../constants'
 import { DeployERC20Modal } from '../payment'
+import InlineChainSelector from './InlineChainSelector'
 import { ProjectLink } from './ProjectLink'
 import { useManagedWallet } from '../../hooks'
 import { resolveProjectChains } from '../../utils/projectChains'
@@ -23,12 +25,7 @@ interface DeployERC20FormProps {
 }
 
 // Chain info for display
-const CHAIN_INFO: Record<number, { name: string; shortName: string; slug: string; color: string }> = {
-  1: { name: 'Ethereum', shortName: 'ETH', slug: 'eth', color: '#627EEA' },
-  10: { name: 'Optimism', shortName: 'OP', slug: 'op', color: '#FF0420' },
-  8453: { name: 'Base', shortName: 'BASE', slug: 'base', color: '#0052FF' },
-  42161: { name: 'Arbitrum', shortName: 'ARB', slug: 'arb', color: '#28A0F0' },
-}
+const CHAIN_INFO = MAINNET_CHAINS
 
 // Per-chain token data
 interface ChainTokenData {
@@ -37,53 +34,6 @@ interface ChainTokenData {
   tokenAddress: string | null
   tokenSymbol: string | null
   configurationError?: string
-}
-
-// Inline chain selector component
-function InlineChainSelector({
-  chainData,
-  selectedChainId,
-  onSelect,
-  isDark,
-}: {
-  chainData: ChainTokenData[]
-  selectedChainId: number | null
-  onSelect: (chainId: number) => void
-  isDark: boolean
-}) {
-  // Only show chains that don't have a token deployed
-  const deployCandidates = chainData.filter(cd => !cd.tokenAddress && !cd.configurationError)
-  if (deployCandidates.length <= 1) return null
-
-  return (
-    <div className="flex items-center gap-1 flex-wrap">
-      {deployCandidates.map(cd => {
-        const chain = CHAIN_INFO[cd.chainId] || { name: `Chain ${cd.chainId}`, shortName: String(cd.chainId), color: '#888888' }
-        const isSelected = selectedChainId === cd.chainId
-        return (
-          <button
-            key={cd.chainId}
-            onClick={() => onSelect(cd.chainId)}
-            className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium transition-colors ${
-              isSelected
-                ? isDark
-                  ? 'bg-white/20 text-white'
-                  : 'bg-gray-200 text-gray-900'
-                : isDark
-                  ? 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
-                  : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-900'
-            }`}
-          >
-            <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ backgroundColor: chain.color }}
-            />
-            {chain.shortName}
-          </button>
-        )
-      })}
-    </div>
-  )
 }
 
 export default function DeployERC20Form({ projectId, chainId = '1', messageId }: DeployERC20FormProps) {
@@ -404,9 +354,12 @@ export default function DeployERC20Form({ projectId, chainId = '1', messageId }:
               Deploy on:
             </div>
             <InlineChainSelector
-              chainData={chainTokenData}
-              selectedChainId={selectedChainId}
-              onSelect={setSelectedChainId}
+              options={chainsWithoutTokens.map(cd => ({
+                key: cd.chainId,
+                chainId: cd.chainId,
+                selected: selectedChainId === cd.chainId,
+              }))}
+              onSelect={option => setSelectedChainId(option.chainId)}
               isDark={isDark}
             />
           </div>

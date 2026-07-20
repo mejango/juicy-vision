@@ -182,7 +182,6 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
     && userTokenBalance !== null
     && tokenAmountRaw > userTokenBalance
   const balanceUnavailable = hasActiveWallet && !balanceLoading && userTokenBalance === null
-  const tokenNum = tokenAmountRaw !== null ? Number(formatUnits(tokenAmountRaw, 18)) : 0
   const transactionBlocked = !hasValidAmount
     || isLocked
     || !accountingContext
@@ -484,7 +483,7 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
           </div>
           )}
 
-          {tokenNum > 0 && accountingContext && (
+          {hasValidAmount && accountingContext && (
             <div className={`mt-2 text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               The exact {accountingContext.symbol} return is checked from the terminal before confirmation.
             </div>

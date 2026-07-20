@@ -42,6 +42,7 @@ import {
   CHART_COLORS,
 } from './utils'
 import { issuancePriceDomain } from './priceDomain'
+import { RangeSelector, ChartState, TooltipShell, ChartFooter } from './shared'
 import { resolveAccountingToken } from '../../../utils/currency'
 import { deriveCycledWeight, issuancePriceFromWeight } from '../../../utils/rulesetMath'
 
@@ -86,27 +87,14 @@ function calculatePriceAtTimestamp(timestamp: number, rulesets: Ruleset[]): numb
   }
 }
 
-// Find the applicable tax rate for a given timestamp
+// Find the applicable tax rate for a given timestamp: the latest snapshot
+// whose start is at or before it.
 function findApplicableTaxRate(timestamp: number, taxSnapshots: CashOutTaxSnapshot[]): number | null {
   const sorted = [...taxSnapshots].sort((a, b) => a.start - b.start)
-
-  let applicableTax: number | null = null
-  for (const snapshot of sorted) {
-    if (snapshot.start <= timestamp) {
-      applicableTax = snapshot.cashOutTax
-    } else {
-      break
-    }
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    if (sorted[i].start <= timestamp) return sorted[i].cashOutTax
   }
-
-  return applicableTax
-}
-
-// Use centralized chart colors
-const PRICE_COLORS = {
-  issuance: CHART_COLORS.issuance,
-  cashOut: CHART_COLORS.cashOut,
-  pool: CHART_COLORS.pool,
+  return null
 }
 
 export default function TokenPriceChart({
@@ -151,15 +139,14 @@ export default function TokenPriceChart({
           return
         }
 
-        // Get token symbol
-        const symbol = await fetchProjectTokenSymbol(projectId, parseInt(chainId))
-        setTokenSymbol(symbol || 'TOKEN')
-
-        // Fetch floor price data (sucker group moments and tax snapshots)
-        const [suckerGroupId, currentBalance] = await Promise.all([
+        // Fetch the token symbol and floor price data (sucker group moments
+        // and tax snapshots) in parallel
+        const [symbol, suckerGroupId, currentBalance] = await Promise.all([
+          fetchProjectTokenSymbol(projectId, parseInt(chainId)),
           fetchProjectSuckerGroupId(projectId, parseInt(chainId)),
           fetchSuckerGroupBalance(projectId, parseInt(chainId)),
         ])
+        setTokenSymbol(symbol || 'TOKEN')
         if (currentBalance.balanceAvailable === false) {
           throw new Error('Cash-out price unavailable for this accounting configuration')
         }
@@ -445,11 +432,7 @@ export default function TokenPriceChart({
     if (!data?.timestamp) return null
 
     return (
-      <div className={`px-3 py-2 border shadow-lg text-sm ${
-        isDark
-          ? 'bg-zinc-900 border-zinc-700 text-white'
-          : 'bg-white border-gray-200 text-gray-900'
-      }`}>
+      <TooltipShell isDark={isDark}>
         <div className={`text-xs mb-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
           {new Date(data.timestamp * 1000).toLocaleDateString('en-US', {
             month: 'short',
@@ -459,33 +442,33 @@ export default function TokenPriceChart({
         </div>
         {data.issuancePrice !== undefined && showIssuance && (
           <div className="flex items-center gap-2 mb-1">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PRICE_COLORS.issuance }} />
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CHART_COLORS.issuance }} />
             <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Issuance:</span>
             <span className="font-mono">{formatPrice(data.issuancePrice)} {isUsdBased ? 'USDC' : 'ETH'}</span>
           </div>
         )}
         {data.poolPrice !== undefined && showPool && (
           <div className="flex items-center gap-2 mb-1">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PRICE_COLORS.pool }} />
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CHART_COLORS.pool }} />
             <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Pool:</span>
             <span className="font-mono">{formatPrice(data.poolPrice)} {isUsdBased ? 'USDC' : 'ETH'}</span>
           </div>
         )}
         {data.cashOutPrice !== undefined && showCashOut && (
           <div className="flex items-center gap-2 mb-1">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PRICE_COLORS.cashOut }} />
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CHART_COLORS.cashOut }} />
             <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Cash-out baseline:</span>
             <span className="font-mono">{formatPrice(data.cashOutPrice)} {isUsdBased ? 'USDC' : 'ETH'}</span>
           </div>
         )}
         {data.cashOutMinPrice !== undefined && showCashOut && (
           <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PRICE_COLORS.cashOut, opacity: 0.55 }} />
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CHART_COLORS.cashOut, opacity: 0.55 }} />
             <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Cash out min:</span>
             <span className="font-mono">{formatPrice(data.cashOutMinPrice)} {isUsdBased ? 'USDC' : 'ETH'}</span>
           </div>
         )}
-      </div>
+      </TooltipShell>
     )
   }
 
@@ -554,21 +537,7 @@ export default function TokenPriceChart({
               Token Price History
             </span>
             {/* Range selector */}
-            <div className="flex gap-1">
-              {PRICE_RANGE_OPTIONS.map(opt => (
-                <button
-                  key={opt.value}
-                  onClick={() => setRange(opt.value)}
-                  className={`px-2 py-0.5 text-xs transition-colors ${
-                    range === opt.value
-                      ? isDark ? 'bg-white/10 text-white' : 'bg-gray-200 text-gray-900'
-                      : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+            <RangeSelector options={PRICE_RANGE_OPTIONS} range={range} onChange={setRange} isDark={isDark} />
           </div>
           {/* Toggle buttons */}
           <div className="flex items-center gap-2 flex-wrap">
@@ -576,7 +545,7 @@ export default function TokenPriceChart({
               label="Issuance price"
               active={showIssuance}
               disabled={!hasIssuanceData}
-              color={PRICE_COLORS.issuance}
+              color={CHART_COLORS.issuance}
               onClick={() => setShowIssuance(!showIssuance)}
               title={`What paying the project costs per ${tokenSymbol} right now: 1 ÷ the ruleset's issuance weight.`}
             />
@@ -585,7 +554,7 @@ export default function TokenPriceChart({
                 label="Pool price"
                 active={showPool}
                 disabled={!hasPoolData}
-                color={PRICE_COLORS.pool}
+                color={CHART_COLORS.pool}
                 onClick={() => setShowPool(!showPool)}
                 title={`What the Uniswap pool charges per ${tokenSymbol} right now — kept between the issuance price and the cash out floor by arbitrage.`}
               />
@@ -594,7 +563,7 @@ export default function TokenPriceChart({
               label="Cash-out baseline"
               active={showCashOut}
               disabled={!hasCashOutData}
-              color={PRICE_COLORS.cashOut}
+              color={CHART_COLORS.cashOut}
               onClick={() => setShowCashOut(!showCashOut)}
               title={`Live quote for cashing out 1 ${tokenSymbol}: (balance ÷ supply) × ((1 − tax) + tax × your share of supply). As supply grows it approaches the dashed minimum, (1 − tax) × balance ÷ supply — payments can only raise that minimum; only payouts lower it.`}
             />
@@ -603,24 +572,14 @@ export default function TokenPriceChart({
 
         {/* Chart */}
         <div className="px-2 py-3">
-          {loading ? (
-            <div className={`h-[200px] flex items-center justify-center ${
-              isDark ? 'text-gray-500' : 'text-gray-400'
-            }`}>
-              Loading...
-            </div>
-          ) : error ? (
-            <div className="h-[200px] flex items-center justify-center text-red-400">
-              {error}
-            </div>
-          ) : chartData.length === 0 ? (
-            <div className={`h-[200px] flex items-center justify-center ${
-              isDark ? 'text-gray-500' : 'text-gray-400'
-            }`}>
-              No price data available
-            </div>
-          ) : (
-            <div className="h-[200px]">
+          <ChartState
+            heightClass="h-[200px]"
+            isDark={isDark}
+            loading={loading}
+            error={error}
+            isEmpty={chartData.length === 0}
+            emptyMessage="No price data available"
+          >
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData} margin={{ left: 0, right: 12, top: 8, bottom: 0 }}>
                   <CartesianGrid
@@ -656,7 +615,7 @@ export default function TokenPriceChart({
                     <Line
                       type="monotone"
                       dataKey="poolPrice"
-                      stroke={PRICE_COLORS.pool}
+                      stroke={CHART_COLORS.pool}
                       strokeWidth={2}
                       dot={false}
                       isAnimationActive={false}
@@ -669,7 +628,7 @@ export default function TokenPriceChart({
                     <Line
                       type="stepAfter"
                       dataKey="cashOutMinPrice"
-                      stroke={PRICE_COLORS.cashOut}
+                      stroke={CHART_COLORS.cashOut}
                       strokeOpacity={0.55}
                       strokeWidth={1.5}
                       strokeDasharray="5 4"
@@ -684,7 +643,7 @@ export default function TokenPriceChart({
                     <Line
                       type="stepAfter"
                       dataKey="cashOutPrice"
-                      stroke={PRICE_COLORS.cashOut}
+                      stroke={CHART_COLORS.cashOut}
                       strokeWidth={2}
                       dot={false}
                       isAnimationActive={false}
@@ -697,7 +656,7 @@ export default function TokenPriceChart({
                     <Line
                       type="stepAfter"
                       dataKey="issuancePrice"
-                      stroke={PRICE_COLORS.issuance}
+                      stroke={CHART_COLORS.issuance}
                       strokeWidth={2}
                       dot={false}
                       isAnimationActive={false}
@@ -706,34 +665,31 @@ export default function TokenPriceChart({
                   )}
                 </LineChart>
               </ResponsiveContainer>
-            </div>
-          )}
+          </ChartState>
         </div>
 
         {/* Footer with current prices */}
         {!loading && !error && chartData.length > 0 && (
-          <div className={`px-4 py-2 text-xs border-t flex flex-wrap gap-x-4 gap-y-1 ${
-            isDark ? 'bg-white/5 border-white/10 text-gray-400' : 'bg-gray-50 border-gray-100 text-gray-500'
-          }`}>
+          <ChartFooter isDark={isDark}>
             {showIssuance && currentIssuancePrice !== undefined && (
               <span className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PRICE_COLORS.issuance }} />
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CHART_COLORS.issuance }} />
                 Issuance: {formatPrice(currentIssuancePrice)} {isUsdBased ? 'USDC' : 'ETH'} / {tokenSymbol}
               </span>
             )}
             {showPool && currentPoolPrice !== undefined && (
               <span className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PRICE_COLORS.pool }} />
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CHART_COLORS.pool }} />
                 Pool: {formatPrice(currentPoolPrice)} {isUsdBased ? 'USDC' : 'ETH'} / {tokenSymbol}
               </span>
             )}
             {showCashOut && currentCashOutPrice !== undefined && (
               <span className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PRICE_COLORS.cashOut }} />
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CHART_COLORS.cashOut }} />
                 Cash-out baseline: {formatPrice(currentCashOutPrice)} {isUsdBased ? 'USDC' : 'ETH'} / {tokenSymbol}
               </span>
             )}
-          </div>
+          </ChartFooter>
         )}
       </div>
     </div>

@@ -13,6 +13,7 @@ import { useManagedWallet } from '../../hooks'
 import { resolveProjectChains } from '../../utils/projectChains'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { IpfsImage } from '../ui/IpfsMedia'
+import { MAINNET_CHAINS } from '../../constants'
 
 interface SetUriFormProps {
   projectId: string
@@ -21,12 +22,7 @@ interface SetUriFormProps {
 }
 
 // Chain info for display
-const CHAIN_INFO: Record<number, { name: string; shortName: string; slug: string; color: string }> = {
-  1: { name: 'Ethereum', shortName: 'ETH', slug: 'eth', color: '#627EEA' },
-  10: { name: 'Optimism', shortName: 'OP', slug: 'op', color: '#FF0420' },
-  8453: { name: 'Base', shortName: 'BASE', slug: 'base', color: '#0052FF' },
-  42161: { name: 'Arbitrum', shortName: 'ARB', slug: 'arb', color: '#28A0F0' },
-}
+const CHAIN_INFO = MAINNET_CHAINS
 
 // Per-chain project data
 interface ChainProjectData {

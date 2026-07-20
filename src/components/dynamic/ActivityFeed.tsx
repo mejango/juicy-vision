@@ -8,6 +8,7 @@ import {
   type PayEventHistoryItem,
   type CashOutEventHistoryItem,
 } from '../../services/bendystraw'
+import { MAINNET_CHAINS } from '../../constants'
 
 interface ActivityFeedProps {
   projectId: string
@@ -24,13 +25,6 @@ type ActivityEvent = {
   amount: string
   tokenAmount?: string
   memo?: string
-}
-
-const CHAIN_EXPLORER: Record<number, string> = {
-  1: 'https://etherscan.io',
-  10: 'https://optimistic.etherscan.io',
-  8453: 'https://basescan.org',
-  42161: 'https://arbiscan.io',
 }
 
 const PAGE_SIZE = 15
@@ -82,7 +76,6 @@ function formatIndexedUsd(scaledUsd?: string): string {
 export default function ActivityFeed({
   projectId,
   chainId = '1',
-  limit: _limit,
   compact = false
 }: ActivityFeedProps) {
   const { theme } = useThemeStore()
@@ -103,10 +96,9 @@ export default function ActivityFeed({
   const [cashOutHasMore, setCashOutHasMore] = useState(true)
 
   const containerRef = useRef<HTMLDivElement>(null)
-  const displayCountRef = useRef(displayCount)
 
   const chainIdNum = parseInt(chainId)
-  const explorerUrl = CHAIN_EXPLORER[chainIdNum] || CHAIN_EXPLORER[1]
+  const explorerUrl = (MAINNET_CHAINS[chainIdNum] || MAINNET_CHAINS[1]).explorer
 
   useEffect(() => {
     async function loadActivity() {
@@ -190,11 +182,6 @@ export default function ActivityFeed({
   const hasMore = hasMoreToDisplay || hasMoreFromServer
   // Reached end when nothing more to display and server is exhausted
   const reachedEnd = !hasMore && events.length > 0
-
-  // Keep ref in sync
-  useEffect(() => {
-    displayCountRef.current = displayCount
-  }, [displayCount])
 
   // Fetch more events from server
   const fetchMoreFromServer = useCallback(async () => {

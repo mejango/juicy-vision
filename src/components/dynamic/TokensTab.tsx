@@ -15,10 +15,10 @@ import {
   isRevnetProject,
   type Project,
   type JBSplitData,
-  type ProjectRuleset,
 } from '../../services/bendystraw'
-import { resolveEnsName, truncateAddress } from '../../utils/ens'
+import { truncateAddress } from '../../utils/ens'
 import { CHAINS, MAINNET_CHAINS } from '../../constants'
+import { resolveSplitEnsNames } from './resolveSplitEnsNames'
 import SendReservedTokensForm from './SendReservedTokensForm'
 import HoldersChart from './charts/HoldersChart'
 import PriceChart from './PriceChart'
@@ -35,16 +35,7 @@ interface TokensTabProps {
 }
 
 // Chain info for display (ALL CAPS for symbols)
-const CHAIN_INFO: Record<number, { name: string; shortName: string; color: string }> = {
-  1: { name: 'Ethereum', shortName: 'ETH', color: '#627EEA' },
-  10: { name: 'Optimism', shortName: 'OP', color: '#FF0420' },
-  8453: { name: 'Base', shortName: 'BASE', color: '#0052FF' },
-  42161: { name: 'Arbitrum', shortName: 'ARB', color: '#28A0F0' },
-  11155111: { name: 'Sepolia', shortName: 'SEP', color: '#627EEA' },
-  11155420: { name: 'OP Sepolia', shortName: 'OP-SEP', color: '#FF0420' },
-  84532: { name: 'Base Sepolia', shortName: 'BASE-SEP', color: '#0052FF' },
-  421614: { name: 'Arb Sepolia', shortName: 'ARB-SEP', color: '#28A0F0' },
-}
+const CHAIN_INFO = { ...MAINNET_CHAINS, ...CHAINS }
 
 // Per-chain token data
 interface ChainTokenData {
@@ -55,7 +46,6 @@ interface ChainTokenData {
   pendingReserved: string
   reservedSplits: JBSplitData[]
   reservedPercent: number
-  ruleset: ProjectRuleset | null
   configurationError?: string
 }
 
@@ -97,7 +87,7 @@ export default function TokensTab({ projectId, chainId, isOwner, onDeployErc20 }
   const [userBalanceLoading, setUserBalanceLoading] = useState(false)
 
   const chainIdNum = parseInt(chainId)
-  const chain = CHAINS[chainIdNum] || MAINNET_CHAINS[chainIdNum]
+  const chain = CHAIN_INFO[chainIdNum]
 
   // Get active chain data
   const activeChainData = chainTokenData.find(cd => cd.chainId === selectedChainId) || chainTokenData[0]
@@ -167,7 +157,6 @@ export default function TokensTab({ projectId, chainId, isOwner, onDeployErc20 }
               pendingReserved,
               reservedSplits,
               reservedPercent: chainProject?.currentRuleset?.reservedPercent || 0,
-              ruleset: chainProject?.currentRuleset || null,
             }
           } catch (err) {
             console.error(`Failed to fetch token data for chain ${chain.chainId}:`, err)
@@ -179,7 +168,6 @@ export default function TokensTab({ projectId, chainId, isOwner, onDeployErc20 }
               pendingReserved: '0',
               reservedSplits: [],
               reservedPercent: 0,
-              ruleset: null,
               configurationError: err instanceof Error ? err.message : 'Token configuration unavailable',
             }
           }
@@ -196,26 +184,7 @@ export default function TokensTab({ projectId, chainId, isOwner, onDeployErc20 }
         }
 
         // Resolve ENS names for split beneficiaries
-        const allBeneficiaries = new Set<string>()
-        allChainData.forEach(cd => {
-          cd.reservedSplits.forEach(split => {
-            if (split.beneficiary && split.projectId === 0) {
-              allBeneficiaries.add(split.beneficiary.toLowerCase())
-            }
-          })
-        })
-
-        const ensPromises = Array.from(allBeneficiaries).map(async addr => {
-          const ens = await resolveEnsName(addr)
-          return { addr, ens }
-        })
-
-        const ensResults = await Promise.all(ensPromises)
-        const ensMap: Record<string, string> = {}
-        ensResults.forEach(({ addr, ens }) => {
-          if (ens) ensMap[addr] = ens
-        })
-        setSplitEnsNames(ensMap)
+        setSplitEnsNames(await resolveSplitEnsNames(allChainData.map(cd => cd.reservedSplits)))
 
       } catch (err) {
         console.error('Failed to load token data:', err)

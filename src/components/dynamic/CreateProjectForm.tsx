@@ -12,25 +12,13 @@ import {
   JB_CONTRACTS,
   JB_ROUTER_TERMINAL_REGISTRY,
   NATIVE_TOKEN,
+  UINT224_MAX,
   ZERO_ADDRESS,
 } from '../../constants'
+import { DEFAULT_CHAIN_ID, normalizeChainIds } from './create-flow/state'
 
 interface CreateProjectFormProps {
   defaultChainIds?: number[] | string
-}
-
-const DEFAULT_CHAIN_ID = ALL_CHAIN_IDS.find(id => CHAINS[id]?.name.includes('Base')) ?? ALL_CHAIN_IDS[0]
-
-function normalizeChainIds(input: number[] | string | undefined): number[] {
-  const candidates = Array.isArray(input)
-    ? input
-    : typeof input === 'string'
-      ? input.split(',').map(value => Number.parseInt(value.trim(), 10))
-      : []
-  const supported = [...new Set(candidates.filter(
-    id => Number.isInteger(id) && (ALL_CHAIN_IDS as readonly number[]).includes(id),
-  ))]
-  return supported.length > 0 ? supported : [DEFAULT_CHAIN_ID]
 }
 
 // Form state for project configuration
@@ -62,7 +50,6 @@ interface ProjectFormState {
 
   // Terminals
   acceptEth: boolean
-  acceptUsdc: boolean
 
   // Memo
   memo: string
@@ -85,7 +72,6 @@ const DEFAULT_FORM_STATE: ProjectFormState = {
   surplusAllowanceType: 'none',
   surplusAllowance: '0',
   acceptEth: true,
-  acceptUsdc: false,
   memo: '',
 }
 
@@ -122,7 +108,7 @@ function formStateToRulesetConfig(
       })
     } else if (state.payoutLimitType === 'unlimited') {
       payoutLimits.push({
-        amount: '26959946667150639794667015087019630673637144422540572481103610249215',
+        amount: UINT224_MAX,
         currency: 61166,
       })
     }
@@ -134,7 +120,7 @@ function formStateToRulesetConfig(
       })
     } else if (state.surplusAllowanceType === 'unlimited') {
       surplusAllowances.push({
-        amount: '26959946667150639794667015087019630673637144422540572481103610249215',
+        amount: UINT224_MAX,
         currency: 61166,
       })
     }
@@ -195,9 +181,6 @@ function buildTerminalConfigurations(state: ProjectFormState): JBTerminalConfig[
     })
   }
 
-  // USDC would need per-chain addresses, simplified for now
-  // if (state.acceptUsdc) { ... }
-
   return [
     {
       terminal: JB_CONTRACTS.JBMultiTerminal,
@@ -220,7 +203,7 @@ export default function CreateProjectForm({ defaultChainIds }: CreateProjectForm
   const { address: managedAddress } = useManagedWallet()
 
   const [formState, setFormState] = useState<ProjectFormState>(DEFAULT_FORM_STATE)
-  const [selectedChains, setSelectedChains] = useState<number[]>(() => normalizeChainIds(defaultChainIds))
+  const [selectedChains, setSelectedChains] = useState<number[]>(() => normalizeChainIds(defaultChainIds) ?? [DEFAULT_CHAIN_ID])
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [preparedProjectUri, setPreparedProjectUri] = useState('')

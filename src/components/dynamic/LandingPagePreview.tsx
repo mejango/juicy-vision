@@ -94,7 +94,7 @@ export default function LandingPagePreview({
 
   // Generate static HTML - memoized so it updates when data changes
   const staticHtml = useMemo(() => {
-    return generateStaticHtml(project, metadata, balance, components, layoutType, isDark)
+    return generateStaticHtml(project, metadata, balance, components, isDark)
   }, [project, metadata, balance, components, layoutType, isDark])
 
   // Update iframe when switching to HTML preview mode
@@ -372,7 +372,6 @@ function generateStaticHtml(
   metadata: IpfsProjectMetadata | null,
   balance: SuckerGroupBalance | null,
   components: ComponentType[] | undefined,
-  _layout: LayoutType,
   isDark: boolean
 ): string {
   // Fallback to default components if undefined

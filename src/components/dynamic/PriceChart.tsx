@@ -35,7 +35,6 @@ interface PriceChartProps {
 interface DataPoint {
   timestamp: number
   price: number
-  visualX: number
 }
 
 interface Stage {
@@ -242,7 +241,7 @@ export default function PriceChart({
     const interval = SECONDS_PER_DAY * 10
 
     // Generate data points using sorted rulesets
-    const dataPoints: { timestamp: number; price: number }[] = []
+    const dataPoints: DataPoint[] = []
     for (let t = dataStart; t <= desiredEnd; t += interval) {
       const price = calculatePriceAtTimestamp(t, sortedRulesets)
       if (price !== undefined && isFinite(price)) {
@@ -255,10 +254,7 @@ export default function PriceChart({
     }
 
     // Use timestamp directly as X (no visual scaling) - this keeps "now" centered
-    const chartData: DataPoint[] = dataPoints.map(d => ({
-      ...d,
-      visualX: d.timestamp,
-    }))
+    const chartData: DataPoint[] = dataPoints
 
     // Chart domain is always centered on "now" for consistent positioning
     const chartDomain: [number, number] = [desiredStart, desiredEnd]
@@ -433,7 +429,7 @@ export default function PriceChart({
                     vertical={false}
                   />
                   <XAxis
-                    dataKey="visualX"
+                    dataKey="timestamp"
                     tickLine={false}
                     axisLine={false}
                     tickMargin={12}

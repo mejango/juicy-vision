@@ -130,7 +130,7 @@ export default function TierDetailModal({
             <img
               src={imageUrl}
               alt={displayName}
-              className={`w-full h-full ${isSvgImage ? 'object-contain' : 'object-contain'}`}
+              className="w-full h-full object-contain"
             />
           ) : (
             <div className={`w-full h-full flex items-center justify-center ${

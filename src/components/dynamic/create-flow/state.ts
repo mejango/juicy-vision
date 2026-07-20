@@ -5,6 +5,7 @@
  * either app import into the other.
  */
 
+import { isAddress } from 'viem'
 import { ALL_CHAIN_IDS, CHAINS } from '../../../constants'
 
 // ---------------------------------------------------------------------------
@@ -459,4 +460,91 @@ export function surplusTokenLabel(state: CreateFlowState): string {
 
 export function chainName(id: number): string {
   return CHAINS[id]?.name || `Chain ${id}`
+}
+
+/** True when v is a usable 0x address (whitespace-tolerant, checksum-lax). */
+export function isAddr(v: string | null | undefined): v is string {
+  return !!v && isAddress(v.trim(), { strict: false })
+}
+
+export function round2(n: number | string): number {
+  return Math.round((Number(n) || 0) * 100) / 100
+}
+
+export function tickerLabel(state: CreateFlowState): string {
+  return state.details.ticker || 'TOKEN'
+}
+
+// --- Accounting-token derivations (customAccounting / lockedCurrencySym etc.) ---
+
+export function customAccounting(state: CreateFlowState): boolean {
+  return state.accepts[0] === 'custom'
+}
+
+export function customAcctSym(state: CreateFlowState): string | null {
+  return customAccounting(state) ? (state.customToken.symbol || 'TOKEN') : null
+}
+
+/** True when the base currency is forced to USD (USDC accepted, no custom token). */
+function usdcAccounting(state: CreateFlowState): boolean {
+  return !customAccounting(state) && state.accepts.includes('usdc')
+}
+
+/** Base currency is forced when USDC is accepted (USD) or a custom token is the accounting token. */
+export function lockedCurrencySym(state: CreateFlowState): string | null {
+  return customAcctSym(state) || (usdcAccounting(state) ? 'USD' : null)
+}
+
+// --- Multi-token payout kinds (custom-both / custom ERC-20) ---
+
+export interface PayoutKind { key: string; symbol: string }
+
+export function createPayoutKinds(state: CreateFlowState): PayoutKind[] {
+  return state.accepts.map((k) => {
+    if (k === 'custom') return { key: 'custom', symbol: state.customToken.symbol || 'TOKEN' }
+    return k === 'usdc' ? { key: 'usdc', symbol: 'USDC' } : { key: 'eth', symbol: 'ETH' }
+  })
+}
+
+/**
+ * Single source of truth for whether payouts/surplus are configured per-token — multi-token
+ * only when a CUSTOM project holds more than one accounting token, or a custom ERC-20
+ * (token-keyed currency + token decimals, no feed).
+ */
+export function currentPayoutKinds(state: CreateFlowState): PayoutKind[] | null {
+  if (state.projectType === 'revnet') return null
+  if ((state.accepts || []).length > 1) return createPayoutKinds(state)
+  // A custom ERC-20 routes through the per-token path too (token-keyed currency + token decimals, no feed).
+  if (state.accepts[0] === 'custom' && isAddr(state.customToken.address)) return createPayoutKinds(state)
+  return null
+}
+
+// --- Local-time formatting ---
+
+// Default chain for new projects: prefer Base, else the first supported chain.
+export const DEFAULT_CHAIN_ID = ALL_CHAIN_IDS.find(id => CHAINS[id]?.name.includes('Base')) ?? ALL_CHAIN_IDS[0]
+
+// Parse a chain-id list (number[] or comma-separated string) down to the
+// supported, deduplicated ids. Returns null when none are supported so callers
+// choose their own fallback.
+export function normalizeChainIds(input: number[] | string | undefined): number[] | null {
+  const candidates = Array.isArray(input)
+    ? input
+    : typeof input === 'string'
+      ? input.split(',').map(value => Number.parseInt(value.trim(), 10))
+      : []
+  const supported = [...new Set(candidates.filter(id => (ALL_CHAIN_IDS as readonly number[]).includes(id)))]
+  return supported.length > 0 ? supported : null
+}
+
+export function tsToLocal(ts: string | number): string {
+  const d = new Date(Number(ts) * 1000)
+  if (isNaN(d.getTime())) return ''
+  const p = (x: number) => (x < 10 ? '0' + x : '' + x)
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+/** e.g. "America/New_York" — the browser's local zone, for the scheduled-launch helper text. */
+export function localTimezoneLabel(): string {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time' } catch { return 'local time' }
 }

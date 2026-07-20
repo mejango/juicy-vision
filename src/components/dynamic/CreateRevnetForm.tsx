@@ -7,23 +7,10 @@ import { DeployRevnetModal } from '../payment'
 import { ALL_CHAIN_IDS, CHAINS } from '../../constants'
 import { pinMetadata } from '../../services/ipfsPinning'
 import { buildRevnetStageConfigurations, revnetStageError } from '../../utils/revnetStages'
+import { DEFAULT_CHAIN_ID, normalizeChainIds } from './create-flow/state'
 
 interface CreateRevnetFormProps {
   defaultChainIds?: number[] | string
-}
-
-const DEFAULT_CHAIN_ID = ALL_CHAIN_IDS.find(id => CHAINS[id]?.name.includes('Base')) ?? ALL_CHAIN_IDS[0]
-
-function normalizeChainIds(input: number[] | string | undefined): number[] {
-  const candidates = Array.isArray(input)
-    ? input
-    : typeof input === 'string'
-      ? input.split(',').map(value => Number.parseInt(value.trim(), 10))
-      : []
-  const supported = [...new Set(candidates.filter(
-    id => Number.isInteger(id) && (ALL_CHAIN_IDS as readonly number[]).includes(id),
-  ))]
-  return supported.length > 0 ? supported : [DEFAULT_CHAIN_ID]
 }
 
 // Single stage configuration in form
@@ -63,7 +50,7 @@ const DEFAULT_FORM_STATE: RevnetFormState = {
 
 // Generate unique ID for stages
 function generateStageId(): string {
-  return `stage-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  return `stage-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
 }
 
 // Create default first stage
@@ -84,7 +71,7 @@ export default function CreateRevnetForm({ defaultChainIds }: CreateRevnetFormPr
 
   const [formState, setFormState] = useState<RevnetFormState>(DEFAULT_FORM_STATE)
   const [stages, setStages] = useState<StageFormState[]>([createDefaultStage()])
-  const [selectedChains, setSelectedChains] = useState<number[]>(() => normalizeChainIds(defaultChainIds))
+  const [selectedChains, setSelectedChains] = useState<number[]>(() => normalizeChainIds(defaultChainIds) ?? [DEFAULT_CHAIN_ID])
   const [showModal, setShowModal] = useState(false)
   const [preparedProjectUri, setPreparedProjectUri] = useState('')
   const [preparingMetadata, setPreparingMetadata] = useState(false)

@@ -182,8 +182,10 @@ export default function NFTTierCard({
     : (ethPrice ? priceEth * ethPrice : null)
   const soldOut = tier.remainingSupply === 0
 
+  // Use tier.name (from IPFS) unless it's a placeholder, then fall back to on-chain productName
+  const displayName = /^Tier \d+$/.test(tier.name) ? (onChainProductName || tier.name) : tier.name
+
   const handleAdjustCheckoutQuantity = (delta: number) => {
-    const displayName = /^Tier \d+$/.test(tier.name) ? (onChainProductName || tier.name) : tier.name
     window.dispatchEvent(new CustomEvent('juice:adjust-checkout-quantity', {
       detail: {
         tierId: tier.tierId,
@@ -457,8 +459,7 @@ export default function NFTTierCard({
       {/* Content */}
       <div className="p-4">
         <h3 className={`font-semibold mb-1 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-          {/* Use tier.name (from IPFS) unless it's a placeholder, then fall back to on-chain productName */}
-          {/^Tier \d+$/.test(tier.name) ? (onChainProductName || tier.name) : tier.name}
+          {displayName}
         </h3>
 
         {tier.description && (

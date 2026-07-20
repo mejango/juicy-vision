@@ -23,11 +23,11 @@ import {
 } from '../../services/relayr'
 import { QueueRulesetModal } from '../payment'
 import { ProjectLink } from './ProjectLink'
-import { ZERO_ADDRESS } from '../../constants'
+import { ZERO_ADDRESS, UINT224_MAX, MAINNET_CHAINS } from '../../constants'
 import { getSafetyPublicClient } from '../../utils/transactionSafety'
 import { assertRulesetConfigurationTrusted, resolveRulesetQueueRoute } from '../../utils/projectTrust'
 import { IpfsImage } from '../ui/IpfsMedia'
-import { assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
+import { assertSafeStoredSplitGroups as assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
 import { assertRulesetConfigurationSafe } from '../../utils/rulesetSafety'
 import { resolveProjectChains } from '../../utils/projectChains'
 import { ChainMappingWarning } from './ChainMappingWarning'
@@ -39,12 +39,7 @@ interface QueueRulesetFormProps {
 }
 
 // Chain info for display
-const CHAIN_INFO: Record<number, { name: string; shortName: string; slug: string; color: string }> = {
-  1: { name: 'Ethereum', shortName: 'ETH', slug: 'eth', color: '#627EEA' },
-  10: { name: 'Optimism', shortName: 'OP', slug: 'op', color: '#FF0420' },
-  8453: { name: 'Base', shortName: 'BASE', slug: 'base', color: '#0052FF' },
-  42161: { name: 'Arbitrum', shortName: 'ARB', slug: 'arb', color: '#28A0F0' },
-}
+const CHAIN_INFO = MAINNET_CHAINS
 
 interface AccountingContext {
   terminal: string
@@ -183,9 +178,6 @@ function formStateToRulesetConfig(
     if (tokenDecimals === undefined) throw new Error(`Accounting token decimals unavailable on chain ${chainId}`)
     const payoutCurrency = existingLimits?.payoutLimits[0]?.currency ?? baseCurrency
     const allowanceCurrency = existingLimits?.surplusAllowances[0]?.currency ?? baseCurrency
-    const decimalsFor = (_currency: number) => tokenDecimals
-    const maxUint224 = '26959946667150639794667015087019630673637144422540572481103610249215'
-
     const nextPrimaryLimit = (
       type: 'none' | 'limited' | 'unlimited',
       value: string,
@@ -193,7 +185,7 @@ function formStateToRulesetConfig(
     ) => type === 'none'
       ? []
       : [{
-          amount: type === 'unlimited' ? maxUint224 : parseUnits(value || '0', decimalsFor(currency)).toString(),
+          amount: type === 'unlimited' ? UINT224_MAX : parseUnits(value || '0', tokenDecimals).toString(),
           currency,
         }]
 
@@ -428,16 +420,15 @@ export default function QueueRulesetForm({ projectId, chainId = '1', messageId }
           const payoutLimit = payoutLimitAmount ? BigInt(payoutLimitAmount) : 0n
           const surplusAllowance = surplusAllowanceAmount ? BigInt(surplusAllowanceAmount) : 0n
 
-          const payoutDecimals = firstLimits.tokenDecimals
-          const allowanceDecimals = firstLimits.tokenDecimals
+          const limitDecimals = firstLimits.tokenDecimals
           const unlimitedThreshold = BigInt('1000000000000000000000000000000')
 
           setFormState(prev => ({
             ...prev,
             payoutLimitType: payoutLimit === 0n ? 'none' : payoutLimit > unlimitedThreshold ? 'unlimited' : 'limited',
-            payoutLimit: payoutLimit > 0n && payoutLimit < unlimitedThreshold ? formatUnits(payoutLimit, payoutDecimals) : '0',
+            payoutLimit: payoutLimit > 0n && payoutLimit < unlimitedThreshold ? formatUnits(payoutLimit, limitDecimals) : '0',
             surplusAllowanceType: surplusAllowance === 0n ? 'none' : surplusAllowance > unlimitedThreshold ? 'unlimited' : 'limited',
-            surplusAllowance: surplusAllowance > 0n && surplusAllowance < unlimitedThreshold ? formatUnits(surplusAllowance, allowanceDecimals) : '0',
+            surplusAllowance: surplusAllowance > 0n && surplusAllowance < unlimitedThreshold ? formatUnits(surplusAllowance, limitDecimals) : '0',
           }))
         }
 

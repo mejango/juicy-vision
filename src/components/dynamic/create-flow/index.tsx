@@ -13,12 +13,11 @@ import { useManagedWallet } from '../../../hooks'
 import { pinMetadata } from '../../../services/ipfsPinning'
 import { calculateSynchronizedStartTime } from '../../../services/relayr'
 import type { JBDeployTiersHookConfig } from '../../../services/omnichainDeployer'
-import { ALL_CHAIN_IDS } from '../../../constants'
 import LaunchProjectModal from '../../payment/LaunchProjectModal'
 import DeployRevnetModal from '../../payment/DeployRevnetModal'
 import {
   type CreateFlowState,
-  initState, loadDraft, saveDraft, clearDraft, exportDraftFile, parseCreateDraftJson, stepsFor,
+  initState, loadDraft, saveDraft, clearDraft, exportDraftFile, parseCreateDraftJson, stepsFor, normalizeChainIds,
 } from './state'
 import { CreateFlowTheme, useIsDark } from './controls'
 import {
@@ -40,16 +39,6 @@ interface CreateFlowWizardProps {
   defaultChainIds?: number[] | string
   /** Rendered as the header ✕ when provided (dock modal host). */
   onClose?: () => void
-}
-
-function normalizeChainIds(input: number[] | string | undefined): number[] | null {
-  const list = Array.isArray(input)
-    ? input
-    : typeof input === 'string'
-      ? input.split(',').map((s) => parseInt(s.trim(), 10))
-      : []
-  const valid = [...new Set(list.filter((id) => (ALL_CHAIN_IDS as readonly number[]).includes(id)))]
-  return valid.length > 0 ? valid : null
 }
 
 export default function CreateFlowWizard({ defaultChainIds, onClose }: CreateFlowWizardProps) {

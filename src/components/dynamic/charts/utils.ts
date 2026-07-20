@@ -68,12 +68,6 @@ export function formatPercentage(value: number): string {
   return `${value.toFixed(3)}%`
 }
 
-// Format address for display
-export function shortenAddress(address: string, chars = 4): string {
-  if (!address) return ''
-  return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
-}
-
 // Filter data points to range
 export function filterToRange<T extends { timestamp: number }>(
   data: T[],
@@ -108,17 +102,10 @@ export const CHART_COLORS = {
   // Data series colors
   primary: '#F5A623',    // juice-orange
   secondary: '#5CEBDF',  // juice-cyan
-  tertiary: '#10b981',   // emerald
-  quaternary: '#f59e0b', // amber
-  // Axis & grid (dark mode)
-  axis: '#666666',
+  // Grid (dark mode)
   grid: 'rgba(255,255,255,0.1)',
-  // Axis & grid (light mode)
-  axisLight: '#999999',
+  // Grid (light mode)
   gridLight: 'rgba(0,0,0,0.1)',
-  // Semantic colors
-  positive: '#22c55e',   // green-500
-  negative: '#ef4444',   // red-500
   // Token price chart specific
   issuance: '#10b981',   // emerald - issuance price
   cashOut: '#94a3b8',    // slate - cash out price

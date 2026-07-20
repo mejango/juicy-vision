@@ -17,6 +17,7 @@ import {
 } from '../../../services/bendystraw'
 import { resolveEnsNames, truncateAddress } from '../../../utils/ens'
 import { formatPercentage, PIE_COLORS, CHAIN_NAMES } from './utils'
+import { ChartState, TooltipShell } from './shared'
 
 interface HoldersChartProps {
   projectId: string
@@ -128,11 +129,7 @@ export default function HoldersChart({
     const item = payload[0].payload as ChartDataPoint
 
     return (
-      <div className={`px-3 py-2 border shadow-lg text-sm ${
-        isDark
-          ? 'bg-zinc-900 border-zinc-700 text-white'
-          : 'bg-white border-gray-200 text-gray-900'
-      }`}>
+      <TooltipShell isDark={isDark}>
         {item.address ? (
           <>
             {item.ensName && (
@@ -161,7 +158,7 @@ export default function HoldersChart({
             </span>
           </div>
         )}
-      </div>
+      </TooltipShell>
     )
   }
 
@@ -215,24 +212,19 @@ export default function HoldersChart({
 
         {/* Chart */}
         <div className="p-4">
-          {loading ? (
-            <div className={`h-[300px] flex items-center justify-center ${
-              isDark ? 'text-gray-500' : 'text-gray-400'
-            }`}>
-              Loading...
-            </div>
-          ) : error ? (
-            <div className="h-[300px] max-w-full overflow-hidden px-4 text-center text-sm text-red-400" role="alert">
-              {error}
-            </div>
-          ) : data.length === 0 ? (
-            <div className={`h-[300px] flex items-center justify-center ${
-              isDark ? 'text-gray-500' : 'text-gray-400'
-            }`}>
-              No member data available
-            </div>
-          ) : (
-            <div className="h-[300px]">
+          <ChartState
+            heightClass="h-[300px]"
+            isDark={isDark}
+            loading={loading}
+            error={error}
+            errorNode={
+              <div className="h-[300px] max-w-full overflow-hidden px-4 text-center text-sm text-red-400" role="alert">
+                {error}
+              </div>
+            }
+            isEmpty={data.length === 0}
+            emptyMessage="No member data available"
+          >
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
@@ -257,8 +249,7 @@ export default function HoldersChart({
                   <Legend content={renderLegend} />
                 </PieChart>
               </ResponsiveContainer>
-            </div>
-          )}
+          </ChartState>
         </div>
 
         {/* Members List */}

@@ -18,9 +18,12 @@ import {
   type FundAccessContextSnapshot,
 } from '../../services/fundAccess'
 import { resolveProjectChains } from '../../utils/projectChains'
-import { resolveEnsName, truncateAddress } from '../../utils/ens'
-import { assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
+import { truncateAddress } from '../../utils/ens'
+import { CHAINS, MAINNET_CHAINS } from '../../constants'
+import { assertSafeStoredSplitGroups as assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
 import { SendPayoutsModal } from '../payment'
+import InlineChainSelector from './InlineChainSelector'
+import { resolveSplitEnsNames } from './resolveSplitEnsNames'
 import { FundAccessAmountInput } from '../fundAccess/FundAccessAmountInput'
 import { FundAccessSummary } from '../fundAccess/FundAccessSummary'
 import { ProjectLink } from './ProjectLink'
@@ -34,16 +37,7 @@ interface SendPayoutsFormProps {
   messageId?: string
 }
 
-const CHAIN_INFO: Record<number, { name: string; shortName: string; slug: string; color: string }> = {
-  1: { name: 'Ethereum', shortName: 'ETH', slug: 'eth', color: '#627EEA' },
-  10: { name: 'Optimism', shortName: 'OP', slug: 'op', color: '#FF0420' },
-  8453: { name: 'Base', shortName: 'BASE', slug: 'base', color: '#0052FF' },
-  42161: { name: 'Arbitrum', shortName: 'ARB', slug: 'arb', color: '#28A0F0' },
-  11155111: { name: 'Sepolia', shortName: 'SEP', slug: 'sep', color: '#627EEA' },
-  11155420: { name: 'OP Sepolia', shortName: 'OP-SEP', slug: 'op-sep', color: '#FF0420' },
-  84532: { name: 'Base Sepolia', shortName: 'BASE-SEP', slug: 'base-sep', color: '#0052FF' },
-  421614: { name: 'Arbitrum Sepolia', shortName: 'ARB-SEP', slug: 'arb-sep', color: '#28A0F0' },
-}
+const CHAIN_INFO = { ...MAINNET_CHAINS, ...CHAINS }
 
 interface ChainPayoutData {
   optionKey: string
@@ -52,47 +46,6 @@ interface ChainPayoutData {
   context: FundAccessContextSnapshot | null
   payoutSplits: JBSplitData[]
   configurationError?: string
-}
-
-function ChainSelector({
-  options,
-  selected,
-  onSelect,
-  isDark,
-}: {
-  options: ChainPayoutData[]
-  selected: string
-  onSelect: (key: string) => void
-  isDark: boolean
-}) {
-  if (options.length <= 1) return null
-  return (
-    <div className="flex min-w-0 flex-wrap gap-1" aria-label="Payout treasury">
-      {options.map(option => {
-        const chain = CHAIN_INFO[option.chainId] || {
-          name: `Chain ${option.chainId}`,
-          shortName: String(option.chainId),
-          slug: String(option.chainId),
-          color: '#888888',
-        }
-        const active = option.optionKey === selected
-        return (
-          <button
-            key={option.optionKey}
-            type="button"
-            onClick={() => onSelect(option.optionKey)}
-            className={`inline-flex min-w-0 items-center gap-1 px-2 py-1 text-[10px] ${active
-              ? isDark ? 'bg-white/20 text-white' : 'bg-gray-200 text-gray-900'
-              : isDark ? 'bg-white/5 text-gray-400 hover:bg-white/10' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
-            }`}
-          >
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: chain.color }} />
-            <span className="min-w-0 truncate">{chain.shortName} {option.context?.tokenSymbol || 'Unavailable'}</span>
-          </button>
-        )
-      })}
-    </div>
-  )
 }
 
 export default function SendPayoutsForm({ projectId, chainId = '1', messageId }: SendPayoutsFormProps) {
@@ -180,15 +133,7 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
           || ''
       })
 
-      const beneficiaries = new Set<string>()
-      all.forEach(option => option.payoutSplits.forEach(split => {
-        if (split.projectId === 0 && split.beneficiary) beneficiaries.add(split.beneficiary.toLowerCase())
-      }))
-      const resolved = await Promise.all([...beneficiaries].map(async address => ({
-        address,
-        ens: await resolveEnsName(address),
-      })))
-      setSplitEnsNames(Object.fromEntries(resolved.filter(item => item.ens).map(item => [item.address, item.ens!])))
+      setSplitEnsNames(await resolveSplitEnsNames(all.map(option => option.payoutSplits)))
     } catch (error) {
       console.error('Failed to load payout access:', error)
       setOptions([])
@@ -279,7 +224,18 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
           </div>
         </div>
 
-        <ChainSelector options={options} selected={selectedOptionKey} onSelect={setSelectedOptionKey} isDark={isDark} />
+        <InlineChainSelector
+          variant="row"
+          ariaLabel="Payout treasury"
+          options={options.map(option => ({
+            key: option.optionKey,
+            chainId: option.chainId,
+            selected: option.optionKey === selectedOptionKey,
+            label: `${CHAIN_INFO[option.chainId]?.shortName ?? String(option.chainId)} ${option.context?.tokenSymbol || 'Unavailable'}`,
+          }))}
+          onSelect={option => setSelectedOptionKey(String(option.key))}
+          isDark={isDark}
+        />
 
         {context && limits.length > 1 && (
           <label className={`mt-3 block text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>

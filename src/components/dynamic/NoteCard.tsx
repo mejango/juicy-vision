@@ -10,7 +10,7 @@ import {
 } from '../../services/bendystraw'
 import { resolveIpfsUri } from '../../utils/ipfs'
 import { useThemeStore, useTransactionStore } from '../../stores'
-import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
+import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, MAINNET_CHAINS, type SupportedChainId } from '../../constants'
 import { ProjectLink } from './ProjectLink'
 import { getPaymentTerminal, getPaymentTokenAddress } from '../../utils/paymentTerminal'
 import { assertCurrentProjectPayConfigurationTrusted } from '../../utils/projectTrust'
@@ -24,12 +24,7 @@ interface NoteCardProps {
   defaultNote?: string
 }
 
-const CHAIN_INFO: Record<string, { name: string; slug: string }> = {
-  '1': { name: 'Ethereum', slug: 'eth' },
-  '10': { name: 'Optimism', slug: 'op' },
-  '8453': { name: 'Base', slug: 'base' },
-  '42161': { name: 'Arbitrum', slug: 'arb' },
-}
+const CHAIN_INFO = MAINNET_CHAINS as unknown as Record<string, { name: string; slug: string }>
 
 type PaymentToken = 'ETH' | 'USDC'
 

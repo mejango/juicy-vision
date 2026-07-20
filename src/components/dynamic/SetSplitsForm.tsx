@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useSetSplitsFormState } from '../../hooks/useComponentState'
@@ -13,7 +13,7 @@ import { resolveIpfsUri } from '../../utils/ipfs'
 import { resolveEnsName } from '../../utils/ens'
 import { SetSplitsModal } from '../payment'
 import { ProjectLink } from './ProjectLink'
-import { ZERO_ADDRESS } from '../../constants'
+import { ZERO_ADDRESS, MAINNET_CHAINS } from '../../constants'
 import { useManagedWallet } from '../../hooks'
 import { buildSplit } from '../../utils/splitSafety'
 import { resolveProjectChains } from '../../utils/projectChains'
@@ -27,12 +27,7 @@ interface SetSplitsFormProps {
 }
 
 // Chain info for display
-const CHAIN_INFO: Record<number, { name: string; shortName: string; slug: string; color: string }> = {
-  1: { name: 'Ethereum', shortName: 'ETH', slug: 'eth', color: '#627EEA' },
-  10: { name: 'Optimism', shortName: 'OP', slug: 'op', color: '#FF0420' },
-  8453: { name: 'Base', shortName: 'BASE', slug: 'base', color: '#0052FF' },
-  42161: { name: 'Arbitrum', shortName: 'ARB', slug: 'arb', color: '#28A0F0' },
-}
+const CHAIN_INFO = MAINNET_CHAINS
 
 // Per-chain splits data
 interface ChainSplitsData {
@@ -108,7 +103,7 @@ function getTotalPercent(splits: EditableSplit[]): number {
   return splits.reduce((sum, s) => sum + (parseFloat(s.percent) || 0), 0)
 }
 
-function splitFingerprint(split: JBSplitData): string {
+function splitFingerprint(split: Omit<JBSplitData, 'projectId'> & { projectId: number | bigint }): string {
   return [
     split.percent,
     split.projectId,
@@ -166,42 +161,33 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
   // Calculate changes
   const payoutTotal = getTotalPercent(payoutSplits)
   const reservedTotal = getTotalPercent(reservedSplits)
-  const splitIsValid = (split: EditableSplit, kind: 'payout' | 'reserved') => {
-    if ((split.routeMode === 'project') !== Boolean(split.projectId)) return false
-    try {
-      buildSplit(split, 'Split', {
-        kind,
-        sourceProjectId: primaryData?.projectId ?? projectId,
-      })
-      return true
-    } catch {
-      return false
+  const sourceProjectId = primaryData?.projectId ?? projectId
+  const builtSplits = useMemo(() => {
+    const build = (split: EditableSplit, kind: 'payout' | 'reserved') => {
+      try {
+        return buildSplit(split, 'Split', { kind, sourceProjectId })
+      } catch {
+        return null
+      }
     }
-  }
-  const payoutValid = payoutTotal <= 100 && payoutSplits.every(split => splitIsValid(split, 'payout'))
-  const reservedValid = reservedTotal <= 100 && reservedSplits.every(split => splitIsValid(split, 'reserved'))
+    return {
+      payout: payoutSplits.map(split => build(split, 'payout')),
+      reserved: reservedSplits.map(split => build(split, 'reserved')),
+    }
+  }, [payoutSplits, reservedSplits, sourceProjectId])
 
-  const editableFingerprint = (split: EditableSplit, kind: 'payout' | 'reserved') => {
-    try {
-      const built = buildSplit(split, 'Split', {
-        kind,
-        sourceProjectId: primaryData?.projectId ?? projectId,
-      })
-      return [
-        built.percent,
-        built.projectId,
-        built.beneficiary.toLowerCase(),
-        built.preferAddToBalance,
-        built.lockedUntil,
-        built.hook.toLowerCase(),
-      ].join(':')
-    } catch {
-      return 'invalid'
-    }
+  const splitIsValid = (split: EditableSplit, built: (typeof builtSplits.payout)[number]) => {
+    if ((split.routeMode === 'project') !== Boolean(split.projectId)) return false
+    return built !== null
   }
+  const payoutValid = payoutTotal <= 100 && payoutSplits.every((split, index) => splitIsValid(split, builtSplits.payout[index]))
+  const reservedValid = reservedTotal <= 100 && reservedSplits.every((split, index) => splitIsValid(split, builtSplits.reserved[index]))
+
+  const editableFingerprint = (built: (typeof builtSplits.payout)[number]) =>
+    built ? splitFingerprint(built) : 'invalid'
   const hasChanges = !!primaryData && (
-    payoutSplits.map(split => editableFingerprint(split, 'payout')).join('|') !== primaryData.payoutSplits.map(splitFingerprint).join('|') ||
-    reservedSplits.map(split => editableFingerprint(split, 'reserved')).join('|') !== primaryData.reservedSplits.map(splitFingerprint).join('|')
+    builtSplits.payout.map(editableFingerprint).join('|') !== primaryData.payoutSplits.map(splitFingerprint).join('|') ||
+    builtSplits.reserved.map(editableFingerprint).join('|') !== primaryData.reservedSplits.map(splitFingerprint).join('|')
   )
   const clearsEffectiveSplits = !!primaryData && (
     (primaryData.payoutSplits.length > 0 && payoutSplits.length === 0) ||

@@ -30,7 +30,14 @@ import {
   getChainName,
 } from './utils'
 import { resolveAccountingToken, toTokenFloat, formatAxisValue } from '../../../utils/currency'
-import ChainToggleBar from './ChainToggleBar'
+import {
+  RangeSelector,
+  ChartState,
+  TooltipShell,
+  ChartFooter,
+  useChainSelection,
+  BreakdownToggle,
+} from './shared'
 
 interface BalanceChartProps {
   projectId: string
@@ -58,7 +65,7 @@ export default function BalanceChart({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [connectedChains, setConnectedChains] = useState<number[]>([])
-  const [selectedChains, setSelectedChains] = useState<Set<number> | 'all'>('all')
+  const { selectedChains, handleChainToggle, handleSelectAll } = useChainSelection()
   const [showBreakdown, setShowBreakdown] = useState(false)
   const [token, setToken] = useState(resolveAccountingToken())
 
@@ -235,29 +242,6 @@ export default function BalanceChart({
     return [0, maxY]
   }, [chartData, selectedChains])
 
-  const handleChainToggle = (chainId: number) => {
-    if (selectedChains === 'all') {
-      setSelectedChains(new Set([chainId]))
-    } else {
-      const newSelected = new Set(selectedChains)
-      if (newSelected.has(chainId)) {
-        newSelected.delete(chainId)
-        if (newSelected.size === 0) {
-          setSelectedChains('all')
-        } else {
-          setSelectedChains(newSelected)
-        }
-      } else {
-        newSelected.add(chainId)
-        setSelectedChains(newSelected)
-      }
-    }
-  }
-
-  const handleSelectAll = () => {
-    setSelectedChains('all')
-  }
-
   // Custom tooltip
   const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ dataKey: string; value: number; color: string; payload: DataPoint }> }) => {
     if (!active || !payload?.length) return null
@@ -268,11 +252,7 @@ export default function BalanceChart({
     const date = new Date(data.timestamp * 1000)
 
     return (
-      <div className={`px-3 py-2 border shadow-lg text-sm ${
-        isDark
-          ? 'bg-zinc-900 border-zinc-700 text-white'
-          : 'bg-white border-gray-200 text-gray-900'
-      }`}>
+      <TooltipShell isDark={isDark}>
         <div className={`text-xs mb-2 ${isDark ? 'text-zinc-400' : 'text-gray-500'}`}>
           {date.toLocaleDateString('en-US', {
             month: 'short',
@@ -298,7 +278,7 @@ export default function BalanceChart({
             )
           })
         )}
-      </div>
+      </TooltipShell>
     )
   }
 
@@ -315,72 +295,31 @@ export default function BalanceChart({
                 Balance
               </span>
             </div>
-            <div className="flex gap-1">
-              {RANGE_OPTIONS.map(opt => (
-                <button
-                  key={opt.value}
-                  onClick={() => setRange(opt.value)}
-                  className={`px-2 py-0.5 text-xs transition-colors ${
-                    range === opt.value
-                      ? isDark ? 'bg-white/10 text-white' : 'bg-gray-200 text-gray-900'
-                      : isDark ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
+            <RangeSelector options={RANGE_OPTIONS} range={range} onChange={setRange} isDark={isDark} />
           </div>
           {connectedChains.length > 1 && (
-            <div>
-              <button
-                onClick={() => setShowBreakdown(!showBreakdown)}
-                className={`flex items-center gap-1 text-xs ${isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'}`}
-              >
-                <span>Breakdown</span>
-                <svg
-                  className={`w-3 h-3 transition-transform ${showBreakdown ? 'rotate-180' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {showBreakdown && (
-                <div className="mt-2">
-                  <ChainToggleBar
-                    availableChains={connectedChains}
-                    selectedChains={selectedChains}
-                    onToggle={handleChainToggle}
-                    onSelectAll={handleSelectAll}
-                  />
-                </div>
-              )}
-            </div>
+            <BreakdownToggle
+              isDark={isDark}
+              showBreakdown={showBreakdown}
+              onToggle={() => setShowBreakdown(!showBreakdown)}
+              availableChains={connectedChains}
+              selectedChains={selectedChains}
+              onChainToggle={handleChainToggle}
+              onSelectAll={handleSelectAll}
+            />
           )}
         </div>
 
         {/* Chart */}
         <div className="px-2 py-3">
-          {loading ? (
-            <div className={`h-[180px] flex items-center justify-center ${
-              isDark ? 'text-gray-500' : 'text-gray-400'
-            }`}>
-              Loading...
-            </div>
-          ) : error ? (
-            <div className={`h-[180px] flex items-center justify-center text-red-400`}>
-              {error}
-            </div>
-          ) : chartData.length === 0 ? (
-            <div className={`h-[180px] flex items-center justify-center ${
-              isDark ? 'text-gray-500' : 'text-gray-400'
-            }`}>
-              No data available for this range
-            </div>
-          ) : (
-            <div className="h-[180px]">
+          <ChartState
+            heightClass="h-[180px]"
+            isDark={isDark}
+            loading={loading}
+            error={error}
+            isEmpty={chartData.length === 0}
+            emptyMessage="No data available for this range"
+          >
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData} margin={{ left: 0, right: 12, top: 8, bottom: 0 }}>
                   <CartesianGrid
@@ -432,15 +371,12 @@ export default function BalanceChart({
                   )}
                 </LineChart>
               </ResponsiveContainer>
-            </div>
-          )}
+          </ChartState>
         </div>
 
         {/* Footer with current value(s) */}
         {!loading && !error && chartData.length > 0 && (
-          <div className={`px-4 py-2 text-xs border-t flex flex-wrap gap-x-4 gap-y-1 ${
-            isDark ? 'bg-white/5 border-white/10 text-gray-400' : 'bg-gray-50 border-gray-100 text-gray-500'
-          }`}>
+          <ChartFooter isDark={isDark}>
             {selectedChains === 'all' ? (
               <span className="flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: CHART_COLORS.primary }} />
@@ -458,7 +394,7 @@ export default function BalanceChart({
                 )
               })
             )}
-          </div>
+          </ChartFooter>
         )}
       </div>
     </div>

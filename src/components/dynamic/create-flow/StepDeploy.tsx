@@ -7,26 +7,28 @@
  */
 
 import { useState } from 'react'
-import { isAddress } from 'viem'
 import { truncateAddress } from '../../../utils/ens'
 import {
   badStageIndex,
   chainName,
+  currentPayoutKinds,
   exportDraftFile,
+  isAddr,
+  round2,
   surplusTokenLabel,
+  tickerLabel,
   type CreateFlowState,
   type RecipientRow,
   type StageState,
 } from './state'
+import { FOREVER_SECONDS, afterApplies } from './builders'
+import { secondsLabel } from './StepRulesets'
+import { revStageSummary } from './StepStages'
 import { InfoNote, PinkNote, StepHead, WarnNote, useIsDark } from './controls'
 
 // ---------------------------------------------------------------------------
 // Pure helpers (ported from the website source)
 // ---------------------------------------------------------------------------
-
-function isAddr(v: string | null | undefined): boolean {
-  return !!v && isAddress(v.trim(), { strict: false })
-}
 
 /**
  * The usable 0x address for a field: the ENS-resolved address when the UI has
@@ -43,36 +45,8 @@ function shortAddr(a: string): string {
   return a && a.length > 10 ? truncateAddress(a) : (a || '—')
 }
 
-function round2(n: number | string): number {
-  return Math.round((Number(n) || 0) * 100) / 100
-}
-
 function capitalize(s: string): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s
-}
-
-function tickerLabel(state: CreateFlowState): string {
-  return state.details.ticker || 'TOKEN'
-}
-
-// uint32 max (~136 years) — the "Forever" option's max duration
-const FOREVER_SECONDS = 4294967295
-
-const DURATION_PRESETS: { label: string; seconds: number }[] = [
-  { label: '1 day', seconds: 86400 }, { label: '3 days', seconds: 259200 },
-  { label: '7 days', seconds: 604800 }, { label: '14 days', seconds: 1209600 },
-  { label: '28 days', seconds: 2419200 }, { label: '30 days', seconds: 2592000 },
-  { label: '90 days', seconds: 7776000 }, { label: '365 days', seconds: 31536000 },
-]
-
-function secondsLabel(s: number): string {
-  const p = DURATION_PRESETS.find((x) => x.seconds === s)
-  if (p) return p.label
-  const U: [string, number][] = [['year', 31536000], ['week', 604800], ['day', 86400], ['hour', 3600]]
-  for (const [unit, secs] of U) {
-    if (s % secs === 0) { const n = s / secs; return `${n} ${unit}${n === 1 ? '' : 's'}` }
-  }
-  return `${s}s`
 }
 
 /**
@@ -92,29 +66,6 @@ function recipLabel(rec: RecipientRow): string {
   if (rec.type === 'project' && rec.projectId) return `project #${rec.projectId}`
   if (rec.address) return shortAddr(rec.address)
   return 'owner'
-}
-
-// The "Afterwards" choice only applies when the last ruleset has a duration —
-// otherwise there's nothing "after" (a forever ruleset never ends; multiple rulesets chain themselves).
-function afterApplies(state: CreateFlowState): boolean {
-  const last = state.stages[state.stages.length - 1]
-  return !!last && last.durationSeconds > 0
-}
-
-// Single source of truth for whether payouts are configured per-token: multi-token
-// only when a CUSTOM project holds more than one accounting token (or a custom ERC-20).
-interface PayoutKind { key: string; symbol: string }
-function currentPayoutKinds(state: CreateFlowState): PayoutKind[] | null {
-  if (state.projectType === 'revnet') return null
-  const kindOf = (k: string): PayoutKind => k === 'custom'
-    ? { key: 'custom', symbol: state.customToken.symbol || 'TOKEN' }
-    : k === 'usdc'
-      ? { key: 'usdc', symbol: 'USDC' }
-      : { key: 'eth', symbol: 'ETH' }
-  if ((state.accepts || []).length > 1) return state.accepts.map(kindOf)
-  // A custom ERC-20 routes through the per-token path too (token-keyed currency + token decimals, no feed).
-  if (state.accepts[0] === 'custom' && isAddr(state.customToken.address)) return [kindOf('custom')]
-  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -240,27 +191,10 @@ export function approvalIssue(state: CreateFlowState): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Stage summaries (ported from the website's revStageSummary / stageSummaryParts)
+// Stage summaries (ported from the website's stageSummaryParts). Kept separate
+// from StepRulesets' copy: this file's fundAccessCurrencyLabel falls back on
+// the ACCEPTED tokens, StepRulesets' on the exact currency id.
 // ---------------------------------------------------------------------------
-
-function revSplitTotalPct(stage: StageState): number {
-  return (stage.reservedRecipients || []).reduce((s, x) => s + (Number(x.percent) || 0), 0)
-}
-
-export function revStageSummary(stage: StageState, idx: number, state: CreateFlowState): string {
-  const tk = tickerLabel(state)
-  const unit = state.revBaseCurrency === 2 ? 'USD' : 'ETH'
-  const parts: string[] = []
-  if (idx === 0 || stage.weight) parts.push(`${stage.weight || '0'} $${tk}/${unit}`)
-  else parts.push('inherits issuance')
-  if (stage.issuanceCutOn && Number(stage.weightCutPercent) > 0) {
-    parts.push(`−${round2(stage.weightCutPercent)}%/${stage.cutFreqDays || '30'}d`)
-  }
-  const splitTotal = revSplitTotalPct(stage)
-  if (splitTotal > 0) parts.push(`${round2(splitTotal)}% to splits`)
-  parts.push(`${round2(Number(stage.cashOutTaxRate))}% cash out tax`)
-  return parts.join(' | ')
-}
 
 function stageSummaryRaw(stage: StageState, idx: number, state: CreateFlowState): string[] {
   const parts: string[] = []

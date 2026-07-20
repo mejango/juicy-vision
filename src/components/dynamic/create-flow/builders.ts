@@ -24,7 +24,7 @@
  *     address itself), exactly like the website's launch path.
  */
 
-import { isAddress, parseEther, parseUnits } from 'viem'
+import { parseEther, parseUnits } from 'viem'
 import type {
   JBRulesetConfig,
   JBSplitConfig,
@@ -49,6 +49,7 @@ import {
   type ItemState,
   type RecipientRow,
   createStage,
+  isAddr,
 } from './state'
 
 // ---------------------------------------------------------------------------
@@ -89,10 +90,6 @@ const LP_SPLIT_HOOK_CHAINS = new Set([1, 10, 8453, 42161, 84532, 421614, 1115511
 // ---------------------------------------------------------------------------
 // Small helpers (ports of component-base isAddr/addrOrZero + ENS pickers)
 // ---------------------------------------------------------------------------
-
-function isAddr(v: string | undefined | null): v is string {
-  return !!v && isAddress(v.trim(), { strict: false })
-}
 
 function addrOrZero(v: string | undefined | null): string {
   return isAddr(v) ? (v as string).trim() : ZERO_ADDRESS
@@ -192,7 +189,7 @@ function chainItemIncluded(state: CreateFlowState, chainId: number, itemIdx: num
 // ---------------------------------------------------------------------------
 
 /** The choice applies whenever the last ruleset has a duration (something comes after it). */
-function afterApplies(state: CreateFlowState): boolean {
+export function afterApplies(state: CreateFlowState): boolean {
   const last = state.stages[state.stages.length - 1]
   return !!last && last.durationSeconds > 0
 }
@@ -249,7 +246,7 @@ function resolveStages(state: CreateFlowState): StageState[] {
  * for a forever-duration last ruleset, and not for a single timed ruleset set
  * to Terminate (which just continues on the same terms).
  */
-function deadlineApplies(state: CreateFlowState): boolean {
+export function deadlineApplies(state: CreateFlowState): boolean {
   const last = state.stages[state.stages.length - 1]
   if (!last) return false
   if (last.durationSeconds === FOREVER_SECONDS) return false
@@ -266,6 +263,8 @@ function splitLockAllowed(stage: StageState): boolean {
 // Accounting token derivations
 // ---------------------------------------------------------------------------
 
+// Guarded (`accepts || []`) unlike state.ts's copy — builders must tolerate
+// malformed imported drafts without throwing (callers catch and disable launch).
 function customAccounting(state: CreateFlowState): boolean {
   return (state.accepts || [])[0] === 'custom'
 }
@@ -928,17 +927,21 @@ function revSplitTotalPct(stage: StageState): number {
 }
 
 /** The previous stage's autocut interval in days (0 if none) — the cycle boundary the next stage snaps to. */
-function revPrevCutFreqDays(state: CreateFlowState, idx: number): number {
+export function revPrevCutFreqDays(state: CreateFlowState, idx: number): number {
   const prev = state.stages[idx - 1]
   return prev && prev.issuanceCutOn && Number(prev.cutFreqDays) > 0 ? Math.max(1, Math.round(Number(prev.cutFreqDays))) : 0
 }
 
-/** Stage idx's "days after the previous stage", snapped to a positive multiple of the previous cut interval. */
-function revStageDaysAfter(state: CreateFlowState, idx: number): number {
-  const freq = revPrevCutFreqDays(state, idx)
-  let d = Math.max(1, Math.round(Number(state.stages[idx].startDaysAfter) || 30))
+/** A "days after the previous stage" value, snapped to a positive multiple of the previous cut interval. */
+export function snapDaysAfter(raw: string, freq: number): number {
+  let d = Math.max(1, Math.round(Number(raw) || 30))
   if (freq > 0) d = Math.max(freq, Math.round(d / freq) * freq)
   return d
+}
+
+/** Stage idx's "days after the previous stage", snapped to the previous stage's cut boundary. */
+function revStageDaysAfter(state: CreateFlowState, idx: number): number {
+  return snapDaysAfter(state.stages[idx].startDaysAfter, revPrevCutFreqDays(state, idx))
 }
 
 /**

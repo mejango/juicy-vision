@@ -6,7 +6,10 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import type { AutoIssuance, CreateFlowState, RecipientRow, StageState } from './state'
-import { createStage, surplusTokenLabel } from './state'
+import {
+  createStage, localTimezoneLabel, lockedCurrencySym, round2, surplusTokenLabel, tickerLabel, tsToLocal,
+} from './state'
+import { revPrevCutFreqDays, snapDaysAfter } from './builders'
 import {
   AddLink, CurrencySelect, EnsAddressInput, Hint, InfoNote, NumberInput, StepHead, TextInput, ToggleRow,
   inputClass, useIsDark,
@@ -19,28 +22,15 @@ interface StepProps {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers — mirrors of the website's tickerLabel / round2 / summary math
+// Helpers — mirrors of the website's revnet stage-summary math
 // ---------------------------------------------------------------------------
-
-function round2(n: number | string): number {
-  return Math.round((Number(n) || 0) * 100) / 100
-}
-
-function tickerLabel(state: CreateFlowState): string {
-  return state.details.ticker || 'TOKEN'
-}
-
-/** Base currency is forced when USDC is accepted (USD) or a custom token is the accounting token. */
-function lockedCurrencySym(state: CreateFlowState): string | null {
-  if (state.accepts[0] === 'custom') return state.customToken.symbol || 'TOKEN'
-  return state.accepts.includes('usdc') ? 'USD' : null
-}
 
 function revSplitTotalPct(stage: StageState): number {
   return (stage.reservedRecipients || []).reduce((s, x) => s + (Number(x.percent) || 0), 0)
 }
 
-function revStageSummary(stage: StageState, idx: number, state: CreateFlowState): string {
+/** One-line stage summary (also shown per stage on the Deploy review). */
+export function revStageSummary(stage: StageState, idx: number, state: CreateFlowState): string {
   const tk = tickerLabel(state)
   const unit = state.revBaseCurrency === 2 ? 'USD' : 'ETH'
   const parts: string[] = []
@@ -51,31 +41,6 @@ function revStageSummary(stage: StageState, idx: number, state: CreateFlowState)
   if (splitTotal > 0) parts.push(round2(splitTotal) + '% to splits')
   parts.push(round2(Number(stage.cashOutTaxRate)) + '% cash out tax')
   return parts.join(' | ')
-}
-
-// The previous stage's autocut interval in days (0 if it has none) — the cycle boundary the next stage snaps to.
-function revPrevCutFreqDays(state: CreateFlowState, idx: number): number {
-  const prev = state.stages[idx - 1]
-  return (prev && prev.issuanceCutOn && Number(prev.cutFreqDays) > 0) ? Math.max(1, Math.round(Number(prev.cutFreqDays))) : 0
-}
-
-// Stage idx's "days after the previous stage", snapped to a positive multiple of the previous stage's cut interval.
-function snapDaysAfter(raw: string, freq: number): number {
-  let d = Math.max(1, Math.round(Number(raw) || 30))
-  if (freq > 0) d = Math.max(freq, Math.round(d / freq) * freq)
-  return d
-}
-
-function tsToLocal(ts: string): string {
-  const d = new Date(Number(ts) * 1000)
-  if (isNaN(d.getTime())) return ''
-  const p = (x: number) => (x < 10 ? '0' + x : '' + x)
-  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes())
-}
-
-/** e.g. "America/New_York" — the browser's local zone, for the scheduled-launch helper text. */
-function localTimezoneLabel(): string {
-  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time' } catch { return 'local time' }
 }
 
 // ---------------------------------------------------------------------------

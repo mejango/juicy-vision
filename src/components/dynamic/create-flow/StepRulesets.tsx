@@ -7,8 +7,12 @@
 import type { ReactNode } from 'react'
 import { isAddress } from 'viem'
 import { truncateAddress } from '../../../utils/ens'
-import type { AfterMode, CreateFlowState, DeadlineKey, PayoutMode, RecipientRow, StageState } from './state'
-import { createStage, surplusTokenLabel } from './state'
+import type { AfterMode, CreateFlowState, DeadlineKey, PayoutKind, PayoutMode, RecipientRow, StageState } from './state'
+import {
+  createStage, currentPayoutKinds, customAccounting, customAcctSym, localTimezoneLabel,
+  lockedCurrencySym, round2, surplusTokenLabel, tsToLocal,
+} from './state'
+import { FOREVER_SECONDS, afterApplies, deadlineApplies } from './builders'
 import {
   AddLink, Collapse, CurrencySelect, EnsAddressInput, FieldBlock, Hint, IdleToggle, InfoNote,
   NumberInput, Select, StepHead, TextInput, ToggleRow, WarnNote, useIsDark,
@@ -20,21 +24,18 @@ import { CashOutTaxCard, PayoutRow, PerChainAddrControl, ReservedSplitRow } from
 // deadline-options.js (data-only leaf module there).
 // ---------------------------------------------------------------------------
 
-export const DURATION_PRESETS: { label: string; seconds: number }[] = [
+const DURATION_PRESETS: { label: string; seconds: number }[] = [
   { label: '1 day', seconds: 86400 }, { label: '3 days', seconds: 259200 },
   { label: '7 days', seconds: 604800 }, { label: '14 days', seconds: 1209600 },
   { label: '28 days', seconds: 2419200 }, { label: '30 days', seconds: 2592000 },
   { label: '90 days', seconds: 7776000 }, { label: '365 days', seconds: 31536000 },
 ]
 
-/** uint32 max (~136 years) — the "Forever" option's max duration. */
-export const FOREVER_SECONDS = 4294967295
-
 const DURATION_UNIT_SECONDS: Record<StageState['customDurUnit'], number> = {
   hours: 3600, days: 86400, weeks: 604800, years: 31536000,
 }
 
-export const DEADLINE_OPTIONS: { key: DeadlineKey; label: string }[] = [
+const DEADLINE_OPTIONS: { key: DeadlineKey; label: string }[] = [
   { key: '3hours', label: '3-hour deadline' },
   { key: '1day', label: '1-day deadline' },
   { key: '3days', label: '3-day deadline' },
@@ -51,7 +52,7 @@ function dz(on: string, off: string): { on: string; off: string } {
   return { on: 'On: ' + on, off: 'Off: ' + off }
 }
 
-function secondsLabel(s: number): string {
+export function secondsLabel(s: number): string {
   const p = DURATION_PRESETS.find((x) => x.seconds === s)
   if (p) return p.label
   const U: [string, number][] = [['year', 31536000], ['week', 604800], ['day', 86400], ['hour', 3600]]
@@ -66,40 +67,9 @@ function recomputeCustomDuration(stage: StageState): void {
   stage.durationSeconds = v > 0 ? Math.round(v * (DURATION_UNIT_SECONDS[stage.customDurUnit] || 86400)) : 0
 }
 
-function tsToLocal(ts: string | number): string {
-  const d = new Date(Number(ts) * 1000)
-  if (isNaN(d.getTime())) return ''
-  const p = (x: number) => (x < 10 ? '0' + x : '' + x)
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
-}
-
-/** e.g. "America/New_York" — the browser's local zone, for the scheduled-launch helper text. */
-function localTimezoneLabel(): string {
-  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'local time' } catch { return 'local time' }
-}
-
-function round2(n: number): number { return Math.round((Number(n) || 0) * 100) / 100 }
-
-// --- Accounting-token derivations (customAccounting / lockedCurrencySym etc.) ---
-
-function customAccounting(state: CreateFlowState): boolean { return state.accepts[0] === 'custom' }
-
-function customAcctSym(state: CreateFlowState): string | null {
-  return customAccounting(state) ? (state.customToken.symbol || 'TOKEN') : null
-}
-
 function customCurrencyId(state: CreateFlowState): number {
   const a = state.customToken.address
   return isAddress(a, { strict: false }) ? Number(BigInt(a) % (1n << 32n)) : 0
-}
-
-/** True when the base currency is forced to USD (USDC accepted, no custom token). */
-function usdcAccounting(state: CreateFlowState): boolean {
-  return !customAccounting(state) && state.accepts.includes('usdc')
-}
-
-function lockedCurrencySym(state: CreateFlowState): string | null {
-  return customAcctSym(state) || (usdcAccounting(state) ? 'USD' : null)
 }
 
 function fundAccessCurrencyLabel(currency: number, state: CreateFlowState): string {
@@ -108,30 +78,6 @@ function fundAccessCurrencyLabel(currency: number, state: CreateFlowState): stri
   if (cur === 2) return 'USD'
   if (customAccounting(state) && cur === customCurrencyId(state)) return customAcctSym(state) || 'TOKEN'
   return 'currency ' + cur
-}
-
-// --- Multi-token payout kinds (custom-both / custom ERC-20) ---
-
-interface PayoutKind { key: string; symbol: string }
-
-function createPayoutKinds(state: CreateFlowState): PayoutKind[] {
-  return state.accepts.map((k) => {
-    if (k === 'custom') return { key: 'custom', symbol: state.customToken.symbol || 'TOKEN' }
-    return k === 'usdc' ? { key: 'usdc', symbol: 'USDC' } : { key: 'eth', symbol: 'ETH' }
-  })
-}
-
-/**
- * Single source of truth for whether payouts/surplus are configured per-token — multi-token
- * only when a CUSTOM project holds more than one accounting token, or a custom ERC-20
- * (token-keyed currency + token decimals, no feed).
- */
-function currentPayoutKinds(state: CreateFlowState): PayoutKind[] | null {
-  if (state.projectType !== 'revnet' && state.accepts.length > 1) return createPayoutKinds(state)
-  if (state.projectType !== 'revnet' && customAccounting(state) && isAddress(state.customToken.address, { strict: false })) {
-    return createPayoutKinds(state)
-  }
-  return null
 }
 
 /** Read a per-kind payout bucket without mutating state (render-safe). */
@@ -155,24 +101,6 @@ function freshPayoutRecipient(): RecipientRow {
 // one idles the other in the UI.
 function itemCashOutOn(state: CreateFlowState): boolean {
   return !!(state.shopEnabled && state.collection && state.collection.useForRedemptions)
-}
-
-// The "Afterwards" choice only applies when the last ruleset has a duration — otherwise there's
-// nothing "after" (a forever/flexible last ruleset never hands off on a schedule).
-function afterApplies(state: CreateFlowState): boolean {
-  const last = state.stages[state.stages.length - 1]
-  return !!last && last.durationSeconds > 0
-}
-
-// The edit deadline governs how far ahead owner edits to a FUTURE ruleset must be queued. It's only
-// meaningful when such a boundary exists: not for a forever-duration last ruleset, and not for a single
-// timed ruleset set to Terminate (which just continues on the same terms).
-function deadlineApplies(state: CreateFlowState): boolean {
-  const last = state.stages[state.stages.length - 1]
-  if (!last) return false
-  if (last.durationSeconds === FOREVER_SECONDS) return false
-  if (state.stages.length === 1 && afterApplies(state) && state.afterMode === 'terminal') return false
-  return true
 }
 
 // ---------------------------------------------------------------------------
@@ -244,7 +172,7 @@ function stageSummaryRaw(stage: StageState, idx: number, state: CreateFlowState)
 }
 
 /** Capitalized bullet strings for a stage (no leading "• "). */
-export function stageSummaryParts(stage: StageState, idx: number, state: CreateFlowState): string[] {
+function stageSummaryParts(stage: StageState, idx: number, state: CreateFlowState): string[] {
   return stageSummaryRaw(stage, idx, state).map((p) => (p ? p.charAt(0).toUpperCase() + p.slice(1) : p))
 }
 

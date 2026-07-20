@@ -1,5 +1,4 @@
 export * from './chat'
-export * from './dynamic'
 export * from './ui'
 export * from './settings'
 export * from './wallet'
