@@ -20,6 +20,7 @@ import {
   fetchProjectWithRuleset,
 } from '../../services/bendystraw'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
+import { txErrorMessage } from '../../utils/txErrors'
 
 const CONTROLLER_SEND_RESERVED_ABI = [
   {
@@ -402,7 +403,7 @@ export default function SendReservedTokensModal({
       setStatus('confirmed')
     } catch (err) {
       console.error('Send reserved tokens failed:', err)
-      setError(err instanceof Error ? err.message : 'Transaction failed')
+      setError(txErrorMessage(err, 'Transaction failed'))
       setStatus('failed')
     }
   }, [walletClient, address, activeAddress, chainId, projectId, tokenAmount, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, useAllChains, allChainProjects, distribute, onSubmitted, assertCurrentAccount, amount, splits])

@@ -19,7 +19,6 @@ import {
   encodeQueueRulesetTransaction,
   encodeDeployERC20Transaction,
   encodeSendReservesTransaction,
-  encodeLaunchProjectTransaction,
   encodeDeployRevnetTransaction,
 } from './encoder'
 import {
@@ -27,6 +26,7 @@ import {
   NATIVE_TOKEN,
   parseSuckerDeployerConfig,
   shouldConfigureSuckers,
+  type JBSuckerBridge,
 } from '../../utils/suckerConfig'
 import { requireNonzeroBytes32 } from '../../utils/erc20Safety'
 import { getProjectController } from '../../utils/paymentTerminal'
@@ -103,32 +103,11 @@ async function fetchApi<T>(
   return response.json()
 }
 
-export async function getQuote(request: QuoteRequest): Promise<Quote> {
-  return fetchApi<Quote>('/v1/quote', {
-    method: 'POST',
-    body: JSON.stringify(request),
-  })
-}
-
 export async function sendTransaction(request: SendRequest): Promise<SendResponse> {
   return fetchApi<SendResponse>('/v1/send', {
     method: 'POST',
     body: JSON.stringify(request),
   })
-}
-
-export async function getTransactionStatus(txHash: string): Promise<TransactionStatusResponse> {
-  return fetchApi<TransactionStatusResponse>(`/v1/status/${txHash}`)
-}
-
-export async function getSupportedChains(): Promise<number[]> {
-  const response = await fetchApi<{ chains: number[] }>('/v1/chains')
-  return response.chains
-}
-
-export async function getSupportedTokens(chainId: number): Promise<string[]> {
-  const response = await fetchApi<{ tokens: string[] }>(`/v1/tokens/${chainId}`)
-  return response.tokens
 }
 
 export interface JBTransactionData {
@@ -142,14 +121,6 @@ export interface JBTransactionResponse {
   txData: JBTransactionData
   estimatedGas: string
   description: string
-}
-
-// Submit a signed transaction
-export async function submitTransaction(signedTx: string, chainId: number): Promise<SendResponse> {
-  return fetchApi<SendResponse>('/v1/submit', {
-    method: 'POST',
-    body: JSON.stringify({ signedTx, chainId }),
-  })
 }
 
 // ============================================================================
@@ -320,48 +291,6 @@ export async function createReviewedForwarderBundle(
  */
 export async function getBalance(appId: string): Promise<BalanceInfo> {
   return fetchApi<BalanceInfo>(`/v1/balance/${appId}`)
-}
-
-/**
- * Get gas usage history for cost tracking and accounting.
- */
-export async function getBalanceUsage(
-  appId: string,
-  options?: { limit?: number; offset?: number; from?: number; to?: number }
-): Promise<{ records: BalanceUsageRecord[]; total: number }> {
-  const params = new URLSearchParams()
-  if (options?.limit) params.set('limit', options.limit.toString())
-  if (options?.offset) params.set('offset', options.offset.toString())
-  if (options?.from) params.set('from', options.from.toString())
-  if (options?.to) params.set('to', options.to.toString())
-  const query = params.toString() ? `?${params.toString()}` : ''
-  return fetchApi(`/v1/balance/${appId}/usage${query}`)
-}
-
-/**
- * Helper to execute omnichain ruleset queue with gas sponsorship.
- * All chains in the bundle are sponsored from the same balance.
- */
-export async function sponsoredOmnichainQueue(
-  appId: string,
-  request: JBOmnichainQueueRequest
-): Promise<{ bundleId: string; txIds: string[]; synchronizedStartTime: number }> {
-  const omnichainResponse = await buildOmnichainQueueRulesetTransactions(request)
-  const bundle = await createBalanceBundle({
-    app_id: appId,
-    transactions: omnichainResponse.transactions.map((tx) => ({
-      chain: tx.txData.chainId,
-      target: tx.txData.to,
-      data: tx.txData.data,
-      value: tx.txData.value,
-    })),
-    virtual_nonce_mode: 'Disabled', // Ensure proper ordering across chains
-  })
-  return {
-    bundleId: bundle.bundle_uuid,
-    txIds: bundle.tx_uuids,
-    synchronizedStartTime: omnichainResponse.synchronizedStartTime,
-  }
 }
 
 // ============================================================================
@@ -535,59 +464,12 @@ export interface BundlePaymentRequest {
 }
 
 /**
- * Create a prepaid bundle for self-custody wallets.
- * User will pay gas on one chain, Relayr executes on all target chains.
- * Returns payment options showing cost per chain.
- */
-export async function createPrepaidBundle(request: PrepaidBundleRequest): Promise<PrepaidBundleResponse> {
-  return fetchApi<PrepaidBundleResponse>('/v1/bundle/prepaid', {
-    method: 'POST',
-    body: JSON.stringify(request),
-  })
-}
-
-/**
  * Get the status of a bundle (works for both prepaid and balance bundles).
  * Poll this to track transaction confirmations across chains.
  */
 export async function getBundleStatus(bundleId: string): Promise<BundleStatusResponse> {
   const raw = await fetchApi<RawBundleResponse>(`/v1/bundle/${bundleId}`)
   return transformBundleResponse(raw)
-}
-
-/**
- * Submit signed payment transaction for a prepaid bundle.
- * Call this after user signs the payment tx on their chosen chain.
- */
-export async function sendBundlePayment(request: BundlePaymentRequest): Promise<void> {
-  await fetchApi<unknown>('/v1/bundle/payment', {
-    method: 'POST',
-    body: JSON.stringify(request),
-  })
-}
-
-/**
- * Helper to build omnichain transactions for prepaid mode.
- * Similar to sponsoredOmnichainQueue but returns prepaid bundle with payment options.
- */
-export async function createPrepaidOmnichainQueue(
-  signerAddress: string,
-  request: JBOmnichainQueueRequest
-): Promise<{ bundle: PrepaidBundleResponse; synchronizedStartTime: number }> {
-  const omnichainResponse = await buildOmnichainQueueRulesetTransactions(request)
-  const bundle = await createPrepaidBundle({
-    signer_address: signerAddress,
-    transactions: omnichainResponse.transactions.map(tx => ({
-      chain: tx.txData.chainId,
-      target: tx.txData.to,
-      data: tx.txData.data,
-      value: tx.txData.value,
-    })),
-  })
-  return {
-    bundle,
-    synchronizedStartTime: omnichainResponse.synchronizedStartTime,
-  }
 }
 
 // ============================================================================
@@ -639,49 +521,6 @@ export function buildOmnichainDistributeTransactions(
   })
 
   return { transactions }
-}
-
-/**
- * Create a prepaid bundle for omnichain distributions.
- */
-export async function createPrepaidOmnichainDistribute(
-  signerAddress: string,
-  request: JBOmnichainDistributeRequest
-): Promise<PrepaidBundleResponse> {
-  const distributeResponse = await buildOmnichainDistributeTransactions(request)
-  return createPrepaidBundle({
-    signer_address: signerAddress,
-    transactions: distributeResponse.transactions.map(tx => ({
-      chain: tx.txData.chainId,
-      target: tx.txData.to,
-      data: tx.txData.data,
-      value: tx.txData.value,
-    })),
-  })
-}
-
-/**
- * Create a sponsored bundle for omnichain distributions.
- */
-export async function sponsoredOmnichainDistribute(
-  appId: string,
-  request: JBOmnichainDistributeRequest
-): Promise<{ bundleId: string; txIds: string[] }> {
-  const distributeResponse = await buildOmnichainDistributeTransactions(request)
-  const bundle = await createBalanceBundle({
-    app_id: appId,
-    transactions: distributeResponse.transactions.map((tx) => ({
-      chain: tx.txData.chainId,
-      target: tx.txData.to,
-      data: tx.txData.data,
-      value: tx.txData.value,
-    })),
-    virtual_nonce_mode: 'Disabled',
-  })
-  return {
-    bundleId: bundle.bundle_uuid,
-    txIds: bundle.tx_uuids,
-  }
 }
 
 // Omnichain ruleset queueing
@@ -783,12 +622,6 @@ export function calculateSynchronizedStartTime(): number {
   return fiveMinutesFromNow
 }
 
-// Build transaction data for the live recognized ruleset queue route.
-// Encoded client-side using viem (no API call needed)
-export function buildQueueRulesetTransaction(request: JBQueueRulesetRequest): JBTransactionResponse {
-  return encodeQueueRulesetTransaction(request)
-}
-
 // ============================================================================
 // Omnichain ERC20 Deployment
 // ============================================================================
@@ -857,54 +690,6 @@ export function buildOmnichainDeployERC20Transactions(
   }
 }
 
-/**
- * Create a prepaid bundle for omnichain ERC20 deployment.
- */
-export async function createPrepaidOmnichainDeployERC20(
-  signerAddress: string,
-  request: JBOmnichainDeployERC20Request
-): Promise<{ bundle: PrepaidBundleResponse; predictedAddress: string }> {
-  const deployResponse = await buildOmnichainDeployERC20Transactions(request)
-  const bundle = await createPrepaidBundle({
-    signer_address: signerAddress,
-    transactions: deployResponse.transactions.map(tx => ({
-      chain: tx.txData.chainId,
-      target: tx.txData.to,
-      data: tx.txData.data,
-      value: tx.txData.value,
-    })),
-  })
-  return {
-    bundle,
-    predictedAddress: deployResponse.predictedAddress,
-  }
-}
-
-/**
- * Create a sponsored bundle for omnichain ERC20 deployment.
- */
-export async function sponsoredOmnichainDeployERC20(
-  appId: string,
-  request: JBOmnichainDeployERC20Request
-): Promise<{ bundleId: string; txIds: string[]; predictedAddress: string }> {
-  const deployResponse = await buildOmnichainDeployERC20Transactions(request)
-  const bundle = await createBalanceBundle({
-    app_id: appId,
-    transactions: deployResponse.transactions.map((tx) => ({
-      chain: tx.txData.chainId,
-      target: tx.txData.to,
-      data: tx.txData.data,
-      value: tx.txData.value,
-    })),
-    virtual_nonce_mode: 'Disabled',
-  })
-  return {
-    bundleId: bundle.bundle_uuid,
-    txIds: bundle.tx_uuids,
-    predictedAddress: deployResponse.predictedAddress,
-  }
-}
-
 // ============================================================================
 // Omnichain Project Launch
 // ============================================================================
@@ -962,69 +747,6 @@ export interface JBLaunchProjectResponse {
   predictedProjectIds: Record<number, number>  // chainId -> predicted project ID
 }
 
-/**
- * Build omnichain project launch transactions.
- * Creates a new project on each specified chain with identical configuration.
- * Encoded client-side using viem (no API call needed)
- */
-export function buildOmnichainLaunchProjectTransactions(
-  request: JBLaunchProjectRequest
-): JBLaunchProjectResponse {
-  const transactions = request.chainIds.map(chainId => {
-    const creationFeeWei = request.creationFeesWei[chainId]
-    if (creationFeeWei === undefined) {
-      throw new Error(`Project creation fee was not verified on chain ${chainId}`)
-    }
-    const txResponse = encodeLaunchProjectTransaction(chainId, {
-      ...request,
-      creationFeeWei,
-    })
-    return {
-      chainId,
-      txData: txResponse.txData,
-      estimatedGas: txResponse.estimatedGas,
-    }
-  })
-
-  // Predicted project IDs would need on-chain query - return placeholders
-  // Actual IDs come from transaction receipts
-  const predictedProjectIds: Record<number, number> = {}
-  request.chainIds.forEach(chainId => {
-    predictedProjectIds[chainId] = 0 // Unknown until the LaunchProject receipt is decoded
-  })
-
-  return {
-    transactions,
-    predictedProjectIds,
-  }
-}
-
-/**
- * Create a sponsored bundle for omnichain project launch.
- * Admin pays gas for all users via balance bundle.
- */
-export async function sponsoredOmnichainLaunchProject(
-  appId: string,
-  request: JBLaunchProjectRequest
-): Promise<{ bundleId: string; txIds: string[]; predictedProjectIds: Record<number, number> }> {
-  const launchResponse = await buildOmnichainLaunchProjectTransactions(request)
-  const bundle = await createBalanceBundle({
-    app_id: appId,
-    transactions: launchResponse.transactions.map((tx) => ({
-      chain: tx.txData.chainId,
-      target: tx.txData.to,
-      data: tx.txData.data,
-      value: tx.txData.value,
-    })),
-    virtual_nonce_mode: 'Disabled',
-  })
-  return {
-    bundleId: bundle.bundle_uuid,
-    txIds: bundle.tx_uuids,
-    predictedProjectIds: launchResponse.predictedProjectIds,
-  }
-}
-
 // ============================================================================
 // Omnichain Revnet Deployment
 // ============================================================================
@@ -1074,6 +796,8 @@ export interface JBDeployRevnetRequest {
   }
   terminalConfigurations?: JBTerminalConfig[]  // Default terminal configs (ETH if not specified)
   chainConfigs?: REVChainConfigOverride[]      // Per-chain overrides for ERC20 tokens
+  /** Bridge infrastructure for auto-generated suckers ("ccip" default). */
+  suckerBridge?: JBSuckerBridge
   /** Include cross-chain suckers in the atomic deployFor call. */
   configureSuckers?: boolean
   suckerDeploymentConfiguration?: REVSuckerDeploymentConfig
@@ -1232,6 +956,7 @@ export function buildOmnichainDeployRevnetTransactions(
       const generatedConfig = parseSuckerDeployerConfig(chainId, chainIds, {
         salt: sharedSalt,
         tokenAddresses: hasTokenAddresses ? tokenAddresses : undefined,
+        bridge: request.suckerBridge,
       })
       suckerConfig = {
         deployerConfigurations: generatedConfig.deployerConfigurations.map((dc: { deployer: string; peer: string; mappings: Array<{ localToken: string; minGas: number; remoteToken: string }> }) => ({
@@ -1283,33 +1008,6 @@ export function buildOmnichainDeployRevnetTransactions(
   }
 }
 
-/**
- * Create a sponsored bundle for omnichain revnet deployment.
- * Admin pays gas for all users via balance bundle.
- */
-export async function sponsoredOmnichainDeployRevnet(
-  appId: string,
-  request: JBDeployRevnetRequest
-): Promise<{ bundleId: string; txIds: string[]; predictedProjectIds: Record<number, number>; predictedTokenAddress: string }> {
-  const deployResponse = await buildOmnichainDeployRevnetTransactions(request)
-  const bundle = await createBalanceBundle({
-    app_id: appId,
-    transactions: deployResponse.transactions.map((tx) => ({
-      chain: tx.txData.chainId,
-      target: tx.txData.to,
-      data: tx.txData.data,
-      value: tx.txData.value,
-    })),
-    virtual_nonce_mode: 'Disabled',
-  })
-  return {
-    bundleId: bundle.bundle_uuid,
-    txIds: bundle.tx_uuids,
-    predictedProjectIds: deployResponse.predictedProjectIds,
-    predictedTokenAddress: deployResponse.predictedTokenAddress,
-  }
-}
-
 // Build omnichain queue ruleset transactions with synchronized start time
 export async function buildOmnichainQueueRulesetTransactions(
   request: JBOmnichainQueueRequest
@@ -1337,7 +1035,7 @@ export async function buildOmnichainQueueRulesetTransactions(
     if (!queueTarget) {
       throw new Error(`Ruleset queue target missing for chain ${chainId}`)
     }
-    const response = await buildQueueRulesetTransaction({
+    const response = encodeQueueRulesetTransaction({
       chainId,
       projectId,
       queueTarget,

@@ -172,27 +172,6 @@ export const CONNECTED_CHAINS_QUERY = `
   }
 `
 
-// Query to get suckerGroup with balance and payments info for total calculations
-export const SUCKER_GROUP_BALANCE_QUERY = `
-  query SuckerGroupBalance($projectId: Float!, $chainId: Float!, $version: Float!) {
-    project(projectId: $projectId, chainId: $chainId, version: $version) {
-      id
-      balance
-      paymentsCount
-      suckerGroup {
-        projects {
-          items {
-            projectId
-            chainId
-            balance
-            paymentsCount
-          }
-        }
-      }
-    }
-  }
-`
-
 // Query project-token owners across one or more chains. Bendystraw's V6
 // participant resolver requires the versioned `chainId_in` shape used by
 // website/; its singular `chainId` filter currently fails at runtime.

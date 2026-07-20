@@ -828,6 +828,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                     projectId={String(projectId)}
                     chainId={String(chainId)}
                     isOwner={isOwner}
+                    onDeployErc20={() => setActiveModal('deployErc20')}
                   />
                 )}
 
@@ -1514,6 +1515,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
             projectId={String(projectId)}
             chainId={String(chainId)}
             isOwner={isOwner}
+            onDeployErc20={() => setActiveModal('deployErc20')}
           />
         )}
 

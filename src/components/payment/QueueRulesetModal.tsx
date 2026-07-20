@@ -13,7 +13,7 @@ import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { verifyQueueRulesetParams } from '../../utils/transactionVerification'
 import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
-import { RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
+import { EXPLORER_URLS, RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
 import {
   assertRulesetConfigurationTrusted,
   resolveRulesetQueueRoute,
@@ -23,6 +23,9 @@ import {
   assertRulesetConfigurationSafe,
 } from '../../utils/rulesetSafety'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
+import { txErrorMessage } from '../../utils/txErrors'
+import CopyTxButton from './CopyTxButton'
+import { buildTxLinkEntries } from '../../utils/txlink'
 
 // ABI for queueRulesetsOf
 const CONTROLLER_QUEUE_RULESETS_ABI = [
@@ -122,13 +125,6 @@ const CHAIN_INFO: Record<number, { name: string; shortName: string; color: strin
   10: { name: 'Optimism', shortName: 'OP', color: '#FF0420' },
   8453: { name: 'Base', shortName: 'BASE', color: '#0052FF' },
   42161: { name: 'Arbitrum', shortName: 'ARB', color: '#28A0F0' },
-}
-
-const EXPLORER_URLS: Record<number, string> = {
-  1: 'https://etherscan.io/tx/',
-  10: 'https://optimistic.etherscan.io/tx/',
-  8453: 'https://basescan.org/tx/',
-  42161: 'https://arbiscan.io/tx/',
 }
 
 interface ChainRulesetData {
@@ -288,6 +284,7 @@ export default function QueueRulesetModal({
         })
         onConfirmed?.(txHashes)
       }
+      window.dispatchEvent(new CustomEvent('juice:project-data-invalidated'))
     } else if (anyFailed) {
       const failedChain = useOmnichain
         ? bundleState.chainStates.find(cs => cs.status === 'failed')
@@ -563,8 +560,7 @@ export default function QueueRulesetModal({
 
       return hash
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Transaction failed'
-      updateChainState(chainData.chainId, { status: 'failed', error: errorMessage })
+      updateChainState(chainData.chainId, { status: 'failed', error: txErrorMessage(err, 'Transaction failed') })
       throw err
     }
   }, [walletClient, address, memo, buildRulesetArgs, addTransaction, updateTransaction, updateChainState, switchChainAsync, isManagedMode, managedAddress, validateFreshChainConfiguration, assertCurrentAccount])
@@ -639,7 +635,7 @@ export default function QueueRulesetModal({
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={!isStarted || allCompleted ? handleClose : undefined}
+        onClick={!isStarted || allCompleted || Boolean(controllerError) ? handleClose : undefined}
       />
 
       {/* Modal */}
@@ -675,7 +671,7 @@ export default function QueueRulesetModal({
               </p>
             </div>
           </div>
-          {(!isStarted || allCompleted) && (
+          {(!isStarted || allCompleted || Boolean(controllerError)) && (
             <button
               onClick={handleClose}
               className={`p-2 transition-colors ${
@@ -901,6 +897,26 @@ export default function QueueRulesetModal({
         {/* Footer */}
         <div className={`px-5 py-4 border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
           {!isStarted && (
+            <>
+              <div className="mb-3 flex justify-end">
+                <CopyTxButton
+                  isDark={isDark}
+                  disabled={useOmnichain}
+                  disabledReason="Omnichain queues execute through a Relayr bundle, so a single shareable transaction cannot reproduce them."
+                  getEntries={async () => {
+                    const perChain = await Promise.all(chainRulesetData.map(async (chainData) => {
+                      const queueTarget = await validateFreshChainConfiguration(chainData)
+                      const data = encodeFunctionData({
+                        abi: CONTROLLER_QUEUE_RULESETS_ABI,
+                        functionName: 'queueRulesetsOf',
+                        args: [BigInt(chainData.projectId), buildRulesetArgs(chainData.chainId), memo],
+                      })
+                      return buildTxLinkEntries({ chainId: chainData.chainId, to: queueTarget, data, value: 0n })
+                    }))
+                    return perChain.flat()
+                  }}
+                />
+              </div>
             <div className="flex gap-3">
               <button
                 onClick={handleClose}
@@ -920,6 +936,7 @@ export default function QueueRulesetModal({
                 Queue{isOmnichain ? ` on ${chainRulesetData.length} Chains` : ''}
               </button>
             </div>
+            </>
           )}
 
           {isStarted && !allCompleted && !isExecuting && (

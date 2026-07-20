@@ -6,19 +6,13 @@ import { useManagedWallet } from '../../hooks'
 import { useOmnichainSetUri, type ChainState } from '../../hooks/relayr'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
+import { EXPLORER_URLS } from '../../constants'
 
 const CHAIN_INFO: Record<number, { name: string; shortName: string; color: string }> = {
   1: { name: 'Ethereum', shortName: 'ETH', color: '#627EEA' },
   10: { name: 'Optimism', shortName: 'OP', color: '#FF0420' },
   8453: { name: 'Base', shortName: 'BASE', color: '#0052FF' },
   42161: { name: 'Arbitrum', shortName: 'ARB', color: '#28A0F0' },
-}
-
-const EXPLORER_URLS: Record<number, string> = {
-  1: 'https://etherscan.io/tx/',
-  10: 'https://optimistic.etherscan.io/tx/',
-  8453: 'https://basescan.org/tx/',
-  42161: 'https://arbiscan.io/tx/',
 }
 
 interface ChainProjectData {

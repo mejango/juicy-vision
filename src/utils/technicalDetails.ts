@@ -370,23 +370,3 @@ export function getParamTooltip(name: string): string | undefined {
   return undefined
 }
 
-// Contract names for display
-export const CONTRACT_NAMES: Record<string, string> = {
-  JB_MULTI_TERMINAL: 'JBMultiTerminal',
-  JB_CONTROLLER: 'JBController',
-  JB_PROJECTS: 'JBProjects',
-  JB_TOKENS: 'JBTokens',
-  JB_SPLITS: 'JBSplits',
-  REV_DEPLOYER: 'REVDeployer',
-}
-
-// Function signatures for common operations
-export const FUNCTION_SIGNATURES: Record<string, string> = {
-  pay: 'pay(uint256 projectId, address token, uint256 amount, address beneficiary, uint256 minReturnedTokens, string memo, bytes metadata)',
-  cashOutTokensOf: 'cashOutTokensOf(address holder, uint256 projectId, uint256 cashOutCount, address tokenToReclaim, uint256 minTokensReclaimed, address beneficiary, bytes metadata)',
-  useAllowanceOf: 'useAllowanceOf(uint256 projectId, address token, uint256 amount, uint256 currency, uint256 minTokensPaidOut, address beneficiary, address feeBeneficiary, string memo)',
-  deployERC20For: 'deployERC20For(uint256 projectId, string name, string symbol, bytes32 salt)',
-  sendPayoutsOf: 'sendPayoutsOf(uint256 projectId, address token, uint256 amount, uint256 currency, uint256 minTokensPaidOut)',
-  queueRulesetsOf: 'queueRulesetsOf(uint256 projectId, JBRulesetConfig[] rulesetConfigurations, string memo)',
-  launchProjectFor: 'launchProjectFor(address owner, JBProjectMetadata projectMetadata, JBRulesetConfig[] rulesetConfigurations, JBTerminalConfig[] terminalConfigurations, string memo)',
-}

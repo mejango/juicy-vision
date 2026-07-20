@@ -125,19 +125,6 @@ export const JB721TierStoreAbi = [
 ] as const
 
 /**
- * JBDirectory ABI (to get data hook for a project)
- */
-export const JBDirectoryDataHookAbi = [
-  {
-    name: 'controllerOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'projectId', type: 'uint256' }],
-    outputs: [{ name: '', type: 'address' }],
-  },
-] as const
-
-/**
  * JBController ABI (to get ruleset with data hook) - Juicebox V6.
  * V6 renamed useTotalSurplusForCashOuts -> scopeCashOutsToLocalBalances.
  */

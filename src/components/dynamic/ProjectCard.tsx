@@ -51,11 +51,13 @@ function isSupportedTierCurrency(currency: number): boolean {
   return isEthTierCurrency(currency) || isUsdTierCurrency(currency)
 }
 
-function formatTierPrice(tier: ResolvedNFTTier): string {
+function formatTierPrice(tier: ResolvedNFTTier, symbolByCurrency?: Record<number, string>): string {
   const amount = formatUnits(getEffectiveTierPrice(tier), tier.pricingDecimals)
   if (isUsdTierCurrency(tier.currency)) return `$${amount}`
   if (isEthTierCurrency(tier.currency)) return `${amount} ETH`
-  return 'Pricing unavailable'
+  // Custom accounting-token pricing: the price is known even when in-app purchase is unsupported.
+  const symbol = symbolByCurrency?.[tier.currency]
+  return symbol ? `${amount} ${symbol}` : 'Pricing unavailable'
 }
 
 // Small component for tier preview images with on-chain fallback
@@ -131,11 +133,11 @@ function TierPreviewImage({
   }
 
   if (hasIpfsImage && tier.imageUri) {
-    return <IpfsImage uri={tier.imageUri} alt="" className={`${sizeClass} object-contain bg-white`} onError={() => setIpfsUnavailable(true)} />
+    return <IpfsImage uri={tier.imageUri} alt="" className={`${sizeClass} object-cover`} onError={() => setIpfsUnavailable(true)} />
   }
 
   if (onChainImage) {
-    return <IpfsImage uri={onChainImage} alt="" className={`${sizeClass} object-contain bg-white`} />
+    return <IpfsImage uri={onChainImage} alt="" className={`${sizeClass} object-cover`} />
   }
 
   return (
@@ -397,6 +399,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const [paymentSafetyError, setPaymentSafetyError] = useState<string | null>(null)
   const [paymentSafetyLoading, setPaymentSafetyLoading] = useState(true)
   const [paymentTokenOptions, setPaymentTokenOptions] = useState<PaymentTokenOption[]>([])
+  const [accountingSymbolByCurrency, setAccountingSymbolByCurrency] = useState<Record<number, string>>({})
   // Track quantity for each selected tier: { tierId: quantity }
   const [tierQuantities, setTierQuantities] = useState<Record<number, number>>({})
   // Derived: array of tier IDs (each ID repeated by quantity) for payment encoding
@@ -655,6 +658,19 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
               if (terminal.type === 'multi' && !directContext) {
                 throw new Error(`${candidate.symbol} is not a live accounting context`)
               }
+              if (terminal.type === 'router') {
+                // The router registry answers primaryTerminalOf even for tokens it cannot
+                // actually swap-route; only a previewPayFor probe proves a live route.
+                const probeAmount = 10n ** BigInt(candidate.decimals)
+                await client.readContract({
+                  address: terminal.address,
+                  abi: TERMINAL_PREVIEW_PAY_ABI,
+                  functionName: 'previewPayFor',
+                  args: [BigInt(currentProjectId), tokenAddress, probeAmount, PREVIEW_BENEFICIARY, '0x'],
+                }).catch(() => {
+                  throw new Error('This project does not accept the selected payment token')
+                })
+              }
               return {
                 symbol: candidate.symbol,
                 name: candidate.name,
@@ -691,6 +707,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         if (!cancelled) {
           setPaymentTokenOptions(options)
           setSelectedToken((current) => (options.some((option) => option.symbol === current) ? current : options[0].symbol))
+          setAccountingSymbolByCurrency(Object.fromEntries(accountingContexts.map((context) => [context.currency, context.symbol])))
         }
       } catch (err) {
         if (!cancelled) {
@@ -808,9 +825,6 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
           reservedTokenCount: preview[2],
           hookSpecifications: preview[3],
         })
-        if (outcome.beneficiaryTokenCount <= 0n && selectedTierIds.length === 0) {
-          throw new Error('This payment currently returns no project tokens')
-        }
         if (!cancelled) {
           setPayPreview({
             status: 'ready',
@@ -1125,40 +1139,50 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
     }
 
     const tokenSymbol = projectTokenSymbol || project?.name.split(' ')[0].toUpperCase().slice(0, 6) || 'TOKENS'
+    // A verified zero-issuance quote is a valid payment; skip the "0 tokens" output.
+    const issuesTokens = payPreview.beneficiaryTokenCount > 0n || payPreview.reservedTokenCount > 0n
     return (
       <div className={`mt-4 min-w-0 text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`} aria-live="polite">
-        <div className={`text-xs ${muted}`}>You get</div>
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() =>
-              window.dispatchEvent(
-                new CustomEvent('juice:switch-tab', {
-                  detail: { tab: 'tokens' },
-                }),
-              )
-            }
-            className={`min-w-0 break-all text-left text-lg font-semibold hover:underline ${
-              isDark ? 'text-white hover:text-juice-cyan' : 'text-gray-900 hover:text-juice-orange'
-            }`}
-          >
-            {formatExactTokenEstimate(payPreview.beneficiaryTokenCount)} {tokenSymbol}
-          </button>
-          <span className={`shrink-0 border px-2 py-0.5 text-[10px] font-semibold uppercase ${
-            payPreview.route === 'amm'
-              ? isDark
-                ? 'border-purple-400/40 text-purple-300'
-                : 'border-purple-300 text-purple-700'
-              : isDark
-                ? 'border-gray-500 text-gray-300'
-                : 'border-gray-300 text-gray-700'
-          }`}>
-            {payPreview.route}
-          </span>
-        </div>
-        {payPreview.reservedTokenCount > 0n && (
-          <div className={`mt-1 break-all text-xs font-medium ${muted}`}>
-            Splits get {formatExactTokenEstimate(payPreview.reservedTokenCount)} {tokenSymbol}
+        {issuesTokens ? (
+          <>
+            <div className={`text-xs ${muted}`}>You get</div>
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() =>
+                  window.dispatchEvent(
+                    new CustomEvent('juice:switch-tab', {
+                      detail: { tab: 'tokens' },
+                    }),
+                  )
+                }
+                className={`min-w-0 break-all text-left text-lg font-semibold hover:underline ${
+                  isDark ? 'text-white hover:text-juice-cyan' : 'text-gray-900 hover:text-juice-orange'
+                }`}
+              >
+                {formatExactTokenEstimate(payPreview.beneficiaryTokenCount)} {tokenSymbol}
+              </button>
+              <span className={`shrink-0 border px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                payPreview.route === 'amm'
+                  ? isDark
+                    ? 'border-purple-400/40 text-purple-300'
+                    : 'border-purple-300 text-purple-700'
+                  : isDark
+                    ? 'border-gray-500 text-gray-300'
+                    : 'border-gray-300 text-gray-700'
+              }`}>
+                {payPreview.route}
+              </span>
+            </div>
+            {payPreview.reservedTokenCount > 0n && (
+              <div className={`mt-1 break-all text-xs font-medium ${muted}`}>
+                Splits get {formatExactTokenEstimate(payPreview.reservedTokenCount)} {tokenSymbol}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className={`text-xs ${muted}`}>
+            This payment supports the project{Object.keys(tierQuantities).length > 0 ? ' and mints your items' : ''} without issuing project tokens.
           </div>
         )}
         <div className={`mt-1 text-[10px] ${muted}`}>Live preview · exact minimum checked before signing.</div>
@@ -1634,7 +1658,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                       </div>
                       <div className="p-1.5 text-left">
                         <div className={`text-[10px] font-medium truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>{getTierDisplayName(tier)}</div>
-                        <div className={`text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{formatTierPrice(tier)}</div>
+                        <div className={`truncate text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{formatTierPrice(tier, accountingSymbolByCurrency)}</div>
                       </div>
                       {/* Quantity controls when selected */}
                       {isSelected && (
@@ -2099,7 +2123,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                       </div>
                       <div className="p-1.5 text-left">
                         <div className={`text-[10px] font-medium truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>{getTierDisplayName(tier)}</div>
-                        <div className={`text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{formatTierPrice(tier)}</div>
+                        <div className={`truncate text-[10px] ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{formatTierPrice(tier, accountingSymbolByCurrency)}</div>
                       </div>
                       {/* Quantity controls when selected */}
                       {isSelected && (

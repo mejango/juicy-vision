@@ -93,8 +93,8 @@ export default function TrendingProjects({ onProjectClick }: TrendingProjectsPro
           key={row.projectId}
           type="button"
           onClick={() => handleClick(row)}
-          className={`w-full flex items-center gap-2.5 py-2 text-left transition-colors ${
-            isDark ? 'hover:bg-white/5' : 'hover:bg-gray-50'
+          className={`flex items-center gap-2.5 px-3 py-3 -mx-4 border-b text-left transition-colors ${
+            isDark ? 'border-white/10 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-50'
           }`}
         >
           <span className={`text-xs w-4 text-right shrink-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -104,11 +104,11 @@ export default function TrendingProjects({ onProjectClick }: TrendingProjectsPro
             <img
               src={row.logoUri.replace('ipfs://', 'https://ipfs.io/ipfs/')}
               alt=""
-              className="w-6 h-6 object-cover shrink-0"
+              className="w-10 h-10 object-cover shrink-0"
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
             />
           ) : (
-            <span className={`w-6 h-6 shrink-0 flex items-center justify-center text-xs ${isDark ? 'bg-white/10 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
+            <span className={`w-10 h-10 shrink-0 flex items-center justify-center text-sm ${isDark ? 'bg-white/10 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
               {row.name.slice(0, 1).toUpperCase()}
             </span>
           )}
@@ -116,7 +116,6 @@ export default function TrendingProjects({ onProjectClick }: TrendingProjectsPro
             <span className={`block text-xs truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>{row.name}</span>
             <span className={`block text-[11px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
               {row.payments} payment{row.payments === 1 ? '' : 's'}
-              {row.chainIds.length > 1 ? ` · ${row.chainIds.length} chains` : ''}
             </span>
           </span>
         </button>

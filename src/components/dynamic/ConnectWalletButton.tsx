@@ -1,7 +1,7 @@
 import { useAccount } from 'wagmi'
 import { formatEther } from 'viem'
 import { Button } from '../ui'
-import { useWalletBalances } from '../../hooks'
+import { useWalletBalances, useManagedWallet } from '../../hooks'
 
 interface ConnectWalletButtonProps {
   onConnect?: () => void
@@ -14,15 +14,21 @@ function openWalletPanel() {
 
 export default function ConnectWalletButton({ onConnect }: ConnectWalletButtonProps) {
   const { isConnected } = useAccount()
-  const { totalEth, totalUsdc, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
+  // Managed (passkey/email) accounts are active without a wagmi connection
+  const { address: managedAddress, isManagedMode } = useManagedWallet()
+  const isManagedActive = !isConnected && isManagedMode
+  const isAccountActive = isConnected || isManagedActive
+  const { totalEth, totalUsdc, loading: balancesLoading, available: balancesAvailable } = useWalletBalances(
+    isManagedActive ? managedAddress ?? undefined : undefined
+  )
 
   // Convert bigint to numbers for comparison
   const ethNumber = parseFloat(formatEther(totalEth))
   const usdcNumber = Number(totalUsdc) / 1e6
 
   // Connection states
-  const hasNoFunds = isConnected && !balancesLoading && balancesAvailable && ethNumber < 0.0001 && usdcNumber < 1
-  const hasFunds = isConnected && !balancesLoading && balancesAvailable && (ethNumber >= 0.0001 || usdcNumber >= 1)
+  const hasNoFunds = isAccountActive && !balancesLoading && balancesAvailable && ethNumber < 0.0001 && usdcNumber < 1
+  const hasFunds = isAccountActive && !balancesLoading && balancesAvailable && (ethNumber >= 0.0001 || usdcNumber >= 1)
 
   const handleClick = () => {
     openWalletPanel()
@@ -47,8 +53,12 @@ export default function ConnectWalletButton({ onConnect }: ConnectWalletButtonPr
 
   // Get button text and icon based on state
   const getButtonContent = () => {
-    if (!isConnected) {
+    if (!isAccountActive) {
       return { text: 'Connect Account', icon: walletIcon }
+    }
+
+    if (isManagedActive && !managedAddress) {
+      return { text: 'Account', icon: walletIcon }
     }
 
     if (balancesLoading) {
@@ -75,7 +85,7 @@ export default function ConnectWalletButton({ onConnect }: ConnectWalletButtonPr
       return { text: balanceText, icon: walletIcon }
     }
 
-    return { text: 'Connect Account', icon: walletIcon }
+    return { text: 'Account', icon: walletIcon }
   }
 
   const { text, icon } = getButtonContent()

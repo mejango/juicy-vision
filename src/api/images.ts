@@ -100,39 +100,3 @@ export async function generateTierImage(
   })
 }
 
-/**
- * Generate an AI image from a direct prompt.
- * Use this when you want full control over the image prompt.
- *
- * @param prompt - Full prompt for image generation
- * @returns Generated image with IPFS URI and HTTP URL
- */
-export async function generateImageFromPrompt(prompt: string): Promise<GeneratedImage> {
-  return apiRequest<GeneratedImage>('/images/generate', {
-    method: 'POST',
-    body: JSON.stringify({ prompt }),
-  })
-}
-
-/**
- * Generate a project logo image.
- *
- * @param projectName - Name of the project
- * @param projectDescription - Optional description of the project
- * @returns Generated image with IPFS URI and HTTP URL
- */
-export async function generateProjectLogo(
-  projectName: string,
-  projectDescription?: string
-): Promise<GeneratedImage> {
-  return apiRequest<GeneratedImage>('/images/generate', {
-    method: 'POST',
-    body: JSON.stringify({
-      context: {
-        name: `${projectName} Logo`,
-        description: projectDescription,
-        style: 'digital-art',
-      },
-    }),
-  })
-}

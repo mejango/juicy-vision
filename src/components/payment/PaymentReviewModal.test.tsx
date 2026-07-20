@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import PaymentReviewModal from './PaymentReviewModal'
 import { requestPaymentReview, type PaymentReview } from '../../utils/paymentReview'
+import { parseTxLinkUrl } from '../../utils/txlink'
 
 vi.mock('../../stores', () => ({
   useThemeStore: () => ({ theme: 'light' }),
@@ -60,6 +61,33 @@ describe('PaymentReviewModal', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Continue to wallet' }))
     await expect(result).resolves.toBe(true)
+  })
+
+  it('copies txlink URLs reproducing the approval and the exact reviewed terminal call', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    render(<PaymentReviewModal />)
+    await act(async () => {
+      requestPaymentReview(review)
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy tx' }))
+    await screen.findByRole('button', { name: 'Copied 2 tx links' })
+
+    const lines = (writeText.mock.calls[0][0] as string).split('\n')
+    expect(lines).toHaveLength(2)
+    expect(parseTxLinkUrl(lines[0])).toEqual({
+      chainId: review.chainId,
+      to: review.approval!.token,
+      data: review.approval!.callData,
+      value: 0n,
+    })
+    expect(parseTxLinkUrl(lines[1])).toEqual({
+      chainId: review.chainId,
+      to: review.terminal,
+      data: review.callData,
+      value: 0n,
+    })
   })
 
   it('cancels without approving the request', async () => {

@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores'
 import { createInvite, type ChatInvite, type CreateInviteParams } from '../../services/chat'
+import { copyToClipboard } from '../../utils/clipboard'
 
 export interface AnchorPosition {
   top: number
@@ -101,19 +102,7 @@ export default function InviteModal({
 
   const handleCopy = async () => {
     if (!invite?.inviteUrl) return
-
-    try {
-      await navigator.clipboard.writeText(invite.inviteUrl)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // Fallback for browsers that don't support clipboard API
-      const textarea = document.createElement('textarea')
-      textarea.value = invite.inviteUrl
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand('copy')
-      document.body.removeChild(textarea)
+    if (await copyToClipboard(invite.inviteUrl)) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     }

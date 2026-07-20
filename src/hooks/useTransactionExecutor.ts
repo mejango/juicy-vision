@@ -16,6 +16,7 @@ import { createTransactionRecord, updateTransactionRecord, type TransactionRecei
 import { resolvePayPreviewOutcome, TERMINAL_PREVIEW_PAY_ABI } from '../utils/terminalPreview'
 import { executeManagedTransaction, useManagedWallet } from './useManagedWallet'
 import { buildNftPayMetadata } from '../utils/nftPayMetadata'
+import { friendlyTransactionError } from '../utils/txErrors'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
@@ -313,15 +314,16 @@ export function useTransactionExecutor() {
         const message = error instanceof Error ? error.message : String(error)
         const cancelled = /rejected|denied|cancelled/i.test(message)
         const status = cancelled ? 'cancelled' : 'failed'
+        const failureMessage = friendlyTransactionError(error) ?? message.slice(0, 100)
         updateTransaction(txId, {
           status,
           stage: undefined,
-          error: cancelled ? 'Transaction cancelled' : message.slice(0, 100),
+          error: cancelled ? 'Transaction cancelled' : failureMessage,
         })
         if (backendTxId) {
           updateTransactionRecord(backendTxId, {
             status,
-            errorMessage: cancelled ? 'Transaction cancelled' : message.slice(0, 100),
+            errorMessage: cancelled ? 'Transaction cancelled' : failureMessage,
           }).catch(() => {})
         }
       }
@@ -659,11 +661,11 @@ export function useTransactionExecutor() {
           reservedTokenCount: reviewedPreview[2],
           hookSpecifications: reviewedPreview[3],
         })
+        // A verified zero quote is a legitimate payment (zero-issuance project or
+        // NFT-only purchase); only an unavailable preview blocks submission.
+        // resolvePayPreviewOutcome already yields minReturnedTokens = 0 for a zero quote.
         const reviewedTokens = reviewedOutcome.beneficiaryTokenCount
-        if (reviewedTokens === 0n && !verifiedNFTSelection) {
-          throw new Error('The payment quote returns no project tokens')
-        }
-        const reviewedMinimum = reviewedTokens === 0n ? 0n : reviewedOutcome.minReturnedTokens
+        const reviewedMinimum = reviewedOutcome.minReturnedTokens
 
         await assertSufficientLiveBalances()
 

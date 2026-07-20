@@ -1,11 +1,13 @@
 import { GraphQLClient, RequestDocument, Variables } from 'graphql-request'
-import { createPublicClient, http, isAddress } from 'viem'
+import { createPublicClient, erc20Abi, http, isAddress } from 'viem'
 import { useSettingsStore, useDebugStore } from '../../stores'
 import { VIEM_CHAINS, ZERO_ADDRESS, REV_OWNER, JB_CONTRACTS, JB_ROUTER_TERMINAL, JB_ROUTER_TERMINAL_REGISTRY, RPC_ENDPOINTS, USDC_ADDRESSES, MAINNET_VIEM_CHAINS, MAINNET_RPC_ENDPOINTS, NATIVE_TOKEN, type SupportedChainId } from '../../constants'
 import { fetchIpfsMetadata } from '../../utils/ipfs'
 import { IS_TESTNET } from '../../config/environment'
 import { createCache, CACHE_DURATIONS, bendystrawCircuit } from '../../utils'
 import { getPaymentTerminal } from '../../utils/paymentTerminal'
+import { sanitizeTokenLabel } from '../../utils/erc20Safety'
+import { truncateAddress } from '../../utils/ens'
 import { requireRecognizedRuntimeSplitHook } from '../../utils/projectTrust'
 import { decodeRecognizedLaunchProjectLog } from '../../utils/launchReceipt'
 import { deriveCycledWeight } from '../../utils/rulesetMath'
@@ -1068,14 +1070,15 @@ export interface ProjectAccountingContext {
   token: `0x${string}`
   decimals: number
   currency: number
-  symbol: 'ETH' | 'USDC'
+  symbol: string
+  isNative: boolean
   balance: bigint
 }
 
 /**
  * Resolve the accounting assets a project actually holds from JBDirectory.
- * This is intentionally strict: simplified treasury actions support only the
- * recognized multi terminal and canonical native/USDC accounting contexts.
+ * Terminals stay strict (recognized multi terminal only); accounting tokens can
+ * be native ETH, canonical USDC, or any ERC-20 whose metadata resolves on-chain.
  */
 export async function fetchProjectAccountingContexts(
   projectId: string,
@@ -1124,12 +1127,40 @@ export async function fetchProjectAccountingContexts(
     const token = context.token.toLowerCase()
     const isNative = token === NATIVE_TOKEN.toLowerCase()
     const isUsdc = !!canonicalUsdc && token === canonicalUsdc
-    if (!isNative && !isUsdc) throw new Error(`Accounting token not recognized: ${context.token}`)
 
-    const expectedDecimals = isNative ? 18 : 6
-    const expectedCurrency = Number(BigInt(context.token) & 0xffff_ffffn)
-    if (Number(context.decimals) !== expectedDecimals || Number(context.currency) !== expectedCurrency) {
-      throw new Error(`Accounting context is not recognized for token: ${context.token}`)
+    const contextDecimals = Number(context.decimals)
+    const contextCurrency = Number(context.currency)
+    const tokenKeyedCurrency = Number(BigInt(context.token) & 0xffff_ffffn)
+
+    let symbol: string
+    if (isNative) {
+      // Native ETH: currency ids 1 and 61166 both mean native.
+      if (contextDecimals !== 18 || (contextCurrency !== 1 && contextCurrency !== tokenKeyedCurrency)) {
+        throw new Error(`Accounting context is not recognized for token: ${context.token}`)
+      }
+      symbol = 'ETH'
+    } else if (isUsdc) {
+      if (contextDecimals !== 6 || contextCurrency !== tokenKeyedCurrency) {
+        throw new Error(`Accounting context is not recognized for token: ${context.token}`)
+      }
+      symbol = 'USDC'
+    } else {
+      if (contextCurrency !== tokenKeyedCurrency) {
+        throw new Error(`Accounting context is not recognized for token: ${context.token}`)
+      }
+      const [symbolResult, nameResult, decimalsResult] = await Promise.allSettled([
+        publicClient.readContract({ address: context.token, abi: erc20Abi, functionName: 'symbol' }),
+        publicClient.readContract({ address: context.token, abi: erc20Abi, functionName: 'name' }),
+        publicClient.readContract({ address: context.token, abi: erc20Abi, functionName: 'decimals' }),
+      ])
+      if (decimalsResult.status === 'fulfilled' && Number(decimalsResult.value) !== contextDecimals) {
+        throw new Error(
+          `Accounting token decimals mismatch for ${context.token}: context has ${contextDecimals}, token reports ${Number(decimalsResult.value)}`,
+        )
+      }
+      symbol = sanitizeTokenLabel(symbolResult.status === 'fulfilled' ? symbolResult.value : null)
+        ?? sanitizeTokenLabel(nameResult.status === 'fulfilled' ? nameResult.value : null)
+        ?? truncateAddress(context.token)
     }
 
     const accountingTerminal = await getPaymentTerminal(
@@ -1152,9 +1183,10 @@ export async function fetchProjectAccountingContexts(
     return {
       terminal: multiTerminal,
       token: context.token,
-      decimals: expectedDecimals,
-      currency: expectedCurrency,
-      symbol: isNative ? 'ETH' as const : 'USDC' as const,
+      decimals: contextDecimals,
+      currency: contextCurrency,
+      symbol,
+      isNative,
       balance,
     }
   }))
@@ -3883,6 +3915,29 @@ export function calculateCashOutValue(
 
   const curvedRate = (rate * cashOutCount) / totalSupply
   return (base * (MAX_CASH_OUT_TAX_RATE - rate + curvedRate)) / MAX_CASH_OUT_TAX_RATE
+}
+
+// The floor's asymptote: (1 − tax) × balance ÷ supply — the 1-token cash-out return without
+// the own-share bonus. The live quote approaches it from above as supply grows; payments can
+// only raise it, only payouts lower it.
+export function calculateFloorMinPrice(
+  balance: bigint,
+  totalSupply: bigint,
+  cashOutTaxRate: number, // 0-10000 basis points
+  balanceDecimals: number = 18 // 18 for ETH, 6 for USDC
+): number {
+  if (
+    balance <= 0n
+    || totalSupply <= 0n
+    || !Number.isInteger(cashOutTaxRate)
+    || cashOutTaxRate < 0
+    || cashOutTaxRate >= Number(MAX_CASH_OUT_TAX_RATE)
+  ) return 0
+
+  const oneToken = 10n ** 18n
+  const rate = BigInt(cashOutTaxRate)
+  const rawValue = (balance * oneToken * (MAX_CASH_OUT_TAX_RATE - rate)) / (totalSupply * MAX_CASH_OUT_TAX_RATE)
+  return Number(rawValue) / Math.pow(10, balanceDecimals)
 }
 
 // Calculate the contract-equivalent baseline return for one 18-decimal project token.

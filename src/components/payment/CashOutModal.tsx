@@ -7,6 +7,7 @@ import { type JBChainId } from '@bananapus/nana-sdk-core'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
+import { txErrorMessage } from '../../utils/txErrors'
 import { GasBalanceStatus } from './GasBalanceStatus'
 import { ALL_VIEM_CHAINS, CHAINS as CHAIN_INFO, JB_CONTRACTS, MAINNET_CHAINS, RPC_ENDPOINTS } from '../../constants'
 import TechnicalDetails from '../shared/TechnicalDetails'
@@ -124,7 +125,7 @@ interface CashOutModalProps {
   cashOutTaxRate?: number
   reclaimToken: Address
   reclaimTokenDecimals: number
-  currencySymbol: 'ETH' | 'USDC'
+  currencySymbol: string
   expectedTerminal: Address
   // Transaction status callbacks for persistence
   onSubmitted?: (txHash: string) => void
@@ -196,7 +197,7 @@ export default function CashOutModal({
   const previewReturnFloat = previewOutcome ? Number(formatUnits(previewOutcome.expectedReturn, reclaimTokenDecimals)) : null
   const minimumReturnFloat = previewOutcome && previewOutcome.minimumReturn > 0n ? Number(formatUnits(previewOutcome.minimumReturn, reclaimTokenDecimals)) : null
   const displayedReturn = previewReturnFloat
-  const returnDecimals = currencySymbol === 'USDC' ? 2 : 4
+  const returnDecimals = reclaimTokenDecimals <= 6 ? 2 : 4
 
   // Verify transaction parameters
   const activeAddress = isManagedMode ? managedAddress : address
@@ -486,7 +487,7 @@ export default function CashOutModal({
       setStatus('confirmed')
     } catch (err) {
       console.error('Cash out failed:', err)
-      setError(err instanceof Error ? err.message : 'Transaction failed')
+      setError(txErrorMessage(err, 'Transaction failed'))
       setStatus('failed')
     }
   }, [

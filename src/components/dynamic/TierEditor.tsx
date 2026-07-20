@@ -141,7 +141,7 @@ export default function TierEditor({
   const handleSave = useCallback(async () => {
     // Basic validation
     if (!formState.name.trim()) {
-      setValidationError('Tier name is required')
+      setValidationError('Item name is required')
       return
     }
 
@@ -197,7 +197,7 @@ export default function TierEditor({
     // Validate against hook flags
     const validation = validateTierChange(tierConfig, hookFlags, existingTier?.permissions)
     if (!validation.allowed) {
-      setValidationError(validation.blockedReason || 'This tier configuration is not allowed')
+      setValidationError(validation.blockedReason || 'This item configuration is not allowed')
       return
     }
 
@@ -223,7 +223,7 @@ export default function TierEditor({
       onSave(tierConfig, metadata)
     } catch (err) {
       console.error('Failed to save tier:', err)
-      setError('Failed to save tier. Please try again.')
+      setError('Failed to save item. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -249,7 +249,7 @@ export default function TierEditor({
               type="text"
               value={formState.name}
               onChange={(e) => updateField('name', e.target.value)}
-              placeholder="Tier name"
+              placeholder="Item name"
               className={`w-full px-3 py-2 text-sm outline-none ${
                 isDark
                   ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-500'
@@ -286,7 +286,7 @@ export default function TierEditor({
               <div className={`w-16 h-16 flex-shrink-0 ${isDark ? 'bg-white/5' : 'bg-gray-100'}`}>
                 <IpfsImage
                   uri={formState.imageUri}
-                  alt="Tier preview"
+                  alt="Item preview"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -322,7 +322,7 @@ export default function TierEditor({
                 )}
                 <GenerateImageButton
                   context={{
-                    name: formState.name || 'NFT Tier',
+                    name: formState.name || 'NFT Item',
                     description: formState.description || undefined,
                   }}
                   onGenerated={handleImageGenerated}
@@ -644,7 +644,7 @@ export default function TierEditor({
                 : 'bg-juice-orange hover:bg-juice-orange/90 text-black'
             }`}
           >
-            {saving ? 'Saving...' : isEditing ? 'Update Tier' : 'Add Tier'}
+            {saving ? 'Saving...' : isEditing ? 'Update Item' : 'Add Item'}
           </button>
         </div>
       </div>

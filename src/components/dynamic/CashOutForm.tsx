@@ -3,6 +3,7 @@ import { useAccount } from 'wagmi'
 import { formatUnits, parseUnits } from 'viem'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { useCashOutFormState } from '../../hooks/useComponentState'
+import { useProjectDataInvalidation } from '../../hooks/useProjectDataInvalidation'
 import { useManagedWallet } from '../../hooks'
 import {
   fetchProject,
@@ -66,14 +67,6 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
   }, [persistedState])
 
   // Transaction callbacks for persistence
-  const handleConfirmed = useCallback((txHash: string) => {
-    updatePersistedState({
-      status: 'completed',
-      txHash,
-      confirmedAt: new Date().toISOString(),
-    })
-  }, [updatePersistedState])
-
   const handleSubmitted = useCallback((txHash: string) => {
     updatePersistedState({
       status: 'in_progress',
@@ -96,9 +89,23 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
     ? connectedChains
     : [{ chainId: parseInt(initialChainId), projectId: parseInt(projectId) }]
   const selectedProjectId = availableChains.find(chain => chain.chainId === parseInt(selectedChainId))?.projectId ?? parseInt(projectId)
+  const { refreshRevision, invalidateProjectData } = useProjectDataInvalidation(parseInt(selectedChainId), selectedProjectId)
   const accountingContext = accountingContexts.find(
     context => context.token.toLowerCase() === selectedAccountingToken.toLowerCase(),
   ) || accountingContexts[0]
+
+  // Clear the stale amount and refresh project data once the cash out confirms.
+  const handleConfirmed = useCallback((txHash: string) => {
+    setShowModal(false)
+    setTokenAmount('')
+    updatePersistedState({
+      status: 'completed',
+      tokenAmount: '',
+      txHash,
+      confirmedAt: new Date().toISOString(),
+    })
+    invalidateProjectData()
+  }, [invalidateProjectData, updatePersistedState])
 
   // Resolve the omnichain project IDs once from the chain/project in the tag.
   useEffect(() => {
@@ -162,7 +169,7 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
     return () => {
       cancelled = true
     }
-  }, [activeAddress, selectedProjectId, selectedChainId])
+  }, [activeAddress, selectedProjectId, selectedChainId, refreshRevision])
 
   let tokenAmountRaw: bigint | null = null
   try {

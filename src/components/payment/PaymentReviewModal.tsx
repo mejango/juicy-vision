@@ -6,7 +6,9 @@ import {
   PAYMENT_REVIEW_EVENT,
   type PaymentReviewRequest,
 } from '../../utils/paymentReview'
+import { buildTxLinkEntries } from '../../utils/txlink'
 import TechnicalDetails from '../shared/TechnicalDetails'
+import CopyTxButton from './CopyTxButton'
 
 function shortAddress(address: string): string {
   return `${address.slice(0, 6)}...${address.slice(-4)}`
@@ -154,6 +156,21 @@ export default function PaymentReviewModal() {
             isDark={isDark}
             defaultExpanded
           />
+
+          <div className="flex justify-end">
+            <CopyTxButton
+              isDark={isDark}
+              getEntries={() => buildTxLinkEntries({
+                chainId: review.chainId,
+                to: review.terminal,
+                data: review.callData,
+                value: review.valueRaw,
+                approval: review.approval
+                  ? { token: review.approval.token, data: review.approval.callData }
+                  : null,
+              })}
+            />
+          </div>
         </div>
 
         <div className={`flex gap-3 border-t px-5 py-4 ${isDark ? 'border-white/10' : 'border-gray-100'}`}>

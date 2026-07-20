@@ -8,7 +8,7 @@ import { GasBalanceStatus } from './GasBalanceStatus'
 import { useOmnichainSetSplits, type ChainState } from '../../hooks/relayr'
 import { JB_CONTROLLER_ABI } from '../../constants/abis/jbController'
 import { SPLIT_GROUP_RESERVED } from '../../constants/abis/jbSplits'
-import { RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
+import { EXPLORER_URLS, RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
 import { getProjectController } from '../../utils/paymentTerminal'
 import { assertCurrentRulesetId } from '../../utils/projectTrust'
 import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
@@ -16,19 +16,13 @@ import { buildSplitGroup } from '../../utils/splitSafety'
 import { fetchProjectSplits, type JBSplitData } from '../../services/bendystraw'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
+import { txErrorMessage } from '../../utils/txErrors'
 
 const CHAIN_INFO: Record<number, { name: string; shortName: string; color: string }> = {
   1: { name: 'Ethereum', shortName: 'ETH', color: '#627EEA' },
   10: { name: 'Optimism', shortName: 'OP', color: '#FF0420' },
   8453: { name: 'Base', shortName: 'BASE', color: '#0052FF' },
   42161: { name: 'Arbitrum', shortName: 'ARB', color: '#28A0F0' },
-}
-
-const EXPLORER_URLS: Record<number, string> = {
-  1: 'https://etherscan.io/tx/',
-  10: 'https://optimistic.etherscan.io/tx/',
-  8453: 'https://basescan.org/tx/',
-  42161: 'https://arbiscan.io/tx/',
 }
 
 // Data passed from the form
@@ -378,7 +372,7 @@ export default function SetSplitsModal({
 
       return hash
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Transaction failed'
+      const errorMessage = txErrorMessage(err, 'Transaction failed')
       updateChainState(chainData.chainId, { status: 'failed', error: errorMessage })
       throw err
     }

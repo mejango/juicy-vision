@@ -22,6 +22,7 @@ import {
 } from '../../utils/projectTrust'
 import { requestPaymentReview, type PaymentReview } from '../../utils/paymentReview'
 import { resolvePayPreviewOutcome, TERMINAL_PREVIEW_PAY_ABI } from '../../utils/terminalPreview'
+import { txErrorMessage } from '../../utils/txErrors'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
@@ -378,9 +379,7 @@ export default function PaymentPage() {
         reservedTokenCount: reviewed.preview[2],
         hookSpecifications: reviewed.preview[3],
       })
-      if (reviewedOutcome.beneficiaryTokenCount <= 0n) {
-        throw new Error('The payment quote returns no project tokens')
-      }
+      // A verified zero quote is legitimate (zero-issuance project) and encodes minReturnedTokens = 0.
       const minReturnedTokens = reviewedOutcome.minReturnedTokens
 
       let reviewedAllowance = 0n
@@ -596,7 +595,7 @@ export default function PaymentPage() {
       }).catch(() => {})
 
       setPendingWalletTxHash(null)
-      setError(err instanceof Error ? err.message : 'Wallet payment failed')
+      setError(txErrorMessage(err, 'Wallet payment failed'))
       setStep('ready')
     } finally {
       setLoading(false)

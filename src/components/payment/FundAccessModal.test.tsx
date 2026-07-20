@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FundAccessAmountSnapshot, FundAccessContextSnapshot, PreparedFundAccessTransaction } from '../../services/fundAccess'
+import { parseTxLinkUrl } from '../../utils/txlink'
 import FundAccessModal from './FundAccessModal'
 
 const mocks = vi.hoisted(() => ({
@@ -192,6 +193,24 @@ describe('FundAccessModal live transaction guard', () => {
 
     expect(await screen.findByText('The terminal accounting context changed. Close this review and load the latest configuration.')).toBeInTheDocument()
     expect(mocks.sendTransaction).not.toHaveBeenCalled()
+  })
+
+  it('copies a txlink URL reproducing the exact prepared transaction', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+    renderPayout()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Copy tx' }))
+    await screen.findByRole('button', { name: 'Copied tx link' })
+
+    expect(mocks.prepare).toHaveBeenCalledTimes(1)
+    expect(mocks.sendTransaction).not.toHaveBeenCalled()
+    expect(parseTxLinkUrl(writeText.mock.calls[0][0] as string)).toEqual({
+      chainId: 1,
+      to: TERMINAL,
+      data: '0x1234',
+      value: 0n,
+    })
   })
 
   it('decodes the raw inadequate-store-balance selector into a stale-state message', async () => {

@@ -15,6 +15,7 @@ import { getProjectController } from '../../utils/paymentTerminal'
 import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
 import { assertSafeErc20TokenMetadata } from '../../utils/erc20Safety'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
+import { txErrorMessage } from '../../utils/txErrors'
 
 const CONTROLLER_DEPLOY_ERC20_ABI = [
   {
@@ -333,7 +334,7 @@ export default function DeployERC20Modal({
       setStatus('confirmed')
     } catch (err) {
       console.error('Deploy ERC20 failed:', err)
-      setError(err instanceof Error ? err.message : 'Transaction failed')
+      setError(txErrorMessage(err, 'Transaction failed'))
       setStatus('failed')
     }
   }, [walletClient, address, activeAddress, chainId, projectId, tokenName, tokenSymbol, addTransaction, updateTransaction, switchChainAsync, isManagedMode, managedAddress, useAllChains, allChainProjects, deploy, onSubmitted, assertCurrentAccount])

@@ -41,3 +41,6 @@ contracts/out/
 
 # Playwright
 playwright-report/
+
+dist.zip
+test-results/

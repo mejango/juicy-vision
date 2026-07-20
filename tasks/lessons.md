@@ -42,3 +42,15 @@ if (tierToAdd.category < previousTier.category) {
 **Rule**: When documenting contract function requirements, verify the actual sort/validation logic in the contract code. Don't assume common conventions (like price sorting) without checking.
 
 **Fix**: Updated `shared/prompts/transaction/nftTiers.ts` to say "MUST be sorted by category (lowest to highest)".
+
+## 2026-07-16: committed to main with user WIP swept in (recovered)
+- `git checkout <branch> 2>&1 | tail -1` masked a FAILED checkout ("Aborting" line
+  swallowed) — the session ran on main and `git add` swept the user's uncommitted
+  WIP (relayr/client.ts, suckerConfig.ts) into a pushed commit. Recovered by
+  reverting on main, relanding the feature from a clean branch, and restoring the
+  WIP to the worktree.
+- Rules: (1) run `git branch --show-current` immediately before every commit;
+  (2) never pipe checkout output through tail/head — read it whole; (3) files that
+  were dirty at session start are the USER'S — never `git add` them without
+  reviewing whose hunks are in the diff; (4) uncommitted WIP rides branch switches
+  and can also BLOCK them — a blocked switch fails loudly only if you look.

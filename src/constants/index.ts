@@ -63,16 +63,8 @@ export const PAGINATION = {
   ACTIVITY_PAGE_SIZE: 15,
 } as const
 
-// =============================================================================
-// API Endpoints (public - configure custom endpoints in settings)
-// =============================================================================
-export const BENDYSTRAW_ENDPOINT = 'https://bendystraw.xyz/graphql'
-export const RELAYR_ENDPOINT = 'https://api.relayr.ba5ed.com'
-export const ENS_RPC_ENDPOINT = 'https://rpc.ankr.com/eth'
-
 // IPFS Gateways
 export const IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs/'
-export const IPFS_FALLBACK_GATEWAY = 'https://ipfs.io/ipfs/'
 
 // Legacy pagination exports (use PAGINATION object above)
 // Kept for backwards compatibility
@@ -175,22 +167,11 @@ export const EXPLORER_URLS: Record<number, string> = Object.fromEntries(
   ALL_CHAIN_IDS.map(chainId => [chainId, CHAINS[chainId].explorerTx])
 )
 
-// Currency configurations
-export const CURRENCIES = {
-  ETH: { symbol: 'ETH', name: 'Ether', decimals: 18, baseCurrency: 1 },
-  USDC: { symbol: 'USDC', name: 'USD Coin', decimals: 6, baseCurrency: 2 },
-} as const
-
 // Native token address used by JB protocol
 export const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
 
 // Unlimited value threshold for fund access limits
 export const UNLIMITED_THRESHOLD = BigInt('1000000000000000000000000000000')
-
-// Check if a value represents "unlimited"
-export function isUnlimitedValue(value: bigint): boolean {
-  return value > UNLIMITED_THRESHOLD
-}
 
 // LocalStorage keys
 export const STORAGE_KEYS = {
@@ -205,11 +186,3 @@ export const STORAGE_KEYS = {
 } as const
 
 export type StorageKey = typeof STORAGE_KEYS[keyof typeof STORAGE_KEYS]
-
-// Theme colors (for reference, actual values in tailwind.config.js)
-export const THEME_COLORS = {
-  juiceOrange: '#F5A623',
-  juiceCyan: '#00D4FF',
-  juiceDark: '#1a1a1a',
-  juiceDarkLighter: '#2a2a2a',
-} as const

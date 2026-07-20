@@ -25,6 +25,7 @@ import {
   type SuckerGroupMoment,
   type CashOutTaxSnapshot,
 } from '../../../services/bendystraw'
+import { calculateFloorMinPrice } from '../../../services/bendystraw/client'
 import {
   fetchPoolPriceHistory,
   shouldUseHourlyData,
@@ -40,6 +41,7 @@ import {
   getRangeStartTimestamp,
   CHART_COLORS,
 } from './utils'
+import { issuancePriceDomain } from './priceDomain'
 import { resolveAccountingToken } from '../../../utils/currency'
 import { deriveCycledWeight, issuancePriceFromWeight } from '../../../utils/rulesetMath'
 
@@ -53,6 +55,7 @@ interface DataPoint {
   timestamp: number
   issuancePrice?: number
   cashOutPrice?: number
+  cashOutMinPrice?: number
   poolPrice?: number
 }
 
@@ -344,10 +347,12 @@ export default function TokenPriceChart({
 
         if (taxRate === null) continue
         const floorPrice = calculateFloorPrice(balance, supply, taxRate, balanceDecimals)
+        const minPrice = calculateFloorMinPrice(balance, supply, taxRate, balanceDecimals)
 
         if (floorPrice > 0) {
           const existing = dataByDay.get(dayTs) || { timestamp: dayTs }
           existing.cashOutPrice = floorPrice
+          if (minPrice > 0) existing.cashOutMinPrice = minPrice
           dataByDay.set(dayTs, existing)
         }
       }
@@ -369,6 +374,7 @@ export default function TokenPriceChart({
     // Forward-fill missing values
     let lastIssuance: number | undefined
     let lastCashOut: number | undefined
+    let lastCashOutMin: number | undefined
     let lastPool: number | undefined
 
     for (const point of sortedData) {
@@ -384,6 +390,12 @@ export default function TokenPriceChart({
         point.cashOutPrice = lastCashOut
       }
 
+      if (point.cashOutMinPrice !== undefined) {
+        lastCashOutMin = point.cashOutMinPrice
+      } else if (lastCashOutMin !== undefined) {
+        point.cashOutMinPrice = lastCashOutMin
+      }
+
       if (point.poolPrice !== undefined) {
         lastPool = point.poolPrice
       } else if (lastPool !== undefined) {
@@ -394,9 +406,15 @@ export default function TokenPriceChart({
     return sortedData
   }, [rulesets, moments, taxSnapshots, poolPriceData, range, projectStart, accountingToken.decimals])
 
+  const yDomain = useMemo(
+    () => issuancePriceDomain(chartData.map(d => d.issuancePrice)),
+    [chartData],
+  )
+
   // Check if we have data for each series
   const hasIssuanceData = chartData.some(d => d.issuancePrice !== undefined)
   const hasCashOutData = chartData.some(d => d.cashOutPrice !== undefined)
+  const hasCashOutMinData = chartData.some(d => d.cashOutMinPrice !== undefined)
   const hasPoolData = chartData.some(d => d.poolPrice !== undefined)
 
   // Get current prices
@@ -454,10 +472,17 @@ export default function TokenPriceChart({
           </div>
         )}
         {data.cashOutPrice !== undefined && showCashOut && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mb-1">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PRICE_COLORS.cashOut }} />
             <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Cash-out baseline:</span>
             <span className="font-mono">{formatPrice(data.cashOutPrice)} {isUsdBased ? 'USDC' : 'ETH'}</span>
+          </div>
+        )}
+        {data.cashOutMinPrice !== undefined && showCashOut && (
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PRICE_COLORS.cashOut, opacity: 0.55 }} />
+            <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Cash out min:</span>
+            <span className="font-mono">{formatPrice(data.cashOutMinPrice)} {isUsdBased ? 'USDC' : 'ETH'}</span>
           </div>
         )}
       </div>
@@ -471,18 +496,20 @@ export default function TokenPriceChart({
     disabled,
     color,
     onClick,
+    title,
   }: {
     label: string
     active: boolean
     disabled: boolean
     color: string
     onClick: () => void
+    title?: string
   }) => (
     <button
       onClick={onClick}
       disabled={disabled}
       className={`
-        flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border transition-all
+        group relative flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border transition-all
         ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
         ${active && !disabled
           ? isDark
@@ -501,6 +528,17 @@ export default function TokenPriceChart({
       <span className={active && !disabled ? (isDark ? 'text-white' : 'text-gray-900') : (isDark ? 'text-gray-500' : 'text-gray-400')}>
         {label}
       </span>
+      {/* Native title tooltips carry a fixed ~1s OS delay; render the explanation instantly on hover. */}
+      {title && (
+        <span
+          role="tooltip"
+          className={`pointer-events-none absolute left-0 top-full z-10 mt-1.5 hidden w-max max-w-[16rem] whitespace-normal rounded border px-2 py-1.5 text-left text-[11px] font-normal normal-case leading-snug group-hover:block ${
+            isDark ? 'border-white/20 bg-juice-dark text-gray-200' : 'border-gray-200 bg-white text-gray-700 shadow-sm'
+          }`}
+        >
+          {title}
+        </span>
+      )}
     </button>
   )
 
@@ -540,6 +578,7 @@ export default function TokenPriceChart({
               disabled={!hasIssuanceData}
               color={PRICE_COLORS.issuance}
               onClick={() => setShowIssuance(!showIssuance)}
+              title={`What paying the project costs per ${tokenSymbol} right now: 1 ÷ the ruleset's issuance weight.`}
             />
             {poolMatchesAccounting && (
               <ToggleButton
@@ -548,6 +587,7 @@ export default function TokenPriceChart({
                 disabled={!hasPoolData}
                 color={PRICE_COLORS.pool}
                 onClick={() => setShowPool(!showPool)}
+                title={`What the Uniswap pool charges per ${tokenSymbol} right now — kept between the issuance price and the cash out floor by arbitrage.`}
               />
             )}
             <ToggleButton
@@ -556,6 +596,7 @@ export default function TokenPriceChart({
               disabled={!hasCashOutData}
               color={PRICE_COLORS.cashOut}
               onClick={() => setShowCashOut(!showCashOut)}
+              title={`Live quote for cashing out 1 ${tokenSymbol}: (balance ÷ supply) × ((1 − tax) + tax × your share of supply). As supply grows it approaches the dashed minimum, (1 − tax) × balance ÷ supply — payments can only raise that minimum; only payouts lower it.`}
             />
           </div>
         </div>
@@ -603,24 +644,12 @@ export default function TokenPriceChart({
                     tickMargin={8}
                     tickFormatter={formatYAxis}
                     width={60}
-                    domain={['auto', 'auto']}
+                    domain={yDomain}
+                    allowDataOverflow={yDomain[0] !== 'auto'}
                     stroke={isDark ? '#666' : '#999'}
                     fontSize={11}
                   />
                   <Tooltip content={<CustomTooltip />} />
-
-                  {/* Issuance Price line */}
-                  {showIssuance && hasIssuanceData && (
-                    <Line
-                      type="stepAfter"
-                      dataKey="issuancePrice"
-                      stroke={PRICE_COLORS.issuance}
-                      strokeWidth={2}
-                      dot={false}
-                      isAnimationActive={false}
-                      connectNulls={false}
-                    />
-                  )}
 
                   {/* Pool Price line */}
                   {showPool && hasPoolData && (
@@ -635,12 +664,40 @@ export default function TokenPriceChart({
                     />
                   )}
 
+                  {/* Cash out minimum: the floor's asymptote, always at or below the cash out quote */}
+                  {showCashOut && hasCashOutMinData && (
+                    <Line
+                      type="stepAfter"
+                      dataKey="cashOutMinPrice"
+                      stroke={PRICE_COLORS.cashOut}
+                      strokeOpacity={0.55}
+                      strokeWidth={1.5}
+                      strokeDasharray="5 4"
+                      dot={false}
+                      isAnimationActive={false}
+                      connectNulls={false}
+                    />
+                  )}
+
                   {/* Cash Out Price line */}
                   {showCashOut && hasCashOutData && (
                     <Line
                       type="stepAfter"
                       dataKey="cashOutPrice"
                       stroke={PRICE_COLORS.cashOut}
+                      strokeWidth={2}
+                      dot={false}
+                      isAnimationActive={false}
+                      connectNulls={false}
+                    />
+                  )}
+
+                  {/* Issuance Price line */}
+                  {showIssuance && hasIssuanceData && (
+                    <Line
+                      type="stepAfter"
+                      dataKey="issuancePrice"
+                      stroke={PRICE_COLORS.issuance}
                       strokeWidth={2}
                       dot={false}
                       isAnimationActive={false}

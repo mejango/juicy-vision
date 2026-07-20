@@ -64,6 +64,7 @@ const mockWaitForTransactionReceipt = vi.fn()
 const mockPublicCall = vi.fn()
 const mockGetBalance = vi.fn()
 let mockPreviewedTokens = 1000n
+let mockPreviewError: Error | null = null
 let mockUsdcBalance = 1_000_000_000n
 
 vi.mock('viem', async (importOriginal) => ({
@@ -71,6 +72,7 @@ vi.mock('viem', async (importOriginal) => ({
   createPublicClient: vi.fn(() => ({
     readContract: (args: { functionName?: string }) => {
       if (args.functionName === 'previewPayFor') {
+        if (mockPreviewError) return Promise.reject(mockPreviewError)
         return Promise.resolve([{ id: 1n }, mockPreviewedTokens, 0n, []])
       }
       if (args.functionName === 'balanceOf') return Promise.resolve(mockUsdcBalance)
@@ -174,6 +176,7 @@ describe('useTransactionExecutor', () => {
     vi.clearAllMocks()
     window.addEventListener('juice:payment-review-request', autoApproveReview)
     mockPreviewedTokens = 1000n
+    mockPreviewError = null
     mockUsdcBalance = 1_000_000_000n
     vi.mocked(useAuthStore).mockReturnValue({ token: mockAuthToken } as never)
     vi.mocked(useAuthStore.getState).mockReturnValue({
@@ -757,8 +760,41 @@ describe('useTransactionExecutor', () => {
       )
     })
 
-    it('blocks a zero quote without an NFT selection', async () => {
+    it('allows a verified zero-issuance payment without an NFT selection', async () => {
       mockPreviewedTokens = 0n
+      renderHook(() => useTransactionExecutor())
+
+      let reviewedMinimum: string | null = null
+      const captureReview = (event: Event) => {
+        const review = (event as CustomEvent).detail?.review
+        reviewedMinimum = review?.minimumProjectTokens ?? null
+      }
+      window.addEventListener('juice:payment-review-request', captureReview)
+
+      await act(async () => {
+        window.dispatchEvent(new CustomEvent('juice:pay-project', {
+          detail: {
+            txId: 'tx-123',
+            projectId: '456',
+            chainId: 42161,
+            amount: '0.1',
+            token: 'ETH',
+            memo: '',
+          },
+        }))
+      })
+
+      await waitFor(() => expect(mockSendTransaction).toHaveBeenCalled())
+      expect(reviewedMinimum).toBe('0')
+      expect(mockUpdateTransaction).not.toHaveBeenCalledWith(
+        'tx-123',
+        expect.objectContaining({ status: 'failed' }),
+      )
+      window.removeEventListener('juice:payment-review-request', captureReview)
+    })
+
+    it('blocks submission when the pay preview fails instead of paying unprotected', async () => {
+      mockPreviewError = new Error('execution reverted')
       renderHook(() => useTransactionExecutor())
 
       await act(async () => {
@@ -777,7 +813,6 @@ describe('useTransactionExecutor', () => {
       await waitFor(() => {
         expect(mockUpdateTransaction).toHaveBeenCalledWith('tx-123', expect.objectContaining({
           status: 'failed',
-          error: expect.stringContaining('no project tokens'),
         }))
       })
       expect(mockSendTransaction).not.toHaveBeenCalled()

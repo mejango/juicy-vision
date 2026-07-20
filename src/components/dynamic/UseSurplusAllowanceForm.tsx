@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAccount } from 'wagmi'
-import { useQueryClient } from '@tanstack/react-query'
 import { useThemeStore } from '../../stores'
 import { useUseSurplusAllowanceFormState } from '../../hooks/useComponentState'
 import { useManagedWallet } from '../../hooks'
+import { useProjectDataInvalidation } from '../../hooks/useProjectDataInvalidation'
 import { fetchProject, type Project } from '../../services/bendystraw'
 import {
   createFundAccessClient,
@@ -84,7 +84,6 @@ function ChainSelector({
 
 export default function UseSurplusAllowanceForm({ projectId, chainId = '1', messageId }: UseSurplusAllowanceFormProps) {
   const { state: persistedState, updateState: updatePersistedState } = useUseSurplusAllowanceFormState(messageId)
-  const queryClient = useQueryClient()
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { isConnected } = useAccount()
@@ -99,7 +98,6 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
   const [loading, setLoading] = useState(true)
   const [amount, setAmount] = useState('')
   const [showModal, setShowModal] = useState(false)
-  const [refreshRevision, setRefreshRevision] = useState(0)
 
   const active = options.find(option => option.optionKey === selectedOptionKey) || options[0]
   const context = active?.context || null
@@ -107,6 +105,7 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
   const access = allowances.find(allowance => allowance.currency.toString() === selectedCurrency) || allowances[0] || null
   const selectedChainId = active?.chainId ?? Number.parseInt(chainId, 10)
   const chainInfo = CHAIN_INFO[selectedChainId] || CHAIN_INFO[1]
+  const { refreshRevision, bumpRefresh, invalidateProjectData } = useProjectDataInvalidation(selectedChainId, active?.projectId)
   const transactionInProgress = persistedState?.status === 'in_progress'
 
   const load = useCallback(async () => {
@@ -187,17 +186,13 @@ export default function UseSurplusAllowanceForm({ projectId, chainId = '1', mess
       txHash,
       confirmedAt: new Date().toISOString(),
     })
-    void queryClient.invalidateQueries({ queryKey: ['rulesets', selectedChainId, active?.projectId] })
-    window.dispatchEvent(new CustomEvent('juice:project-data-invalidated', {
-      detail: { chainId: selectedChainId, projectId: active?.projectId },
-    }))
-    setRefreshRevision(revision => revision + 1)
-  }, [active?.projectId, queryClient, selectedChainId, updatePersistedState])
+    invalidateProjectData()
+  }, [invalidateProjectData, updatePersistedState])
 
   const refreshAfterStaleReview = useCallback(() => {
     setShowModal(false)
-    setRefreshRevision(revision => revision + 1)
-  }, [])
+    bumpRefresh()
+  }, [bumpRefresh])
 
   const handleSubmit = () => {
     if (!context || !access || transactionInProgress) return

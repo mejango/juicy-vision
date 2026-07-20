@@ -61,13 +61,6 @@ export function formatYAxis(value: number): string {
   return value.toFixed(6)
 }
 
-// Format ETH values for tooltips
-export function formatEthValue(value: number): string {
-  if (value >= 1000) return `${(value / 1000).toFixed(2)}K ETH`
-  if (value >= 1) return `${value.toFixed(4)} ETH`
-  return `${value.toFixed(6)} ETH`
-}
-
 // Format percentage
 export function formatPercentage(value: number): string {
   if (value >= 10) return `${value.toFixed(1)}%`

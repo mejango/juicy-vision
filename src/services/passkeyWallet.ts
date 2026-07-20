@@ -37,27 +37,6 @@ export interface PasskeyWallet {
 }
 
 /**
- * Check if WebAuthn PRF extension is supported
- */
-export async function isPrfSupported(): Promise<boolean> {
-  if (!window.PublicKeyCredential) return false
-
-  try {
-    // Check for PRF support via getClientCapabilities (newer API)
-    if ('getClientCapabilities' in PublicKeyCredential) {
-      const capabilities = await (PublicKeyCredential as any).getClientCapabilities()
-      return capabilities?.prf === true
-    }
-
-    // Fallback: assume supported if PublicKeyCredential exists
-    // We'll catch errors at runtime if not actually supported
-    return true
-  } catch {
-    return false
-  }
-}
-
-/**
  * Convert ArrayBuffer to hex string
  */
 function bufferToHex(buffer: ArrayBuffer): string {

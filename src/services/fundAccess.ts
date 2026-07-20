@@ -1,6 +1,7 @@
 import {
   createPublicClient,
   encodeFunctionData,
+  erc20Abi,
   fallback,
   formatUnits,
   http,
@@ -22,6 +23,8 @@ import {
   type SupportedChainId,
 } from '../constants'
 import { quotedOutputFloor } from '../utils/terminalPreview'
+import { collectErrorText } from '../utils/txErrors'
+import { truncateAddress } from '../utils/ens'
 
 /** Exact deployed V6 sentinel used by JBCurrencyAmount.amount (uint224). */
 export const MAX_UINT224 = (1n << 224n) - 1n
@@ -263,13 +266,6 @@ export const FUND_ACCESS_CONTROLLER_ABI = [{
   outputs: [{ name: '', type: 'address' }],
 }] as const
 
-const ERC20_SYMBOL_ABI = [{
-  name: 'symbol',
-  type: 'function',
-  stateMutability: 'view',
-  inputs: [],
-  outputs: [{ name: '', type: 'string' }],
-}] as const
 
 export type FundAccessKind = 'payout' | 'allowance'
 
@@ -386,12 +382,12 @@ async function tokenSymbol(client: PublicClient, chainId: number, token: Address
   const usdc = USDC_ADDRESSES[chainId as SupportedChainId]
   if (usdc && sameAddress(token, usdc)) return 'USDC'
   try {
-    const symbol = await client.readContract({ address: token, abi: ERC20_SYMBOL_ABI, functionName: 'symbol' })
+    const symbol = await client.readContract({ address: token, abi: erc20Abi, functionName: 'symbol' })
     if (/^[\x20-\x7e]{1,16}$/.test(symbol)) return symbol
   } catch {
     // A non-standard ERC-20 symbol must not block a live accounting context.
   }
-  return `${token.slice(0, 6)}…${token.slice(-4)}`
+  return truncateAddress(token)
 }
 
 async function priceFor(
@@ -700,27 +696,8 @@ export async function prepareFundAccessTransaction(params: {
   return { target: context.terminal, data, quotedAmount, minimumOutput, context, access }
 }
 
-function collectErrorText(value: unknown, seen: Set<unknown>, depth: number): string[] {
-  if (depth > 8 || value === null || value === undefined || seen.has(value)) return []
-  if (typeof value === 'string') return [value]
-  if (typeof value !== 'object') return []
-  seen.add(value)
-  const record = value as Record<string, unknown>
-  return [
-    record.shortMessage,
-    record.message,
-    record.details,
-    record.errorName,
-    record.signature,
-    record.raw,
-    record.data,
-    record.cause,
-    record.error,
-  ].flatMap(item => collectErrorText(item, seen, depth + 1))
-}
-
 export function fundAccessErrorMessage(error: unknown, kind: FundAccessKind): string {
-  const text = collectErrorText(error, new Set(), 0).join(' | ')
+  const text = collectErrorText(error).join(' | ')
   const normalized = text.toLowerCase()
   if (
     normalized.includes('0x9fa59b9a') ||

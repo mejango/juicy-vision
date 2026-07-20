@@ -98,22 +98,6 @@ export {
 } from './transaction/metadata.ts';
 
 /**
- * Intent detection hints for sub-modules
- * Used for granular routing within TRANSACTION domain
- */
-export const SUB_MODULE_HINTS = {
-  chains: ['chain', 'network', 'ethereum', 'optimism', 'base', 'arbitrum'],
-  v6_addresses: ['deploy', 'launch', 'create project', 'new project', 'revnet', 'autonomous', 'REVDeployer', 'sucker'],
-  terminals: ['terminal', 'USDC', 'accountingContext', 'payment', 'accept'],
-  splits_limits: ['payout', 'split', 'withdraw', 'fund access', 'goal', 'surplus'],
-  nft_tiers: ['tier', 'NFT', '721', 'perks', 'rewards', 'collectible'],
-  revnet_params: ['revnet', 'issuance decay', 'autonomous', 'splitPercent'],
-  rulesets: ['ruleset', 'weight', 'duration', 'reserved', 'queue ruleset'],
-  deployment: ['deploy', 'launch', 'create', 'omnichain', 'sucker'],
-  metadata: ['name', 'description', 'logo', 'setUriOf', 'rename'],
-};
-
-/**
  * Semantic descriptions for embedding-based matching
  */
 export const SUB_MODULE_DESCRIPTIONS = {

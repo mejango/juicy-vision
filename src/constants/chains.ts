@@ -126,9 +126,6 @@ export const REV_DEPLOYER = '0xb552eb94284f94b833837d4b2cbb237128415d4e' as `0x$
 // Exposes tiered721HookOf(revnetId) and operator checks.
 export const REV_OWNER = '0x2ba4705ad0332cdfb299b452068438bcba3faaf3' as `0x${string}`
 
-// REVLoans - revnet loans (same on all chains)
-export const REV_LOANS = '0x056265c31157748818f0910d1859acd2f7d427de' as `0x${string}`
-
 // 721 Hook Contracts (same address on all chains)
 export const JB721_CONTRACTS = {
   // JB721TiersHookStore - stores tier data for all 721 hooks
@@ -173,9 +170,6 @@ export const JB_BUYBACK_HOOK_REGISTRY = '0x72f55a54cd53410a5ff175508a5a384227081
 // =============================================================================
 // Suckers enable token bridging between chains for the same project.
 // After deploying a project on multiple chains, deploy suckers to link them.
-
-// JBSuckerRegistry - manages sucker deployments and mappings (same address on all chains)
-export const JB_SUCKER_REGISTRY = '0x7903a854ae91eaf635430d120a1a434085cef297' as `0x${string}`
 
 // Native-bridge sucker deployers (same address wherever deployed).
 // Each deployer creates suckers for a specific bridge (OP Messenger, Arbitrum

@@ -30,7 +30,8 @@ import { ProjectSplitRoute } from './ProjectSplitRoute'
 interface TokensTabProps {
   projectId: string
   chainId: string
-  isOwner?: boolean // Unused but kept for interface compatibility
+  isOwner?: boolean
+  onDeployErc20?: () => void
 }
 
 // Chain info for display (ALL CAPS for symbols)
@@ -71,7 +72,7 @@ function formatTokenAmount(wei: string): string {
   }
 }
 
-export default function TokensTab({ projectId, chainId }: TokensTabProps) {
+export default function TokensTab({ projectId, chainId, isOwner, onDeployErc20 }: TokensTabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { address, isConnected } = useAccount()
@@ -318,11 +319,17 @@ export default function TokensTab({ projectId, chainId }: TokensTabProps) {
         </p>
 
         <div className="space-y-3">
-          {/* Token symbol with chain indicators */}
+          {/* Token symbol with chain indicators; no symbol exists while balances are credits */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`text-lg font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {tokenSymbol}
-            </span>
+            {tokenAddress ? (
+              <span className={`text-lg font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                {tokenSymbol}
+              </span>
+            ) : (
+              <span className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                Project credits
+              </span>
+            )}
             <div className="flex items-center gap-1.5">
               <span className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>on</span>
               {chainTokenData.map(cd => {
@@ -348,6 +355,23 @@ export default function TokensTab({ projectId, chainId }: TokensTabProps) {
           </div>
 
           {/* Token address */}
+          {!tokenAddress && (
+            <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+              <span>
+                No ERC-20 yet. Balances are internal Juicebox credits — they can still be cashed out, and deploying an ERC-20 later makes them transferable.
+              </span>
+              {isOwner && onDeployErc20 && (
+                <button
+                  onClick={onDeployErc20}
+                  className={`ml-2 border px-2 py-0.5 text-xs font-medium transition-colors ${
+                    isDark ? 'border-white/20 text-white hover:bg-white/10' : 'border-gray-300 text-gray-900 hover:bg-gray-100'
+                  }`}
+                >
+                  Deploy ERC-20
+                </button>
+              )}
+            </div>
+          )}
           {tokenAddress && (
             <div className="flex items-center gap-2">
               <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -598,7 +622,7 @@ export default function TokensTab({ projectId, chainId }: TokensTabProps) {
         {tokenDataComplete && totalPendingAcrossChains > 0 && (
           <div className="flex items-center gap-2 mb-3">
             <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {totalPendingAcrossChains.toLocaleString(undefined, { maximumFractionDigits: 2 })} {tokenSymbol}
+              {totalPendingAcrossChains.toLocaleString(undefined, { maximumFractionDigits: 2 })} {tokenAddress ? tokenSymbol : 'credits'}
             </span>
             <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
               ready to distribute

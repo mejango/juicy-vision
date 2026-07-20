@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAccount } from 'wagmi'
-import { useQueryClient } from '@tanstack/react-query'
 import { useThemeStore } from '../../stores'
 import { useSendPayoutsFormState } from '../../hooks/useComponentState'
 import { useManagedWallet } from '../../hooks'
+import { useProjectDataInvalidation } from '../../hooks/useProjectDataInvalidation'
 import {
   fetchProject,
   fetchProjectSplits,
@@ -97,7 +97,6 @@ function ChainSelector({
 
 export default function SendPayoutsForm({ projectId, chainId = '1', messageId }: SendPayoutsFormProps) {
   const { state: persistedState, updateState: updatePersistedState } = useSendPayoutsFormState(messageId)
-  const queryClient = useQueryClient()
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { isConnected } = useAccount()
@@ -114,7 +113,6 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
   const [showModal, setShowModal] = useState(false)
   const [showSplits, setShowSplits] = useState(false)
   const [splitEnsNames, setSplitEnsNames] = useState<Record<string, string>>({})
-  const [refreshRevision, setRefreshRevision] = useState(0)
 
   const active = options.find(option => option.optionKey === selectedOptionKey) || options[0]
   const context = active?.context || null
@@ -122,6 +120,7 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
   const access = limits.find(limit => limit.currency.toString() === selectedCurrency) || limits[0] || null
   const selectedChainId = active?.chainId ?? Number.parseInt(chainId, 10)
   const chainInfo = CHAIN_INFO[selectedChainId] || CHAIN_INFO[1]
+  const { refreshRevision, bumpRefresh, invalidateProjectData } = useProjectDataInvalidation(selectedChainId, active?.projectId)
   const transactionInProgress = persistedState?.status === 'in_progress'
 
   const load = useCallback(async () => {
@@ -227,17 +226,13 @@ export default function SendPayoutsForm({ projectId, chainId = '1', messageId }:
       txHash,
       confirmedAt: new Date().toISOString(),
     })
-    void queryClient.invalidateQueries({ queryKey: ['rulesets', selectedChainId, active?.projectId] })
-    window.dispatchEvent(new CustomEvent('juice:project-data-invalidated', {
-      detail: { chainId: selectedChainId, projectId: active?.projectId },
-    }))
-    setRefreshRevision(revision => revision + 1)
-  }, [active?.projectId, queryClient, selectedChainId, updatePersistedState])
+    invalidateProjectData()
+  }, [invalidateProjectData, updatePersistedState])
 
   const refreshAfterStaleReview = useCallback(() => {
     setShowModal(false)
-    setRefreshRevision(revision => revision + 1)
-  }, [])
+    bumpRefresh()
+  }, [bumpRefresh])
 
   const handleSubmit = () => {
     if (!context || !access || transactionInProgress) return

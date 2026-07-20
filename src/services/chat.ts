@@ -210,13 +210,6 @@ export async function renameChat(chatId: string, name: string): Promise<Chat> {
   })
 }
 
-export async function reorderPinnedChats(chatIds: string[]): Promise<void> {
-  await apiRequest<void>('/chat/reorder-pinned', {
-    method: 'POST',
-    body: JSON.stringify({ chatIds }),
-  })
-}
-
 export async function reportChat(chatId: string, reason?: string): Promise<{ success: boolean; message?: string }> {
   return apiRequest<{ success: boolean; message?: string }>(`/chat/${chatId}/report`, {
     method: 'POST',
@@ -240,10 +233,6 @@ export async function createFolder(
     method: 'POST',
     body: JSON.stringify({ name, parentFolderId }),
   })
-}
-
-export async function fetchFolder(folderId: string): Promise<ChatFolder> {
-  return apiRequest<ChatFolder>(`/chat/folders/${folderId}`)
 }
 
 export async function updateFolderDetails(
@@ -275,13 +264,6 @@ export async function pinFolder(
   return apiRequest<ChatFolder>(`/chat/folders/${folderId}/pin`, {
     method: 'PATCH',
     body: JSON.stringify({ isPinned, pinOrder }),
-  })
-}
-
-export async function reorderPinnedFolders(folderIds: string[]): Promise<void> {
-  await apiRequest<void>('/chat/folders/reorder-pinned', {
-    method: 'POST',
-    body: JSON.stringify({ folderIds }),
   })
 }
 
@@ -330,15 +312,6 @@ export async function sendMessage(
   return hydrateAttachmentIds(msg)
 }
 
-export async function deleteMessage(
-  chatId: string,
-  messageId: string
-): Promise<void> {
-  await apiRequest<void>(`/chat/${chatId}/messages/${messageId}`, {
-    method: 'DELETE',
-  })
-}
-
 // ============================================================================
 // Members
 // ============================================================================
@@ -356,20 +329,6 @@ export async function addMember(
     method: 'POST',
     body: JSON.stringify({ address, role }),
   })
-}
-
-export async function updateMemberRole(
-  chatId: string,
-  address: string,
-  role: 'admin' | 'member'
-): Promise<ChatMember> {
-  return apiRequest<ChatMember>(
-    `/chat/${chatId}/members/${address}`,
-    {
-      method: 'PATCH',
-      body: JSON.stringify({ role }),
-    }
-  )
 }
 
 export interface UpdateMemberPermissionsParams {
@@ -439,10 +398,6 @@ export async function createInvite(
     method: 'POST',
     body: JSON.stringify(params),
   })
-}
-
-export async function getInvites(chatId: string): Promise<ChatInvite[]> {
-  return apiRequest<ChatInvite[]>(`/chat/${chatId}/invites`)
 }
 
 export async function revokeInvite(chatId: string, inviteId: string): Promise<void> {
@@ -809,10 +764,6 @@ class WebSocketManager {
     }
   }
 
-  resetReconnectAttempts(): void {
-    this.reconnectAttempt = 0
-  }
-
   getStatus(): {
     isConnected: boolean
     isOnline: boolean
@@ -851,30 +802,12 @@ export function connectToChat(chatId: string): WebSocket | null {
   return wsManager.connect(chatId)
 }
 
-export function resetReconnectAttempts(): void {
-  wsManager.resetReconnectAttempts()
-}
-
-export function getConnectionStatus(): {
-  isConnected: boolean
-  isOnline: boolean
-  attempt: number
-  isPolling: boolean
-  lastPollTime: number | null
-} {
-  return wsManager.getStatus()
-}
-
 export function disconnectFromChat(): void {
   wsManager.disconnect()
 }
 
 export function onWsMessage(handler: WsMessageHandler): () => void {
   return wsManager.addHandler(handler)
-}
-
-export function sendWsMessage(message: Omit<WsMessage, 'chatId'>): void {
-  wsManager.send(message)
 }
 
 export function sendTypingIndicator(_chatId: string, isTyping: boolean): void {

@@ -3,8 +3,6 @@
 // Generated from deploy-all-v6/deployments/ethereum/JBSplits.json (Juicebox V6).
 // Regenerate with scripts in deploy-all-v6; do not hand-edit ABI fragments.
 
-export const JB_SPLITS_ADDRESS = '0x28b3d11fcb8d2ad0a143c5b193cd9f2e4d43f4c3' as const
-
 // Split group IDs
 export const SPLIT_GROUP_RESERVED = 1n // Reserved token splits
 

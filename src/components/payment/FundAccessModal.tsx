@@ -20,12 +20,14 @@ import { fetchProjectSplits, type JBSplitData } from '../../services/bendystraw'
 import { assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
 import { waitForSuccessfulTransaction } from '../../utils/transactionSafety'
 import { verifySendPayoutsParams, verifyUseAllowanceParams } from '../../utils/transactionVerification'
+import { buildTxLinkEntries, type TxLinkEntry } from '../../utils/txlink'
 import { CHAINS as CHAIN_INFO, MAINNET_CHAINS } from '../../constants'
 import { FundAccessSummary } from '../fundAccess/FundAccessSummary'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { ProjectSplitRoute } from '../dynamic/ProjectSplitRoute'
+import CopyTxButton from './CopyTxButton'
 import { GasBalanceStatus } from './GasBalanceStatus'
 
 export interface FundAccessModalProps {
@@ -279,6 +281,21 @@ export default function FundAccessModal({
     }
   }, [access.currency, activeAddress, addTransaction, amount, assertCurrentAccount, assertReviewUnchanged, chainId, context.accountingCurrency, context.decimals, context.terminal, context.token, isManagedMode, kind, onClose, onConfirmed, onError, onRefresh, onSubmitted, projectId, requestedAmount, splits, switchChainAsync, updateTransaction, walletClient])
 
+  const buildShareableEntries = useCallback(async (): Promise<TxLinkEntry[]> => {
+    if (!activeAddress || requestedAmount === null) return []
+    const prepared = await prepareFundAccessTransaction({
+      client: createFundAccessClient(chainId),
+      chainId,
+      projectId: BigInt(projectId),
+      token: context.token,
+      currency: access.currency,
+      amount: requestedAmount,
+      account: activeAddress as Address,
+      kind,
+    })
+    return buildTxLinkEntries({ chainId, to: prepared.target, data: prepared.data, value: 0n })
+  }, [access.currency, activeAddress, chainId, context.token, kind, projectId, requestedAmount])
+
   if (!isOpen) return null
 
   const requestedDisplay = requestedAmount === null
@@ -317,7 +334,7 @@ export default function FundAccessModal({
               <span className={`min-w-0 break-all text-right font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>{requestedDisplay} {unit}</span>
             </div>
             <p className={`mt-2 break-words text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-              Up to 2.5% applies only to fee-eligible terminal-token egress. The exact output is simulated before signing.
+              Up to 2.5% applies only to fee-eligible terminal-token egress, charged in the terminal token; if the protocol cannot accept it, the fee returns to this project's balance. The exact output is simulated before signing.
             </p>
           </div>
 
@@ -385,6 +402,17 @@ export default function FundAccessModal({
             }}
             isDark={isDark}
           />
+
+          <div className="flex justify-end">
+            <CopyTxButton
+              isDark={isDark}
+              disabled={!activeAddress || requestedAmount === null}
+              disabledReason={!activeAddress
+                ? 'Connect a wallet to build the exact transaction'
+                : 'Enter a valid amount to build the exact transaction'}
+              getEntries={buildShareableEntries}
+            />
+          </div>
         </div>
 
         <div className={`grid shrink-0 grid-cols-2 gap-2 border-t p-4 ${isDark ? 'border-white/10' : 'border-gray-100'}`}>

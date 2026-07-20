@@ -18,6 +18,7 @@ import { FRUIT_EMOJIS, getEmojiFromAddress } from '../chat/ParticipantAvatars'
 import { getSessionId } from '../../services/session'
 import { getWalletSession } from '../../services/siwe'
 import { AccountLinkingBanner } from './AccountLinkingBanner'
+import { walletDappUrl, mobileWalletLinks, isMobileDevice } from '../../utils/walletLinks'
 
 export interface AnchorPosition {
   top: number
@@ -421,6 +422,58 @@ function SelfCustodyConnect({ onBack }: { onBack: () => void }) {
           </button>
         ))}
       </div>
+    </div>
+  )
+}
+
+// Wallet-app handoff for mobile browsers without an injected provider.
+// Wallet in-app browsers can't run this page from a service-worker gateway,
+// so links route through walletDappUrl to a path-style gateway.
+function MobileWalletHandoff() {
+  const { theme } = useThemeStore()
+  const isDark = theme === 'dark'
+  const { isConnected } = useAccount()
+  const { isManagedMode } = useAuthStore()
+
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return null
+  if (!isMobileDevice(navigator)) return null
+  if (isManagedMode()) return null
+  if ((window as { ethereum?: unknown }).ethereum) return null
+  if (isConnected) return null
+
+  const links = mobileWalletLinks(window.location.href)
+  const canShare = typeof navigator.share === 'function'
+
+  const handleShare = () => {
+    navigator
+      .share({ title: document.title, url: walletDappUrl(window.location.href) })
+      .catch((err) => {
+        if (err instanceof Error && err.name === 'AbortError') return
+        console.error('[WalletPanel] Share failed:', err)
+      })
+  }
+
+  const optionClass = `w-full py-2 px-3 border text-xs font-medium transition-all flex items-center gap-2 ${
+    isDark
+      ? 'border-white/10 text-white hover:border-green-500/50 hover:bg-green-500/10'
+      : 'border-gray-200 text-gray-900 hover:border-green-500 hover:bg-green-50'
+  }`
+
+  return (
+    <div className={`mt-3 pt-3 border-t space-y-2 ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
+      <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+        Have a wallet app? Open this page inside it.
+      </p>
+      {links.map((link) => (
+        <a key={link.name} href={link.url} className={optionClass}>
+          Open in {link.name}
+        </a>
+      ))}
+      {canShare && (
+        <button onClick={handleShare} className={optionClass}>
+          Open in another wallet…
+        </button>
+      )}
     </div>
   )
 }
@@ -3104,6 +3157,10 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
 
         {currentView === 'self_custody' && (
           <SelfCustodyConnect onBack={() => setView('select')} />
+        )}
+
+        {(currentView === 'select' || currentView === 'self_custody') && (
+          <MobileWalletHandoff />
         )}
 
         {currentView === 'auth_method' && (

@@ -762,7 +762,7 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
                       <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                       </svg>
-                      <span>Tiers updated successfully!</span>
+                      <span>Items updated successfully!</span>
                     </>
                   ) : persistedState?.status === 'failed' ? (
                     <>

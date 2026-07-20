@@ -317,18 +317,11 @@ export function encodeIpfsUri(cid: string | undefined | null): string | null {
 }
 
 /**
- * Decode Juicebox's bytes32 encodedIPFSUri to an IPFS CIDv0 (Qm...)
+ * Decode Juicebox's bytes32 encodedIPFSUri to IPFS CID candidates
  *
  * Format: 0x01 + 32-byte SHA-256 hash
  * Output: base58btc(0x1220 + hash) = Qm...
- *
- * @param encodedUri - bytes32 hex string (with or without 0x prefix)
- * @returns IPFS URI (ipfs://Qm...) or null if invalid
  */
-export function decodeEncodedIPFSUri(encodedUri: string | undefined | null): string | null {
-  return decodeEncodedIPFSUriCandidates(encodedUri)?.[0] ?? null
-}
-
 export function decodeEncodedIPFSUriCandidates(
   encodedUri: string | undefined | null,
 ): [string, string] | null {
@@ -550,36 +543,6 @@ export interface JBProjectMetadata {
   // payButton and payDisclosure for custom pay UI
   payButton?: string
   payDisclosure?: string
-}
-
-/**
- * Pin project metadata to IPFS and return the URI
- * @param metadata - Project metadata object
- * @param jwt - Pinata JWT token
- * @returns IPFS URI (ipfs://CID)
- */
-export async function pinProjectMetadata(
-  metadata: JBProjectMetadata,
-  jwt: string
-): Promise<string> {
-  const cid = await pinJson(metadata, jwt, `project-${metadata.name}`)
-  return `ipfs://${cid}`
-}
-
-/**
- * Pin a logo image and return the IPFS URI
- * @param file - Image file
- * @param jwt - Pinata JWT token
- * @param projectName - Project name for labeling
- * @returns IPFS URI (ipfs://CID)
- */
-export async function pinLogo(
-  file: File,
-  jwt: string,
-  projectName?: string
-): Promise<string> {
-  const cid = await pinFile(file, jwt, projectName ? `logo-${projectName}` : 'project-logo')
-  return `ipfs://${cid}`
 }
 
 /**

@@ -21,6 +21,7 @@ import { ALL_VIEM_CHAINS, CHAINS as CHAIN_INFO, EXPLORER_URLS, RPC_ENDPOINTS } f
 import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
 import { isUsdcCurrency } from '../../utils/technicalDetails'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
+import { txErrorMessage } from '../../utils/txErrors'
 
 const CHAINS: Record<number, Chain> = ALL_VIEM_CHAINS
 
@@ -257,7 +258,7 @@ export default function ManageTiersModal({
 
       return hash
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Transaction failed'
+      const errorMessage = txErrorMessage(err, 'Transaction failed')
       updateChainState(chainState.chainId, { status: 'failed', error: errorMessage })
       throw err
     }
@@ -327,12 +328,12 @@ export default function ManageTiersModal({
             <div>
               <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 {allSucceeded
-                  ? 'Tiers Updated'
+                  ? 'Items Updated'
                   : anyFailed && allCompleted
                     ? 'Some Updates Failed'
                     : isStarted
-                      ? 'Updating Tiers...'
-                      : 'Confirm Tier Changes'}
+                      ? 'Updating Items...'
+                      : 'Confirm Item Changes'}
               </h2>
               <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                 {projectName || 'Project'}

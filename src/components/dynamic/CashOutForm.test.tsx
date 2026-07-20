@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import type { ReactElement } from 'react'
 import CashOutForm from './CashOutForm'
 import { useThemeStore } from '../../stores'
 import * as bendystraw from '../../services/bendystraw'
@@ -19,6 +21,7 @@ vi.mock('../../services/bendystraw', () => ({
   fetchConnectedChains: vi.fn(),
   fetchIssuanceRate: vi.fn(),
   fetchProjectAccountingContexts: vi.fn(),
+  fetchUserTokenBalance: vi.fn(),
 }))
 
 // Mock IPFS utils
@@ -29,11 +32,12 @@ vi.mock('../../utils/ipfs', () => ({
 
 // Mock CashOutModal
 vi.mock('../payment', () => ({
-  CashOutModal: vi.fn(({ isOpen, onClose, projectId, tokenAmount }) =>
+  CashOutModal: vi.fn(({ isOpen, onClose, onConfirmed, projectId, tokenAmount }) =>
     isOpen ? (
       <div data-testid="cash-out-modal">
         <div>Project: {projectId}</div>
         <div>Amount: {tokenAmount}</div>
+        <button onClick={() => onConfirmed('0xabc')}>Confirm cash out</button>
         <button onClick={onClose}>Close</button>
       </div>
     ) : null
@@ -43,6 +47,11 @@ vi.mock('../payment', () => ({
 // Get mocked wagmi
 import { useAccount } from 'wagmi'
 const mockedUseAccount = useAccount as Mock
+
+function renderForm(ui: ReactElement) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return { queryClient, ...render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>) }
+}
 
 describe('CashOutForm', () => {
   const mockProject = {
@@ -72,7 +81,11 @@ describe('CashOutForm', () => {
       token: '0x000000000000000000000000000000000000eeee',
       decimals: 18,
       currency: 61166,
+      symbol: 'ETH',
+      isNative: true,
+      balance: 0n,
     }])
+    ;(bendystraw.fetchUserTokenBalance as Mock).mockResolvedValue({ balance: '0' })
 
     mockedUseAccount.mockReturnValue({
       address: undefined,
@@ -84,7 +97,7 @@ describe('CashOutForm', () => {
     it('shows loading skeleton initially', () => {
       ;(bendystraw.fetchProject as Mock).mockImplementation(() => new Promise(() => {}))
 
-      render(<CashOutForm projectId="1" />)
+      renderForm(<CashOutForm projectId="1" />)
 
       const skeleton = document.querySelector('.animate-pulse')
       expect(skeleton).toBeInTheDocument()
@@ -93,7 +106,7 @@ describe('CashOutForm', () => {
 
   describe('component display', () => {
     it('renders project name link after loading', async () => {
-      render(<CashOutForm projectId="1" />)
+      renderForm(<CashOutForm projectId="1" />)
 
       await waitFor(() => {
         expect(screen.getByText('Test Project')).toBeInTheDocument()
@@ -101,7 +114,7 @@ describe('CashOutForm', () => {
     })
 
     it('calls fetchProject with correct params', async () => {
-      render(<CashOutForm projectId="123" chainId="10" />)
+      renderForm(<CashOutForm projectId="123" chainId="10" />)
 
       await waitFor(() => {
         expect(bendystraw.fetchProject).toHaveBeenCalledWith('123', 10)
@@ -111,7 +124,7 @@ describe('CashOutForm', () => {
 
   describe('token input', () => {
     it('renders token input field', async () => {
-      render(<CashOutForm projectId="1" />)
+      renderForm(<CashOutForm projectId="1" />)
 
       await waitFor(() => {
         const input = document.querySelector('input[type="number"]')
@@ -122,7 +135,7 @@ describe('CashOutForm', () => {
 
   describe('cash out button', () => {
     it('renders cash out button', async () => {
-      render(<CashOutForm projectId="1" />)
+      renderForm(<CashOutForm projectId="1" />)
 
       await waitFor(() => {
         expect(screen.getByRole('button', { name: /cash out/i })).toBeInTheDocument()
@@ -130,7 +143,7 @@ describe('CashOutForm', () => {
     })
 
     it('cash out button is disabled initially', async () => {
-      render(<CashOutForm projectId="1" />)
+      renderForm(<CashOutForm projectId="1" />)
 
       await waitFor(() => {
         const button = screen.getByRole('button', { name: /cash out/i })
@@ -139,10 +152,62 @@ describe('CashOutForm', () => {
     })
   })
 
+  describe('cash out without a deployed ERC-20', () => {
+    const holder = '0x1234567890123456789012345678901234567890'
+
+    beforeEach(() => {
+      // The project has NO deployed ERC-20 (tokenAddress null/zero); the holder's
+      // positive JBTokens.totalBalanceOf comes entirely from internal credits.
+      mockedUseAccount.mockReturnValue({ address: holder, isConnected: true })
+      ;(bendystraw.fetchUserTokenBalance as Mock).mockResolvedValue({
+        balance: (100n * 10n ** 18n).toString(),
+      })
+    })
+
+    it('keeps cash out available with no ERC-20 when internal credits cover the amount', async () => {
+      renderForm(<CashOutForm projectId="1" />)
+
+      await waitFor(() => {
+        expect(bendystraw.fetchUserTokenBalance).toHaveBeenCalledWith('1', 1, holder)
+      })
+      fireEvent.change(document.querySelector('input[type="number"]')!, { target: { value: '10' } })
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /^cash out$/i })).toBeEnabled()
+      })
+    })
+
+    it('fires the invalidation event and clears the amount after a confirmed cash out', async () => {
+      const invalidated = vi.fn()
+      window.addEventListener('juice:project-data-invalidated', invalidated)
+      renderForm(<CashOutForm projectId="1" />)
+
+      await waitFor(() => {
+        expect(bendystraw.fetchUserTokenBalance).toHaveBeenCalledWith('1', 1, holder)
+      })
+      const input = document.querySelector('input[type="number"]')!
+      fireEvent.change(input, { target: { value: '10' } })
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /^cash out$/i })).toBeEnabled()
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: /^cash out$/i }))
+      fireEvent.click(await screen.findByRole('button', { name: 'Confirm cash out' }))
+
+      await waitFor(() => expect(invalidated).toHaveBeenCalledTimes(1))
+      expect((invalidated.mock.calls[0][0] as CustomEvent).detail).toEqual({ chainId: 1, projectId: 1 })
+      await waitFor(() => expect(screen.queryByTestId('cash-out-modal')).not.toBeInTheDocument())
+      expect(input).toHaveValue(null)
+      // The confirmed transaction locks the form and reloads the live balance.
+      await waitFor(() => expect(bendystraw.fetchUserTokenBalance).toHaveBeenCalledTimes(2))
+      window.removeEventListener('juice:project-data-invalidated', invalidated)
+    })
+  })
+
   describe('theme support', () => {
     it('applies dark theme styles', async () => {
       useThemeStore.setState({ theme: 'dark' })
-      render(<CashOutForm projectId="1" />)
+      renderForm(<CashOutForm projectId="1" />)
 
       await waitFor(() => {
         const container = document.querySelector('.bg-juice-dark-lighter')
@@ -152,7 +217,7 @@ describe('CashOutForm', () => {
 
     it('applies light theme styles', async () => {
       useThemeStore.setState({ theme: 'light' })
-      render(<CashOutForm projectId="1" />)
+      renderForm(<CashOutForm projectId="1" />)
 
       await waitFor(() => {
         const container = document.querySelector('.bg-white')

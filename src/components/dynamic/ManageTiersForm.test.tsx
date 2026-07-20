@@ -217,7 +217,7 @@ describe('ManageTiersForm', () => {
 
       await waitFor(() => {
         expect(screen.getByText('Cancel')).toBeInTheDocument()
-        expect(screen.getByText('Add Tier')).toBeInTheDocument()
+        expect(screen.getByText('Add Item')).toBeInTheDocument()
       })
     })
   })

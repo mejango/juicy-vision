@@ -18,9 +18,6 @@ export interface SplitInput {
   isNew?: boolean
 }
 
-// Kept as an alias for older form types which still import this name.
-export type SimpleSplitInput = SplitInput
-
 interface BuildSplitOptions {
   kind: SplitKind
   sourceProjectId: string | number | bigint
@@ -116,15 +113,6 @@ export function buildSplitGroup(
   const total = built.reduce((sum, split) => sum + split.percent, 0)
   if (total > SPLITS_TOTAL_PERCENT) throw new Error(`${field} recipients exceed 100%`)
   return built
-}
-
-/** Plain wallet-only encoder retained for flows which intentionally have no project routing. */
-export function buildSimpleSplit(split: SimpleSplitInput, field: string) {
-  return buildSplit(split, field, { kind: 'payout', sourceProjectId: 0n })
-}
-
-export function buildSimpleSplitGroup(splits: SimpleSplitInput[], field: string) {
-  return buildSplitGroup(splits, field, { kind: 'payout', sourceProjectId: 0n })
 }
 
 interface StoredSplit {

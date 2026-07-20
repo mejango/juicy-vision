@@ -192,11 +192,6 @@ export function getChains(isTestnet: boolean): Record<string, ChainConfig> {
   return isTestnet ? TESTNET_CHAINS : MAINNET_CHAINS;
 }
 
-export function getChainById(chainId: number, isTestnet: boolean): ChainConfig | undefined {
-  const chains = getChains(isTestnet);
-  return Object.values(chains).find((c) => c.id === chainId);
-}
-
 export function getAllChainIds(isTestnet: boolean): number[] {
   return Object.values(getChains(isTestnet)).map((c) => c.id);
 }
@@ -220,67 +215,3 @@ export function generateChainTable(isTestnet: boolean): string {
 ${rows}`;
 }
 
-export function generateTerminalConfigExample(
-  isTestnet: boolean,
-  chainKey: string = 'ethereum',
-): string {
-  const chains = getChains(isTestnet);
-  const chain = chains[chainKey];
-  if (!chain) throw new Error(`Unknown chain: ${chainKey}`);
-
-  return JSON.stringify(
-    [
-      {
-        terminal: CONTRACTS.JBMultiTerminal,
-        accountingContextsToAccept: [{
-          token: chain.usdc.address,
-          decimals: 6,
-          currency: chain.usdc.currency,
-        }],
-      },
-      {
-        terminal: CONTRACTS.JBRouterTerminalRegistry,
-        accountingContextsToAccept: [],
-      },
-    ],
-    null,
-    2,
-  );
-}
-
-export function generateChainConfigs(isTestnet: boolean): string {
-  const chains = getChains(isTestnet);
-  const configs = Object.values(chains).map((chain) => ({
-    chainId: String(chain.id),
-    label: chain.name,
-    overrides: {
-      terminalConfigurations: [
-        {
-          terminal: CONTRACTS.JBMultiTerminal,
-          accountingContextsToAccept: [{
-            token: chain.usdc.address,
-            decimals: 6,
-            currency: chain.usdc.currency,
-          }],
-        },
-        {
-          terminal: CONTRACTS.JBRouterTerminalRegistry,
-          accountingContextsToAccept: [],
-        },
-      ],
-    },
-  }));
-
-  return JSON.stringify(configs, null, 2);
-}
-
-export function generateOptionsPickerChains(isTestnet: boolean): string {
-  const chains = getChains(isTestnet);
-  const options = Object.values(chains).map((c) => ({
-    value: String(c.id),
-    label: c.name,
-    selected: true,
-  }));
-
-  return JSON.stringify(options);
-}
