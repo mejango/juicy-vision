@@ -3,8 +3,16 @@
 Parallel review pass (7 agents: dynamic components, other frontend components + pages,
 frontend services/stores, utils/hooks/constants/shared, backend services, backend
 routes + hygiene, charts). Every finding grep/read-verified by the reporting agent.
-**Nothing applied yet.** All findings are behavior-preserving unless a caveat says
-otherwise. Security/validation paths were explicitly excluded from all suggestions.
+All findings are behavior-preserving unless a caveat says otherwise. Security/
+validation paths were explicitly excluded from all suggestions.
+
+> **STATUS 2026-07-20: APPLIED** on branch `chore/ponytail-cleanup` (commits
+> 38d31fd..5164044): net −16.6k lines, all gates green (tsc, vitest, deno check
+> per-file, deno test 304, vite build). Items each fix agent skipped after
+> re-verification (behavior differences, refuted findings) are recorded in this
+> session's reports; notable refutations: revDeployer `tiered721HookOf` is LIVE,
+> `projectConversations.ts` has two live exports, QueueRulesetForm 'in_progress'
+> branch is reachable via persisted state, rendered suggestion count is 58 not 59.
 
 **Net estimate after de-duplicating overlapping findings: ~13,000–14,000 removable
 lines** (~7% of the 195k-line TS codebase), plus the `ethers` dependency, dist.zip
