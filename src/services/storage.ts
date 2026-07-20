@@ -26,7 +26,7 @@ const storageAvailable = isAvailable()
 /**
  * Get a raw string value from localStorage
  */
-export function getString(key: StorageKey): string | null {
+function getString(key: StorageKey): string | null {
   if (!storageAvailable) return null
   return localStorage.getItem(key)
 }
@@ -34,7 +34,7 @@ export function getString(key: StorageKey): string | null {
 /**
  * Set a raw string value in localStorage
  */
-export function setString(key: StorageKey, value: string): void {
+function setString(key: StorageKey, value: string): void {
   if (!storageAvailable) return
   localStorage.setItem(key, value)
 }
@@ -43,7 +43,7 @@ export function setString(key: StorageKey, value: string): void {
  * Get a JSON-parsed value from localStorage
  * Returns null if key doesn't exist or parsing fails
  */
-export function getJSON<T>(key: StorageKey): T | null {
+function getJSON<T>(key: StorageKey): T | null {
   const raw = getString(key)
   if (!raw) return null
 
@@ -57,7 +57,7 @@ export function getJSON<T>(key: StorageKey): T | null {
 /**
  * Set a JSON-serialized value in localStorage
  */
-export function setJSON<T>(key: StorageKey, value: T): void {
+function setJSON<T>(key: StorageKey, value: T): void {
   if (!storageAvailable) return
   localStorage.setItem(key, JSON.stringify(value))
 }
@@ -65,7 +65,7 @@ export function setJSON<T>(key: StorageKey, value: T): void {
 /**
  * Remove a value from localStorage
  */
-export function remove(key: StorageKey): void {
+function remove(key: StorageKey): void {
   if (!storageAvailable) return
   localStorage.removeItem(key)
 }
@@ -73,7 +73,7 @@ export function remove(key: StorageKey): void {
 /**
  * Check if a key exists in localStorage
  */
-export function has(key: StorageKey): boolean {
+function has(key: StorageKey): boolean {
   return getString(key) !== null
 }
 
@@ -81,7 +81,7 @@ export function has(key: StorageKey): boolean {
  * Clear all app-specific storage keys
  * Does NOT clear other apps' data
  */
-export function clearAll(): void {
+function clearAll(): void {
   if (!storageAvailable) return
   Object.values(STORAGE_KEYS).forEach((key) => {
     localStorage.removeItem(key)

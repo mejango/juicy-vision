@@ -67,44 +67,16 @@ describe('Session Service', () => {
     })
   })
 
-  describe('clearSession', () => {
-    it('removes session ID from storage', async () => {
-      const { storage } = await import('./storage')
-      const { clearSession } = await import('./session')
+  describe('getPseudoAddress', () => {
+    it('derives a deterministic 40-hex-char address from a session ID', async () => {
+      const { getPseudoAddress } = await import('./session')
 
-      clearSession()
+      const address = getPseudoAddress('ses_test123_abc')
 
-      expect(storage.remove).toHaveBeenCalledWith('juicy_session_id')
-    })
-  })
-
-  describe('hasSession', () => {
-    it('returns true when session exists', async () => {
-      const { storage } = await import('./storage')
-      vi.mocked(storage.has).mockReturnValue(true)
-
-      const { hasSession } = await import('./session')
-      expect(hasSession()).toBe(true)
-    })
-
-    it('returns false when no session exists', async () => {
-      const { storage } = await import('./storage')
-      vi.mocked(storage.has).mockReturnValue(false)
-
-      const { hasSession } = await import('./session')
-      expect(hasSession()).toBe(false)
-    })
-  })
-
-  describe('getSessionHeader', () => {
-    it('returns header object with session ID', async () => {
-      const { storage } = await import('./storage')
-      vi.mocked(storage.getString).mockReturnValue('ses_test123_abc')
-
-      const { getSessionHeader } = await import('./session')
-      const header = getSessionHeader()
-
-      expect(header).toEqual({ 'X-Session-ID': 'ses_test123_abc' })
+      expect(address).toBe(`0x${'ses_test123_abc'.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`)
+      expect(address).toMatch(/^0x[a-f0-9]{40}$/i)
+      // Same input always yields the same output
+      expect(getPseudoAddress('ses_test123_abc')).toBe(address)
     })
   })
 
@@ -163,11 +135,8 @@ describe('Session Service', () => {
       const { storage } = await import('./storage')
       vi.mocked(storage.getString).mockReturnValue('ses_test_abc')
 
-      // Import fresh module without auto-fetch
+      // Import fresh module without auto-fetch (prefetch is skipped under VITEST)
       const sessionModule = await import('./session')
-
-      // Clear any pre-fetch that happened
-      sessionModule.clearPseudoAddressCache()
 
       expect(sessionModule.getCachedPseudoAddress()).toBeNull()
     })
@@ -184,39 +153,13 @@ describe('Session Service', () => {
         }),
       })
 
-      const { getSessionPseudoAddress, getCachedPseudoAddress, clearPseudoAddressCache } = await import('./session')
-      clearPseudoAddressCache()
+      const { getSessionPseudoAddress, getCachedPseudoAddress } = await import('./session')
 
       // Fetch first
       await getSessionPseudoAddress()
 
       // Now cache should be populated
       expect(getCachedPseudoAddress()).toBe('0xcached1234567890abcdef1234567890abcdef12')
-    })
-  })
-
-  describe('clearPseudoAddressCache', () => {
-    it('clears the cached address', async () => {
-      const { storage } = await import('./storage')
-      vi.mocked(storage.getString).mockReturnValue('ses_test_abc')
-
-      mockFetch.mockResolvedValue({
-        json: () => Promise.resolve({
-          success: true,
-          data: { address: '0xoriginal234567890abcdef1234567890abcdef12' },
-        }),
-      })
-
-      const { getSessionPseudoAddress, getCachedPseudoAddress, clearPseudoAddressCache } = await import('./session')
-      clearPseudoAddressCache()
-
-      // Fetch and cache
-      await getSessionPseudoAddress()
-      expect(getCachedPseudoAddress()).not.toBeNull()
-
-      // Clear cache
-      clearPseudoAddressCache()
-      expect(getCachedPseudoAddress()).toBeNull()
     })
   })
 

@@ -98,27 +98,6 @@ describe('chat service', () => {
     })
   })
 
-  describe('fetchPublicChats', () => {
-    it('passes limit and offset parameters', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ success: true, data: [] }),
-      })
-
-      const { fetchPublicChats } = await import('./chat')
-      await fetchPublicChats(10, 20)
-
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('limit=10'),
-        expect.any(Object)
-      )
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('offset=20'),
-        expect.any(Object)
-      )
-    })
-  })
-
   describe('fetchChat', () => {
     it('fetches single chat by ID', async () => {
       const mockChat = { id: 'chat-123', name: 'Test Chat' }
@@ -157,53 +136,6 @@ describe('chat service', () => {
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({ name: 'New Chat', isPublic: true }),
-        })
-      )
-    })
-  })
-
-  describe('migrateChat', () => {
-    it('migrates chat with title only', async () => {
-      const mockResult = { chatId: 'migrated-123', name: 'Migrated Chat' }
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ success: true, data: mockResult }),
-      })
-
-      const { migrateChat } = await import('./chat')
-      const result = await migrateChat('Migrated Chat')
-
-      expect(result).toEqual(mockResult)
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/chat/migrate'),
-        expect.objectContaining({
-          method: 'POST',
-          body: JSON.stringify({ title: 'Migrated Chat' }),
-        })
-      )
-    })
-
-    it('migrates chat with messages', async () => {
-      const mockResult = { chatId: 'migrated-123', name: 'Chat with History' }
-      const messages = [
-        { role: 'user' as const, content: 'Hello' },
-        { role: 'assistant' as const, content: 'Hi there!' },
-      ]
-
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: () => Promise.resolve({ success: true, data: mockResult }),
-      })
-
-      const { migrateChat } = await import('./chat')
-      const result = await migrateChat('Chat with History', messages)
-
-      expect(result).toEqual(mockResult)
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({
-          body: JSON.stringify({ title: 'Chat with History', messages }),
         })
       )
     })
@@ -327,71 +259,6 @@ describe('chat service', () => {
       })
     })
 
-    describe('getInviteInfo', () => {
-      it('fetches invite info by code', async () => {
-        const mockInfo = {
-          chatId: 'chat-123',
-          chatName: 'Test Chat',
-          canSendMessages: true,
-          canInviteOthers: false,
-        }
-
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ success: true, data: mockInfo }),
-        })
-
-        const { getInviteInfo } = await import('./chat')
-        const info = await getInviteInfo('ABC12345')
-
-        expect(info).toEqual(mockInfo)
-        expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining('/chat/invite/ABC12345'),
-          expect.any(Object)
-        )
-      })
-    })
-
-    describe('joinViaInvite', () => {
-      it('joins chat via invite code', async () => {
-        const mockResult = { chatId: 'chat-123', chatName: 'Test Chat', role: 'member' }
-
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ success: true, data: mockResult }),
-        })
-
-        const { joinViaInvite } = await import('./chat')
-        const result = await joinViaInvite('ABC12345')
-
-        expect(result).toEqual(mockResult)
-        expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining('/chat/invite/ABC12345/join'),
-          expect.objectContaining({
-            method: 'POST',
-          })
-        )
-      })
-    })
-
-    describe('revokeInvite', () => {
-      it('revokes invite by ID', async () => {
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ success: true }),
-        })
-
-        const { revokeInvite } = await import('./chat')
-        await revokeInvite('chat-123', 'inv-456')
-
-        expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining('/chat/chat-123/invites/inv-456'),
-          expect.objectContaining({
-            method: 'DELETE',
-          })
-        )
-      })
-    })
   })
 
   describe('member functions', () => {
@@ -450,66 +317,4 @@ describe('chat service', () => {
     })
   })
 
-  describe('AI functions', () => {
-    describe('getAiBalance', () => {
-      it('fetches AI balance for chat', async () => {
-        const mockBalance = {
-          chatId: 'chat-123',
-          balanceWei: '1000000000000000000',
-          estimatedRequestsRemaining: 100,
-          isLow: false,
-          isEmpty: false,
-        }
-
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ success: true, data: mockBalance }),
-        })
-
-        const { getAiBalance } = await import('./chat')
-        const balance = await getAiBalance('chat-123')
-
-        expect(balance).toEqual(mockBalance)
-      })
-    })
-  })
-
-  describe('feedback', () => {
-    describe('submitFeedback', () => {
-      it('submits rating feedback', async () => {
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ success: true }),
-        })
-
-        const { submitFeedback } = await import('./chat')
-        await submitFeedback('chat-123', 'great')
-
-        expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining('/chat/chat-123/feedback'),
-          expect.objectContaining({
-            method: 'POST',
-            body: JSON.stringify({ rating: 'great' }),
-          })
-        )
-      })
-
-      it('submits rating with comment', async () => {
-        mockFetch.mockResolvedValueOnce({
-          ok: true,
-          json: () => Promise.resolve({ success: true }),
-        })
-
-        const { submitFeedback } = await import('./chat')
-        await submitFeedback('chat-123', 'wow', 'This was amazing!')
-
-        expect(mockFetch).toHaveBeenCalledWith(
-          expect.any(String),
-          expect.objectContaining({
-            body: JSON.stringify({ rating: 'wow', comment: 'This was amazing!' }),
-          })
-        )
-      })
-    })
-  })
 })

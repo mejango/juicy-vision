@@ -48,27 +48,13 @@ function generateSessionId(): string {
 }
 
 /**
- * Clear the session (used on logout if needed)
+ * Derive a deterministic local pseudo-address from a session ID.
+ * This is the frontend fallback derivation (won't match the backend's
+ * HMAC-based address) used for display/identity matching when the
+ * backend-computed address isn't available.
  */
-export function clearSession(): void {
-  storage.remove(STORAGE_KEYS.SESSION_ID)
-}
-
-/**
- * Check if a session exists
- */
-export function hasSession(): boolean {
-  return storage.has(STORAGE_KEYS.SESSION_ID)
-}
-
-/**
- * Get the session header for API requests
- * This can be used alongside or instead of auth token
- */
-export function getSessionHeader(): Record<string, string> {
-  return {
-    'X-Session-ID': getSessionId(),
-  }
+export function getPseudoAddress(sessionId: string): string {
+  return `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
 }
 
 /**
@@ -108,7 +94,7 @@ export async function getSessionPseudoAddress(): Promise<string> {
       console.error('[session] Failed to fetch pseudo-address:', err)
       fetchPromise = null
       // Fallback to a deterministic local computation (won't match backend, but better than nothing)
-      return `0x${sessionId.replace(/[^a-f0-9]/gi, '').slice(0, 40).padStart(40, '0')}`
+      return getPseudoAddress(sessionId)
     })
 
   return fetchPromise
@@ -120,14 +106,6 @@ export async function getSessionPseudoAddress(): Promise<string> {
  */
 export function getCachedPseudoAddress(): string | null {
   return cachedPseudoAddress
-}
-
-/**
- * Clear the cached pseudo-address (e.g., when session changes)
- */
-export function clearPseudoAddressCache(): void {
-  cachedPseudoAddress = null
-  fetchPromise = null
 }
 
 /**

@@ -3,7 +3,7 @@ import { decodeFunctionData } from 'viem'
 import { JB_CONTRACTS, USDC_ADDRESSES, type SupportedChainId } from '../../constants'
 import { REV_DEPLOYER_ABI } from '../../constants/abis'
 import { CHAIN_IDS } from '../../config/environment'
-import { NATIVE_TOKEN } from '../../utils/suckerConfig'
+import { NATIVE_TOKEN } from '../../constants'
 import {
   buildOmnichainDeployRevnetTransactions,
   type JBDeployRevnetRequest,

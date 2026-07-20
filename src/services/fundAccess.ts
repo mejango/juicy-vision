@@ -333,15 +333,6 @@ export function accountingAmountInConfiguredCurrency(amount: bigint, pricePerUni
   return (amount * pricePerUnit) / PRICE_FIDELITY
 }
 
-export function availableFundAccessAmount(
-  remaining: bigint,
-  accountingAmount: bigint,
-  pricePerUnit: bigint,
-): bigint {
-  const sourceInCurrency = accountingAmountInConfiguredCurrency(accountingAmount, pricePerUnit)
-  return remaining < sourceInCurrency ? remaining : sourceInCurrency
-}
-
 export function protectedFundAccessOutput(quoted: bigint, exactCurrency: boolean): bigint {
   if (quoted <= 0n) return 0n
   if (exactCurrency) return quoted

@@ -128,26 +128,37 @@ export async function discoverUniswapPool(
     if (weth) quoteTokens.push({ token: 'WETH', address: weth })
     if (usdc) quoteTokens.push({ token: 'USDC', address: usdc })
 
-    // Try each quote token and fee tier to find a pool
-    for (const { token: quoteToken, address: quoteAddress } of quoteTokens) {
-      for (const fee of FEE_TIERS) {
-        const poolAddress = await client.readContract({
+    // Check every quote token / fee tier combination in parallel (independent
+    // view reads), then pick the first existing pool in priority order.
+    const candidates = quoteTokens.flatMap(({ token: quoteToken, address: quoteAddress }) =>
+      FEE_TIERS.map((fee) => ({ quoteToken, quoteAddress, fee }))
+    )
+    const results = await Promise.allSettled(
+      candidates.map(({ quoteAddress, fee }) =>
+        client.readContract({
           address: factory,
           abi: FACTORY_ABI,
           functionName: 'getPool',
           args: [tokenAddress, quoteAddress, fee],
         })
+      )
+    )
 
-        // Check if pool exists (not zero address)
-        if (poolAddress && poolAddress !== '0x0000000000000000000000000000000000000000') {
-          poolAddressCache.set(cacheKey, { address: poolAddress, timestamp: Date.now() })
-          return {
-            address: poolAddress,
-            fee,
-            projectTokenAddress: tokenAddress,
-            quoteToken,
-            quoteTokenAddress: quoteAddress,
-          }
+    for (let i = 0; i < candidates.length; i++) {
+      const result = results[i]
+      if (result.status !== 'fulfilled') continue
+      const poolAddress = result.value
+
+      // Check if pool exists (not zero address)
+      if (poolAddress && poolAddress !== '0x0000000000000000000000000000000000000000') {
+        const { quoteToken, quoteAddress, fee } = candidates[i]
+        poolAddressCache.set(cacheKey, { address: poolAddress, timestamp: Date.now() })
+        return {
+          address: poolAddress,
+          fee,
+          projectTokenAddress: tokenAddress,
+          quoteToken,
+          quoteTokenAddress: quoteAddress,
         }
       }
     }

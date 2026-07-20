@@ -72,13 +72,6 @@ function assertSafeDiscountPercents(configs: JB721DiscountPercentConfig[]): void
   }
 }
 
-// Config for minting to beneficiaries
-export interface JB721MintConfig {
-  tierId: number
-  count: number
-  beneficiary: string
-}
-
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as const
 
 /**
@@ -138,61 +131,6 @@ export function encodeAdjustTiers(params: {
 }
 
 /**
- * Encode setMetadata calldata for JB721TiersHook (V6).
- * Updates name, symbol, base URI, contract URI, token URI resolver, or tier-specific IPFS URI.
- * V6 signature: setMetadata(name, symbol, baseUri, contractUri, tokenUriResolver, encodedIpfsUriTierId, encodedIpfsUri)
- */
-export function encodeSetMetadata(params: {
-  name?: string
-  symbol?: string
-  baseUri: string
-  contractUri: string
-  tokenUriResolver: `0x${string}`
-  encodedIPFSTUriTierId: number | bigint
-  encodedIPFSUri: `0x${string}`
-}): `0x${string}` {
-  const {
-    name = '',
-    symbol = '',
-    baseUri,
-    contractUri,
-    tokenUriResolver,
-    encodedIPFSTUriTierId,
-    encodedIPFSUri,
-  } = params
-
-  return encodeFunctionData({
-    abi: JB_721_TIERS_HOOK_ABI,
-    functionName: 'setMetadata',
-    args: [
-      name,
-      symbol,
-      baseUri,
-      contractUri,
-      tokenUriResolver,
-      BigInt(encodedIPFSTUriTierId),
-      encodedIPFSUri,
-    ],
-  })
-}
-
-/**
- * Encode a single-tier discount update for JB721TiersHook.
- * Use the batch surface for one entry so single and multi-tier updates share one path.
- */
-export function encodeSetDiscountPercentOf(params: {
-  tierId: number | bigint
-  discountPercent: number | bigint
-}): `0x${string}` {
-  return encodeSetDiscountPercentsOf({
-    configs: [{
-      tierId: Number(params.tierId),
-      discountPercent: Number(params.discountPercent),
-    }],
-  })
-}
-
-/**
  * Encode setDiscountPercentsOf calldata for JB721TiersHook.
  * Batch sets discount percentages for multiple tiers.
  */
@@ -209,66 +147,6 @@ export function encodeSetDiscountPercentsOf(params: {
         tierId: c.tierId,
         discountPercent: c.discountPercent,
       })),
-    ],
-  })
-}
-
-/**
- * Encode mintPendingReservesFor calldata for JB721TiersHook.
- * Mints pending reserved NFTs from a specific tier.
- */
-export function encodeMintPendingReservesFor(params: {
-  tierId: number | bigint
-  count: number | bigint
-}): `0x${string}` {
-  return encodeFunctionData({
-    abi: JB_721_TIERS_HOOK_ABI,
-    functionName: 'mintPendingReservesFor',
-    args: [
-      BigInt(params.tierId),
-      BigInt(params.count),
-    ],
-  })
-}
-
-/**
- * Encode mintFor calldata for JB721TiersHook.
- * Mints specific tiers to a beneficiary (owner only).
- *
- * V6 signature is mintFor(uint16[] tierIds, address beneficiary) - one
- * beneficiary per call. Configs are expanded (tierId repeated `count` times);
- * all configs in a single call MUST share the same beneficiary.
- */
-export function encodeMintFor(params: {
-  mintConfigs: JB721MintConfig[]
-}): `0x${string}` {
-  const { mintConfigs } = params
-  if (mintConfigs.length === 0) {
-    throw new Error('encodeMintFor: at least one mint config is required')
-  }
-
-  const beneficiary = mintConfigs[0].beneficiary
-  const mismatched = mintConfigs.find(c => c.beneficiary.toLowerCase() !== beneficiary.toLowerCase())
-  if (mismatched) {
-    throw new Error(
-      'encodeMintFor: V6 mintFor takes a single beneficiary per call - split configs by beneficiary and encode one transaction each'
-    )
-  }
-
-  // Expand each config into `count` copies of its tierId
-  const tierIds: number[] = []
-  for (const c of mintConfigs) {
-    for (let i = 0; i < c.count; i++) {
-      tierIds.push(c.tierId)
-    }
-  }
-
-  return encodeFunctionData({
-    abi: JB_721_TIERS_HOOK_ABI,
-    functionName: 'mintFor',
-    args: [
-      tierIds,
-      beneficiary as `0x${string}`,
     ],
   })
 }

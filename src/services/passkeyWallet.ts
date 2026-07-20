@@ -22,8 +22,8 @@
  */
 
 import { privateKeyToAccount, type PrivateKeyAccount } from 'viem/accounts'
-import type { TypedDataDefinition } from 'viem'
 import { signInWithWallet } from './siwe'
+import { base64UrlToArrayBuffer } from './base64url'
 
 const PASSKEY_WALLET_KEY = 'juice-passkey-wallet'
 const API_URL = import.meta.env.VITE_API_URL || ''
@@ -43,20 +43,6 @@ function bufferToHex(buffer: ArrayBuffer): string {
   return Array.from(new Uint8Array(buffer))
     .map(b => b.toString(16).padStart(2, '0'))
     .join('')
-}
-
-/**
- * Convert base64url to ArrayBuffer
- */
-function base64UrlToBuffer(base64url: string): ArrayBuffer {
-  const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/')
-  const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4)
-  const binary = atob(padded)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i)
-  }
-  return bytes.buffer
 }
 
 /**
@@ -182,6 +168,46 @@ async function derivePrivateKey(prfOutput: ArrayBuffer): Promise<`0x${string}`> 
 }
 
 /**
+ * Shared tail of the create/authenticate flows: register the credential with
+ * the server (resolving any linked primary wallet), persist the credential and
+ * wallet locally, and establish the SIWE session + server-side signing key.
+ */
+async function finalizePasskeyWallet(
+  credentialId: string,
+  account: PrivateKeyAccount,
+  privateKey: `0x${string}`,
+): Promise<PasskeyWallet> {
+  // Register credential with server to get effective wallet address
+  // (may be linked to a primary wallet for cross-device support)
+  const { walletAddress: effectiveAddress } = await registerCredentialWithServer(
+    credentialId,
+    account.address,
+    'platform'
+  )
+
+  const wallet: PasskeyWallet = {
+    address: effectiveAddress,
+    createdAt: Date.now(),
+  }
+
+  // Store credential ID for future authentications
+  storePasskeyCredential(credentialId)
+
+  // Create SIWE session with backend BEFORE dispatching the event
+  // This ensures WalletInfo's validation sees the session when it checks
+  // Sign for the effective address (which may be a linked primary wallet)
+  await createSiweSession(account, effectiveAddress !== account.address ? effectiveAddress : undefined)
+
+  // Store signing key on server for gasless transaction signing
+  await storeSigningKeyOnServer(privateKey)
+
+  // Now store wallet and dispatch event (after SIWE session exists)
+  storePasskeyWallet(wallet)
+
+  return wallet
+}
+
+/**
  * Create a new passkey wallet using Touch ID / Face ID
  * Returns the wallet address
  */
@@ -243,34 +269,7 @@ export async function createPasskeyWallet(): Promise<PasskeyWallet> {
   const privateKey = await derivePrivateKey(prfResult)
   const account = privateKeyToAccount(privateKey)
 
-  // Register credential with server to get effective wallet address
-  // (may be linked to a primary wallet for cross-device support)
-  const { walletAddress: effectiveAddress } = await registerCredentialWithServer(
-    credential.id,
-    account.address,
-    'platform'
-  )
-
-  const wallet: PasskeyWallet = {
-    address: effectiveAddress,
-    createdAt: Date.now(),
-  }
-
-  // Store credential ID for future authentications
-  storePasskeyCredential(credential.id)
-
-  // Create SIWE session with backend BEFORE dispatching the event
-  // This ensures WalletInfo's validation sees the session when it checks
-  // Sign for the effective address (which may be a linked primary wallet)
-  await createSiweSession(account, effectiveAddress !== account.address ? effectiveAddress : undefined)
-
-  // Store signing key on server for gasless transaction signing
-  await storeSigningKeyOnServer(privateKey)
-
-  // Now store wallet and dispatch event (after SIWE session exists)
-  storePasskeyWallet(wallet)
-
-  return wallet
+  return finalizePasskeyWallet(credential.id, account, privateKey)
 }
 
 /**
@@ -279,7 +278,7 @@ export async function createPasskeyWallet(): Promise<PasskeyWallet> {
 export async function authenticatePasskeyWallet(credentialId?: string): Promise<PasskeyWallet> {
   const allowCredentials = credentialId ? [{
     type: 'public-key' as const,
-    id: base64UrlToBuffer(credentialId),
+    id: base64UrlToArrayBuffer(credentialId),
   }] : undefined
 
   const credential = await navigator.credentials.get({
@@ -315,34 +314,7 @@ export async function authenticatePasskeyWallet(credentialId?: string): Promise<
   const privateKey = await derivePrivateKey(prfResult)
   const account = privateKeyToAccount(privateKey)
 
-  // Look up if this credential is registered with server (may have linked primary wallet)
-  // Also register if not yet registered
-  const { walletAddress: effectiveAddress } = await registerCredentialWithServer(
-    credential.id,
-    account.address,
-    'platform'
-  )
-
-  const wallet: PasskeyWallet = {
-    address: effectiveAddress,
-    createdAt: Date.now(),
-  }
-
-  // Store credential ID for future authentications
-  storePasskeyCredential(credential.id)
-
-  // Create SIWE session with backend BEFORE dispatching the event
-  // This ensures WalletInfo's validation sees the session when it checks
-  // Sign for the effective address (which may be a linked primary wallet)
-  await createSiweSession(account, effectiveAddress !== account.address ? effectiveAddress : undefined)
-
-  // Store signing key on server for gasless transaction signing
-  await storeSigningKeyOnServer(privateKey)
-
-  // Now store wallet and dispatch event (after SIWE session exists)
-  storePasskeyWallet(wallet)
-
-  return wallet
+  return finalizePasskeyWallet(credential.id, account, privateKey)
 }
 
 /**
@@ -426,71 +398,4 @@ export async function signInWithPasskey(): Promise<PasskeyWallet> {
   // No stored credential - create a new passkey wallet
   // (Skip discoverable credentials attempt as it shows confusing QR code dialog)
   return await createPasskeyWallet()
-}
-
-/**
- * Get the passkey account for signing operations.
- * Requires Touch ID / Face ID authentication to derive the private key.
- */
-export async function getPasskeyAccount(): Promise<PrivateKeyAccount> {
-  const credentialId = getStoredCredentialId()
-  if (!credentialId) {
-    throw new Error('No passkey credential found. Please sign in first.')
-  }
-
-  // Authenticate to get PRF output
-  const credential = await navigator.credentials.get({
-    publicKey: {
-      challenge: crypto.getRandomValues(new Uint8Array(32)),
-      rpId: window.location.hostname,
-      timeout: 60000,
-      userVerification: 'required',
-      allowCredentials: [{
-        type: 'public-key' as const,
-        id: base64UrlToBuffer(credentialId),
-      }],
-      extensions: {
-        prf: {
-          eval: {
-            first: PRF_SALT,
-          },
-        },
-      } as any,
-    },
-  }) as PublicKeyCredential | null
-
-  if (!credential) {
-    throw new Error('Passkey authentication was cancelled')
-  }
-
-  // Get PRF output
-  const extensionResults = (credential as any).getClientExtensionResults?.()
-  const prfResult = extensionResults?.prf?.results?.first
-
-  if (!prfResult) {
-    throw new Error('PRF extension not supported on this device')
-  }
-
-  // Derive private key and create account
-  const privateKey = await derivePrivateKey(prfResult)
-  return privateKeyToAccount(privateKey)
-}
-
-/**
- * Sign EIP-712 typed data using the passkey wallet.
- * Requires Touch ID / Face ID authentication.
- *
- * @example
- * const signature = await signTypedDataWithPasskey({
- *   domain: { name: 'Juicebox', chainId: 1, verifyingContract: '0x...' },
- *   types: { ForwardRequest: [...] },
- *   primaryType: 'ForwardRequest',
- *   message: { from: '0x...', to: '0x...', ... },
- * })
- */
-export async function signTypedDataWithPasskey<
-  const TTypedData extends TypedDataDefinition,
->(typedData: TTypedData): Promise<`0x${string}`> {
-  const account = await getPasskeyAccount()
-  return account.signTypedData(typedData as any)
 }

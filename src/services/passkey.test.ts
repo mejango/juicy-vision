@@ -52,14 +52,6 @@ describe('Passkey Service', () => {
     })
   })
 
-  describe('isPasskeyAutofillSupported', () => {
-    it('returns true when conditional mediation is available', async () => {
-      const { isPasskeyAutofillSupported } = await import('./passkey')
-      const result = await isPasskeyAutofillSupported()
-      expect(result).toBe(true)
-    })
-  })
-
   describe('registerPasskey', () => {
     it('completes registration flow successfully', async () => {
       // Mock server response for registration options

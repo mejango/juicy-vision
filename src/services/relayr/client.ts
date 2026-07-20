@@ -1,5 +1,9 @@
 import { useSettingsStore } from '../../stores'
-import type { JBDeployTiersHookConfig } from '../omnichainDeployer'
+import {
+  extractChainTokenAddresses,
+  perChainSuckerConfig,
+  type JBDeployTiersHookConfig,
+} from '../omnichainDeployer'
 import { RELAYR_APP_ID } from '../../config/environment'
 import { decodeFunctionData, isAddress, zeroAddress, type Hex } from 'viem'
 import {
@@ -21,10 +25,15 @@ import {
   encodeSendReservesTransaction,
   encodeDeployRevnetTransaction,
 } from './encoder'
+import type {
+  JBRulesetConfig,
+  JBTerminalConfig,
+  JBTransactionData,
+  REVStageConfig,
+} from './encoder'
+import { NATIVE_TOKEN } from '../../constants'
 import {
   createSalt,
-  NATIVE_TOKEN,
-  parseSuckerDeployerConfig,
   shouldConfigureSuckers,
   type JBSuckerBridge,
 } from '../../utils/suckerConfig'
@@ -32,45 +41,23 @@ import { requireNonzeroBytes32 } from '../../utils/erc20Safety'
 import { getProjectController } from '../../utils/paymentTerminal'
 import { getSafetyPublicClient } from '../../utils/transactionSafety'
 
-export interface QuoteRequest {
-  fromChainId: number
-  toChainId: number
-  fromToken: string
-  toToken: string
-  amount: string
-  recipient: string
-}
-
-export interface Quote {
-  quoteId: string
-  fromChainId: number
-  toChainId: number
-  fromToken: string
-  toToken: string
-  fromAmount: string
-  toAmount: string
-  estimatedGas: string
-  fee: string
-  expiresAt: number
-}
-
-export interface SendRequest {
-  quoteId: string
-  signature: string
-}
-
-export interface SendResponse {
-  txHash: string
-  status: 'pending' | 'submitted' | 'confirmed' | 'failed'
-}
-
-export interface TransactionStatusResponse {
-  txHash: string
-  status: 'pending' | 'submitted' | 'confirmed' | 'failed'
-  fromTxHash?: string
-  toTxHash?: string
-  error?: string
-}
+// Shared JB config/transaction types live in the encoder module.
+export type {
+  JBRulesetMetadataConfig,
+  JBSplitConfig,
+  JBSplitGroupConfig,
+  JBCurrencyAmountConfig,
+  JBFundAccessLimitGroupConfig,
+  JBRulesetConfig,
+  JBQueueRulesetRequest,
+  JBTransactionData,
+  JBTransactionResponse,
+  JBTerminalConfig,
+  JBSuckerTokenMapping,
+  JBSuckerDeployerConfig,
+  JBSuckerDeploymentConfig,
+  REVStageConfig,
+} from './encoder'
 
 function getEndpoint(): string {
   return useSettingsStore.getState().relayrEndpoint
@@ -103,26 +90,6 @@ async function fetchApi<T>(
   return response.json()
 }
 
-export async function sendTransaction(request: SendRequest): Promise<SendResponse> {
-  return fetchApi<SendResponse>('/v1/send', {
-    method: 'POST',
-    body: JSON.stringify(request),
-  })
-}
-
-export interface JBTransactionData {
-  to: string
-  data: string
-  value: string
-  chainId: number
-}
-
-export interface JBTransactionResponse {
-  txData: JBTransactionData
-  estimatedGas: string
-  description: string
-}
-
 // ============================================================================
 // Balance-Based Gas Sponsorship
 // ============================================================================
@@ -148,21 +115,6 @@ export interface BalanceBundleRequest {
 export interface BalanceBundleResponse {
   bundle_uuid: string
   tx_uuids: string[]
-}
-
-export interface BalanceInfo {
-  balance: string         // Current balance in wei
-  currency: string        // e.g., "ETH"
-  last_updated: number    // Unix timestamp
-}
-
-export interface BalanceUsageRecord {
-  tx_uuid: string
-  chain_id: number
-  gas_used: string
-  gas_price: string
-  cost: string            // Total cost in wei
-  timestamp: number
 }
 
 /**
@@ -286,45 +238,11 @@ export async function createReviewedForwarderBundle(
   return createBalanceBundle(request)
 }
 
-/**
- * Get current organization balance for gas sponsorship.
- */
-export async function getBalance(appId: string): Promise<BalanceInfo> {
-  return fetchApi<BalanceInfo>(`/v1/balance/${appId}`)
-}
-
-// ============================================================================
-// Prepaid Bundles (Self-Custody Mode)
-// ============================================================================
-// User pays gas on ONE chain, Relayr executes on ALL chains.
-// For connected wallets (wagmi) doing omnichain operations.
-
-export interface PrepaidBundleTransaction {
-  chain: number           // Target chain ID
-  target: string          // Destination contract address (0x...)
-  data?: string           // Calldata (0x...)
-  value?: string          // ETH value in wei
-  gas_limit?: number      // Optional gas limit override
-}
-
 export interface PaymentOption {
   chainId: number         // Chain to pay gas from
   token: string           // Payment token (ETH address or ERC20)
   amount: string          // Amount required in wei
   estimatedGas: string    // Total gas estimate
-}
-
-export interface PrepaidBundleRequest {
-  transactions: PrepaidBundleTransaction[]
-  perform_simulation?: boolean    // Default: true
-  signer_address: string          // User's connected wallet address
-}
-
-export interface PrepaidBundleResponse {
-  bundle_uuid: string
-  tx_uuids: string[]
-  payment_options: PaymentOption[]  // Available chains to pay from
-  expires_at: number                // Unix timestamp when quote expires
 }
 
 // Raw relayr API types (matching relayr-ts)
@@ -424,20 +342,12 @@ function deriveBundleStatus(
 
 // Transform raw API response to simplified format
 export function transformBundleResponse(raw: RawBundleResponse): BundleStatusResponse {
-  console.log('[Relayr] Raw bundle response:', JSON.stringify(raw, null, 2))
   const transactions: BundleTransactionStatus[] = raw.transactions.map(tx => {
-    // Debug: log the status data structure
-    if ('data' in tx.status) {
-      console.log(`[Relayr] Chain ${tx.request.chain} status data:`, tx.status.data)
-    }
     // Try both tx_hash and txHash (API might use either)
     const statusData = 'data' in tx.status && typeof tx.status.data === 'object' && tx.status.data !== null
       ? tx.status.data as Record<string, unknown>
       : null
     const txHash = statusData?.tx_hash ?? statusData?.txHash ?? statusData?.hash
-    if (txHash) {
-      console.log(`[Relayr] Found txHash for chain ${tx.request.chain}:`, txHash)
-    }
     return {
       tx_uuid: tx.tx_uuid,
       chain_id: tx.request.chain,
@@ -455,12 +365,6 @@ export function transformBundleResponse(raw: RawBundleResponse): BundleStatusRes
     transactions,
     payment_received: raw.payment_received,
   }
-}
-
-export interface BundlePaymentRequest {
-  bundle_uuid: string
-  chain_id: number          // Chain the user is paying from
-  signed_tx: string         // Signed payment transaction
 }
 
 /**
@@ -524,75 +428,6 @@ export function buildOmnichainDistributeTransactions(
 }
 
 // Omnichain ruleset queueing
-
-export interface JBRulesetMetadataConfig {
-  reservedPercent: number         // 0-10000 (10000 = 100%)
-  cashOutTaxRate: number          // 0-10000 (0 = proportional baseline, 10000 = disabled)
-  baseCurrency: number            // 1 = ETH, 2 = USD
-  pausePay: boolean
-  pauseCreditTransfers: boolean
-  allowOwnerMinting: boolean
-  allowSetCustomToken: boolean
-  allowTerminalMigration: boolean
-  allowSetTerminals: boolean
-  allowSetController: boolean
-  allowAddAccountingContext: boolean
-  allowAddPriceFeed: boolean
-  ownerMustSendPayouts: boolean
-  holdFees: boolean
-  // If true, omnichain cash-out
-  // calculations use only the local chain's balances.
-  scopeCashOutsToLocalBalances: boolean
-  useDataHookForPay: boolean
-  useDataHookForCashOut: boolean
-  dataHook: string
-  metadata: number
-}
-
-export interface JBSplitConfig {
-  percent: number                  // Out of 1000000000 (1B = 100%)
-  projectId: number                // 0 for wallet, or project ID to pay
-  beneficiary: string              // Recipient wallet
-  preferAddToBalance: boolean
-  lockedUntil: number              // Unix timestamp, 0 = unlocked
-  hook: string                     // 0x0 for none
-}
-
-export interface JBSplitGroupConfig {
-  groupId: string                  // uint256 - use token address for payouts, "1" for reserved
-  splits: JBSplitConfig[]
-}
-
-export interface JBCurrencyAmountConfig {
-  amount: string                   // Amount in currency (as string for bigint)
-  currency: number                 // 1 = ETH, 2 = USD
-}
-
-export interface JBFundAccessLimitGroupConfig {
-  terminal: string                 // Terminal address
-  token: string                    // 0xEEEE...EEEe for ETH
-  payoutLimits: JBCurrencyAmountConfig[]
-  surplusAllowances: JBCurrencyAmountConfig[]
-}
-
-export interface JBRulesetConfig {
-  mustStartAtOrAfter: number       // Unix timestamp, use 0 for immediate
-  duration: number                 // Seconds per cycle, 0 = ongoing
-  weight: string                   // Tokens per currency unit (as string for bigint)
-  weightCutPercent: number         // Decay per cycle (0-1000000000)
-  approvalHook: string             // 0x0 for none
-  metadata: JBRulesetMetadataConfig
-  splitGroups: JBSplitGroupConfig[]
-  fundAccessLimitGroups: JBFundAccessLimitGroupConfig[]
-}
-
-export interface JBQueueRulesetRequest {
-  chainId: number
-  projectId: number
-  queueTarget: string
-  rulesetConfigurations: JBRulesetConfig[]
-  memo: string
-}
 
 export interface JBOmnichainQueueRequest {
   chainIds: number[]               // All chains to queue on
@@ -696,72 +531,11 @@ export function buildOmnichainDeployERC20Transactions(
 // Deploy a new Juicebox project on multiple chains simultaneously.
 // Uses JBOmnichainDeployer.launchProjectFor() to create projects with suckers atomically.
 
-export interface JBTerminalConfig {
-  terminal: string                      // JBMultiTerminal address
-  accountingContextsToAccept: Array<{
-    token: string                       // NATIVE_TOKEN or ERC20 address
-    decimals: number                    // Token decimals (18 for ETH, 6 for USDC)
-    currency: number                    // 1=ETH, 2=USD
-  }>
-}
-
-// Token mapping for cross-chain bridging via suckers
-// V6 Solidity struct: localToken, minGas, remoteToken (bytes32)
-export interface JBSuckerTokenMapping {
-  localToken: string                    // Token address on local chain (0xEEEe... for native)
-  minGas: number                        // Minimum gas for bridge operation (uint32)
-  remoteToken: string                   // Token on remote chain (address or bytes32; padded at encode time)
-}
-
-// Sucker deployer configuration for a specific bridge type
-export interface JBSuckerDeployerConfig {
-  deployer: string                      // Sucker deployer contract address
-  peer?: string                         // V6: explicit peer sucker (bytes32); omit for default same-address peer
-  mappings: JBSuckerTokenMapping[]      // Token mappings for this deployer
-}
-
-// Full sucker deployment configuration for atomic project+sucker deployment
-export interface JBSuckerDeploymentConfig {
-  deployerConfigurations: JBSuckerDeployerConfig[]  // One per bridge type (BP, ARB, CCIP)
-  salt: string                                      // bytes32 for deterministic addresses
-}
-
-export interface JBLaunchProjectRequest {
-  chainIds: number[]
-  owner: string                         // Project owner address
-  projectUri: string                    // IPFS CID for project metadata
-  rulesetConfigurations: JBRulesetConfig[]
-  terminalConfigurations: JBTerminalConfig[]
-  memo: string
-  suckerDeploymentConfiguration?: JBSuckerDeploymentConfig  // Optional: deploy suckers atomically
-  /** Exact JBProjects.creationFee() for each destination chain. */
-  creationFeesWei: Record<number, string>
-}
-
-export interface JBLaunchProjectResponse {
-  transactions: Array<{
-    chainId: number
-    txData: JBTransactionData
-    estimatedGas: string
-  }>
-  predictedProjectIds: Record<number, number>  // chainId -> predicted project ID
-}
-
 // ============================================================================
 // Omnichain Revnet Deployment
 // ============================================================================
 // Deploy a revnet (revenue network) using REVDeployer on multiple chains.
 // Revnets have stage-based configuration with automated issuance decay.
-
-export interface REVStageConfig {
-  startsAtOrAfter: number               // Unix timestamp
-  splitPercent: number                  // To operator (0-10000, 10000 = 100%)
-  initialIssuance: string               // Tokens per currency unit (as string for bigint)
-  issuanceCutFrequency: number          // V6 (was issuanceDecayFrequency): seconds between cuts
-  issuanceCutPercent: number            // V6 (was issuanceDecayPercent): cut amount (0-1000000000)
-  cashOutTaxRate: number                // Exit tax (0-10000, 10000 = 100%)
-  extraMetadata: number                 // Additional stage metadata
-}
 
 export interface REVSuckerDeploymentConfig {
   deployerConfigurations: Array<{
@@ -913,22 +687,10 @@ export function buildOmnichainDeployRevnetTransactions(
 
   // Extract per-chain token addresses from terminal configurations for sucker config
   // This enables proper ERC20 bridging (e.g., USDC on each chain)
-  const tokenAddresses: Record<number, `0x${string}`> = {}
-  for (const chainId of chainIds) {
-    const chainConfig = chainConfigMap.get(chainId)
-    const terminalConfigs = chainConfig?.terminalConfigurations ?? defaultTerminalConfig
-    // Look for the first non-native token in terminal configs
-    for (const terminal of terminalConfigs) {
-      for (const ctx of terminal.accountingContextsToAccept) {
-        // Skip native token (0xEEEe...) - we want ERC20 tokens
-        if (ctx.token && ctx.token.toLowerCase() !== '0x000000000000000000000000000000000000eeee') {
-          tokenAddresses[chainId] = ctx.token as `0x${string}`
-          break
-        }
-      }
-      if (tokenAddresses[chainId]) break
-    }
-  }
+  const tokenAddresses = extractChainTokenAddresses(
+    chainIds,
+    (chainId) => chainConfigMap.get(chainId)?.terminalConfigurations ?? defaultTerminalConfig,
+  )
 
   const transactions = request.chainIds.map((chainId) => {
     // REVDeployer uses revnetId 0 to allocate a new revnet. Non-zero IDs refer
@@ -951,26 +713,13 @@ export function buildOmnichainDeployRevnetTransactions(
       suckerConfig = request.suckerDeploymentConfiguration
     } else if (request.configureSuckers && shouldConfigureSuckers(chainIds)) {
       // Auto-generate sucker config for this chain connecting to other chains
-      // Pass token addresses for ERC20-based projects
-      const hasTokenAddresses = Object.keys(tokenAddresses).length > 0
-      const generatedConfig = parseSuckerDeployerConfig(chainId, chainIds, {
-        salt: sharedSalt,
-        tokenAddresses: hasTokenAddresses ? tokenAddresses : undefined,
+      suckerConfig = perChainSuckerConfig({
+        chainId,
+        chainIds,
+        sharedSalt,
+        tokenAddresses,
         bridge: request.suckerBridge,
       })
-      suckerConfig = {
-        deployerConfigurations: generatedConfig.deployerConfigurations.map((dc: { deployer: string; peer: string; mappings: Array<{ localToken: string; minGas: number; remoteToken: string }> }) => ({
-          deployer: dc.deployer,
-          peer: dc.peer,
-          mappings: dc.mappings.map((m: { localToken: string; minGas: number; remoteToken: string }) => ({
-            // V6 Solidity JBTokenMapping: localToken, minGas, remoteToken (bytes32)
-            localToken: m.localToken,
-            minGas: m.minGas,
-            remoteToken: m.remoteToken,
-          })),
-        })),
-        salt: generatedConfig.salt,
-      }
     }
 
     // V6 REVDeployer.deployFor takes accounting contexts directly (it wires the

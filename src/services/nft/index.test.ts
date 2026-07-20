@@ -2,7 +2,6 @@ import { afterEach, describe, it, expect, vi } from 'vitest'
 import {
   fetchTierMetadata,
   validateTierChange,
-  validateDiscountChange,
   getBlockedOperations,
   getEffectiveTierPrice,
 } from './index'
@@ -226,42 +225,6 @@ describe('validateTierChange', () => {
 
       expect(result.allowed).toBe(true)
     })
-  })
-})
-
-describe('validateDiscountChange', () => {
-  it('allows decreasing discount percent', () => {
-    const permissions = createTierPermissions({ cannotIncreaseDiscountPercent: true })
-
-    const result = validateDiscountChange(10, 20, permissions)
-
-    expect(result.allowed).toBe(true)
-  })
-
-  it('allows same discount percent', () => {
-    const permissions = createTierPermissions({ cannotIncreaseDiscountPercent: true })
-
-    const result = validateDiscountChange(20, 20, permissions)
-
-    expect(result.allowed).toBe(true)
-  })
-
-  it('allows increasing discount when cannotIncreaseDiscountPercent is false', () => {
-    const permissions = createTierPermissions({ cannotIncreaseDiscountPercent: false })
-
-    const result = validateDiscountChange(30, 20, permissions)
-
-    expect(result.allowed).toBe(true)
-  })
-
-  it('blocks increasing discount when cannotIncreaseDiscountPercent is true', () => {
-    const permissions = createTierPermissions({ cannotIncreaseDiscountPercent: true })
-
-    const result = validateDiscountChange(30, 20, permissions)
-
-    expect(result.allowed).toBe(false)
-    expect(result.blockedReason).toBe('This tier does not allow increasing the discount percentage')
-    expect(result.suggestNewHook).toBe(false)
   })
 })
 

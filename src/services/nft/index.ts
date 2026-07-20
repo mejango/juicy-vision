@@ -55,6 +55,10 @@ const OMNICHAIN_TIERED_HOOK_ABI = [{
     { name: 'useDataHookForCashOut', type: 'bool' },
   ],
 }] as const
+const TOKEN_URI_RESOLVER_ABI = [{
+  name: 'tokenUriResolverOf', type: 'function', stateMutability: 'view',
+  inputs: [{ name: 'hook', type: 'address' }], outputs: [{ name: '', type: 'address' }],
+}] as const
 const HOOK_PRICING_CONTEXT_ABI = [{
   name: 'pricingContext', type: 'function', stateMutability: 'view',
   inputs: [],
@@ -65,6 +69,75 @@ const HOOK_PRICING_CONTEXT_ABI = [{
 }] as const
 
 const MAX_REVIEWABLE_TIER_ID = 1_000
+
+// Raw JB721Tier tuple shape returned by the store's tiersOf/tierOf reads.
+interface JB721StoreTier {
+  id: number | bigint
+  price: number | bigint
+  initialSupply: number | bigint
+  remainingSupply: number | bigint
+  reserveFrequency: number | bigint
+  reserveBeneficiary: string
+  votingUnits: number | bigint
+  category: number | bigint
+  discountPercent: number | bigint
+  splitPercent: number | bigint
+  encodedIpfsUri: `0x${string}`
+  flags: {
+    allowOwnerMint: boolean
+    transfersPausable: boolean
+    cantBeRemoved: boolean
+    cantIncreaseDiscountPercent: boolean
+    cantBuyWithCredits: boolean
+  }
+}
+
+/**
+ * Map a raw store tier tuple to our NFTTier shape (V6: per-tier booleans live
+ * in a nested `flags` tuple; encodedIpfsUri casing changed).
+ */
+function mapStoreTier(
+  tier: JB721StoreTier,
+  pricing: { currency: number; decimals: number },
+): NFTTier {
+  const metadataUris = decodeEncodedIPFSUriCandidates(tier.encodedIpfsUri)
+  return {
+    tierId: Number(tier.id),
+    name: `Tier ${tier.id}`,
+    price: BigInt(tier.price),
+    currency: pricing.currency,
+    pricingDecimals: pricing.decimals,
+    initialSupply: Number(tier.initialSupply),
+    remainingSupply: Number(tier.remainingSupply),
+    reservedRate: Number(tier.reserveFrequency),
+    reserveBeneficiary: tier.reserveBeneficiary,
+    votingUnits: BigInt(tier.votingUnits),
+    category: Number(tier.category),
+    allowOwnerMint: tier.flags.allowOwnerMint,
+    transfersPausable: tier.flags.transfersPausable,
+    encodedIPFSUri: metadataUris?.[0],
+    metadataUris: metadataUris ?? undefined,
+    discountPercent: Number(tier.discountPercent),
+    cannotBeRemoved: tier.flags.cantBeRemoved,
+    cannotIncreaseDiscountPercent: tier.flags.cantIncreaseDiscountPercent,
+    cannotBuyWithCredits: tier.flags.cantBuyWithCredits,
+    splitPercent: Number(tier.splitPercent),
+  }
+}
+
+/** Read the store's configured tokenUriResolver for a hook (zero address = none). */
+function readTokenUriResolver(
+  client: Pick<PublicClient, 'readContract'>,
+  storeAddress: `0x${string}`,
+  hookAddress: `0x${string}`,
+): Promise<`0x${string}`> {
+  return client.readContract({
+    address: storeAddress,
+    abi: TOKEN_URI_RESOLVER_ABI,
+    functionName: 'tokenUriResolverOf',
+    args: [hookAddress],
+  })
+}
 
 function nftChainConfig(chainId: number) {
   const chain = VIEM_CHAINS[chainId as SupportedChainId] ||
@@ -320,8 +393,6 @@ export async function fetchNFTTiers(
 
     console.log('[NFT] Fetched', tiers.length, 'tiers')
 
-    // Map raw tier data to our NFTTier type (V6: per-tier booleans live in a
-    // nested `flags` tuple; encodedIpfsUri casing changed)
     const seenTierIds = new Set<number>()
     return tiers.map((tier) => {
       const tierId = Number(tier.id)
@@ -330,28 +401,7 @@ export async function fetchNFTTiers(
       }
       if (seenTierIds.has(tierId)) throw new Error(`Tier store returned duplicate tier ID ${tierId}`)
       seenTierIds.add(tierId)
-      return {
-        tierId,
-        name: `Tier ${tier.id}`,
-        price: BigInt(tier.price),
-        currency: pricing.currency,
-        pricingDecimals: pricing.decimals,
-        initialSupply: Number(tier.initialSupply),
-        remainingSupply: Number(tier.remainingSupply),
-        reservedRate: Number(tier.reserveFrequency),
-        reserveBeneficiary: tier.reserveBeneficiary,
-        votingUnits: BigInt(tier.votingUnits),
-        category: Number(tier.category),
-        allowOwnerMint: tier.flags.allowOwnerMint,
-        transfersPausable: tier.flags.transfersPausable,
-        encodedIPFSUri: decodeEncodedIPFSUriCandidates(tier.encodedIpfsUri)?.[0],
-        metadataUris: decodeEncodedIPFSUriCandidates(tier.encodedIpfsUri) ?? undefined,
-        discountPercent: Number(tier.discountPercent),
-        cannotBeRemoved: tier.flags.cantBeRemoved,
-        cannotIncreaseDiscountPercent: tier.flags.cantIncreaseDiscountPercent,
-        cannotBuyWithCredits: tier.flags.cantBuyWithCredits,
-        splitPercent: Number(tier.splitPercent),
-      }
+      return mapStoreTier(tier, pricing)
     })
   } catch (err) {
     console.error('[NFT] Failed to fetch NFT tiers:', err)
@@ -387,20 +437,7 @@ export async function resolveTierUri(
     if (!storeAddress || storeAddress === zeroAddress) return null
 
     // Check if there's a tokenUriResolver
-    const resolverAddress = await client.readContract({
-      address: storeAddress,
-      abi: [
-        {
-          name: 'tokenUriResolverOf',
-          type: 'function',
-          stateMutability: 'view',
-          inputs: [{ name: 'hook', type: 'address' }],
-          outputs: [{ name: '', type: 'address' }],
-        },
-      ] as const,
-      functionName: 'tokenUriResolverOf',
-      args: [hookAddress],
-    })
+    const resolverAddress = await readTokenUriResolver(client, storeAddress, hookAddress)
 
     if (!resolverAddress || resolverAddress === zeroAddress) return null
 
@@ -455,20 +492,7 @@ export async function hasTokenUriResolver(
     if (!storeAddress || storeAddress === zeroAddress) throw new Error('721 hook store is missing')
 
     // Check if there's a tokenUriResolver
-    const resolverAddress = await client.readContract({
-      address: storeAddress,
-      abi: [
-        {
-          name: 'tokenUriResolverOf',
-          type: 'function',
-          stateMutability: 'view',
-          inputs: [{ name: 'hook', type: 'address' }],
-          outputs: [{ name: '', type: 'address' }],
-        },
-      ] as const,
-      functionName: 'tokenUriResolverOf',
-      args: [hookAddress],
-    })
+    const resolverAddress = await readTokenUriResolver(client, storeAddress, hookAddress)
 
     return Boolean(resolverAddress && resolverAddress !== zeroAddress)
   } catch (err) {
@@ -511,28 +535,7 @@ export async function fetchNFTTier(
     const returnedTierId = Number(tier.id)
     if (returnedTierId === 0) return null
     if (returnedTierId !== tierId) throw new Error('Tier store returned a different tier')
-    return {
-      tierId: returnedTierId,
-      name: `Tier ${tier.id}`,
-      price: BigInt(tier.price),
-      currency: pricing.currency,
-      pricingDecimals: pricing.decimals,
-      initialSupply: Number(tier.initialSupply),
-      remainingSupply: Number(tier.remainingSupply),
-      reservedRate: Number(tier.reserveFrequency),
-      reserveBeneficiary: tier.reserveBeneficiary,
-      votingUnits: BigInt(tier.votingUnits),
-      category: Number(tier.category),
-      allowOwnerMint: tier.flags.allowOwnerMint,
-      transfersPausable: tier.flags.transfersPausable,
-      encodedIPFSUri: decodeEncodedIPFSUriCandidates(tier.encodedIpfsUri)?.[0],
-      metadataUris: decodeEncodedIPFSUriCandidates(tier.encodedIpfsUri) ?? undefined,
-      discountPercent: Number(tier.discountPercent),
-      cannotBeRemoved: tier.flags.cantBeRemoved,
-      cannotIncreaseDiscountPercent: tier.flags.cantIncreaseDiscountPercent,
-      cannotBuyWithCredits: tier.flags.cantBuyWithCredits,
-      splitPercent: Number(tier.splitPercent),
-    }
+    return mapStoreTier(tier, pricing)
   } catch (err) {
     console.error('Failed to fetch NFT tier:', err)
     throw nftReadError('NFT tier', err)
@@ -717,74 +720,14 @@ export async function fetchNFTTiersWithPermissions(
   chainId: number,
   maxTiers: number = MAX_REVIEWABLE_TIER_ID
 ): Promise<NFTTierWithPermissions[]> {
-  const { chain, rpcUrl } = nftChainConfig(chainId)
-  const client = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  })
-
-  try {
-    const identity = await requireRecognized721HookIdentity(client, hookAddress)
-    const pricing = await readPricingContext(client, hookAddress)
-    const storeAddress = identity.store
-
-    if (!storeAddress || storeAddress === zeroAddress) throw new Error('721 hook store is missing')
-
-    const readSize = await completeTierReadSize(client, storeAddress, hookAddress, maxTiers)
-    if (readSize === 0n) return []
-
-    const tiers = await client.readContract({
-      address: storeAddress,
-      abi: JB721TierStoreAbi,
-      functionName: 'tiersOf',
-      args: [
-        hookAddress,
-        [], // All categories
-        false, // Don't include resolved URI (can cause reverts)
-        0n, // Starting from tier 0
-        readSize,
-      ],
-    })
-
-    const seenTierIds = new Set<number>()
-    return tiers.map((tier) => {
-      const tierId = Number(tier.id)
-      if (!Number.isSafeInteger(tierId) || tierId < 1 || BigInt(tierId) > readSize) {
-        throw new Error(`Tier store returned an invalid tier ID: ${tier.id}`)
-      }
-      if (seenTierIds.has(tierId)) throw new Error(`Tier store returned duplicate tier ID ${tierId}`)
-      seenTierIds.add(tierId)
-      return {
-        tierId,
-        name: `Tier ${tier.id}`,
-        price: BigInt(tier.price),
-        currency: pricing.currency,
-        pricingDecimals: pricing.decimals,
-        initialSupply: Number(tier.initialSupply),
-        remainingSupply: Number(tier.remainingSupply),
-        reservedRate: Number(tier.reserveFrequency),
-        reserveBeneficiary: tier.reserveBeneficiary,
-        votingUnits: BigInt(tier.votingUnits),
-        category: Number(tier.category),
-        allowOwnerMint: tier.flags.allowOwnerMint,
-        transfersPausable: tier.flags.transfersPausable,
-        encodedIPFSUri: decodeEncodedIPFSUriCandidates(tier.encodedIpfsUri)?.[0],
-        metadataUris: decodeEncodedIPFSUriCandidates(tier.encodedIpfsUri) ?? undefined,
-        discountPercent: Number(tier.discountPercent),
-        cannotBeRemoved: tier.flags.cantBeRemoved,
-        cannotIncreaseDiscountPercent: tier.flags.cantIncreaseDiscountPercent,
-        cannotBuyWithCredits: tier.flags.cantBuyWithCredits,
-        splitPercent: Number(tier.splitPercent),
-        permissions: {
-          cannotBeRemoved: tier.flags.cantBeRemoved,
-          cannotIncreaseDiscountPercent: tier.flags.cantIncreaseDiscountPercent,
-        },
-      }
-    })
-  } catch (err) {
-    console.error('Failed to fetch NFT tiers with permissions:', err)
-    throw nftReadError('NFT tiers and permissions', err)
-  }
+  const tiers = await fetchNFTTiers(hookAddress, chainId, maxTiers)
+  return tiers.map((tier) => ({
+    ...tier,
+    permissions: {
+      cannotBeRemoved: tier.cannotBeRemoved ?? false,
+      cannotIncreaseDiscountPercent: tier.cannotIncreaseDiscountPercent ?? false,
+    },
+  }))
 }
 
 /**
@@ -841,31 +784,6 @@ export function validateTierChange(
       allowed: false,
       blockedReason: 'This collection does not allow new tiers with owner minting enabled',
       suggestNewHook: true,
-    }
-  }
-
-  return { allowed: true, suggestNewHook: false }
-}
-
-/**
- * Validate a discount percent change against tier permissions
- *
- * @param newDiscountPercent - The new discount percent value
- * @param currentDiscountPercent - The current discount percent value
- * @param tierPermissions - The tier's permission flags
- * @returns Validation result
- */
-export function validateDiscountChange(
-  newDiscountPercent: number,
-  currentDiscountPercent: number,
-  tierPermissions: TierPermissions
-): TierChangeValidation {
-  // Increasing discount is restricted if cannotIncreaseDiscountPercent is set
-  if (newDiscountPercent > currentDiscountPercent && tierPermissions.cannotIncreaseDiscountPercent) {
-    return {
-      allowed: false,
-      blockedReason: 'This tier does not allow increasing the discount percentage',
-      suggestNewHook: false,
     }
   }
 

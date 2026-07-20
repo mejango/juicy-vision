@@ -880,42 +880,28 @@ interface RawActivityEvent {
   mintNftEvent?: { from: string; txHash: string }
 }
 
+// Raw payload field -> discriminated-union type tag, in match-priority order.
+const EVENT_TYPE_BY_FIELD = [
+  ['payEvent', 'pay'],
+  ['projectCreateEvent', 'projectCreate'],
+  ['cashOutTokensEvent', 'cashOut'],
+  ['addToBalanceEvent', 'addToBalance'],
+  ['mintTokensEvent', 'mintTokens'],
+  ['burnEvent', 'burn'],
+  ['deployErc20Event', 'deployErc20'],
+  ['sendPayoutsEvent', 'sendPayouts'],
+  ['sendReservedTokensToSplitsEvent', 'sendReservedTokens'],
+  ['useAllowanceEvent', 'useAllowance'],
+  ['mintNftEvent', 'mintNft'],
+] as const
+
 // Transform raw API event to discriminated union
 function transformEvent(raw: RawActivityEvent): ActivityEvent {
   const base = { id: raw.id, chainId: raw.chainId, timestamp: raw.timestamp, project: raw.project }
 
-  if (raw.payEvent) {
-    return { ...base, type: 'pay', ...raw.payEvent }
-  }
-  if (raw.projectCreateEvent) {
-    return { ...base, type: 'projectCreate', ...raw.projectCreateEvent }
-  }
-  if (raw.cashOutTokensEvent) {
-    return { ...base, type: 'cashOut', ...raw.cashOutTokensEvent }
-  }
-  if (raw.addToBalanceEvent) {
-    return { ...base, type: 'addToBalance', ...raw.addToBalanceEvent }
-  }
-  if (raw.mintTokensEvent) {
-    return { ...base, type: 'mintTokens', ...raw.mintTokensEvent }
-  }
-  if (raw.burnEvent) {
-    return { ...base, type: 'burn', ...raw.burnEvent }
-  }
-  if (raw.deployErc20Event) {
-    return { ...base, type: 'deployErc20', ...raw.deployErc20Event }
-  }
-  if (raw.sendPayoutsEvent) {
-    return { ...base, type: 'sendPayouts', ...raw.sendPayoutsEvent }
-  }
-  if (raw.sendReservedTokensToSplitsEvent) {
-    return { ...base, type: 'sendReservedTokens', ...raw.sendReservedTokensToSplitsEvent }
-  }
-  if (raw.useAllowanceEvent) {
-    return { ...base, type: 'useAllowance', ...raw.useAllowanceEvent }
-  }
-  if (raw.mintNftEvent) {
-    return { ...base, type: 'mintNft', ...raw.mintNftEvent }
+  for (const [field, type] of EVENT_TYPE_BY_FIELD) {
+    const payload = raw[field]
+    if (payload) return { ...base, type, ...payload } as ActivityEvent
   }
   return { ...base, type: 'unknown', from: raw.from, txHash: raw.txHash }
 }
@@ -1110,17 +1096,20 @@ export async function fetchProjectAccountingContexts(
   )
   if (!multiTerminal) throw new Error('Recognized accounting terminal not found')
 
-  const contexts = await publicClient.readContract({
-    address: multiTerminal,
-    abi: JB_TERMINAL_ACCOUNTING_CONTEXTS_ABI,
-    functionName: 'accountingContextsOf',
-    args: [BigInt(projectId)],
-  })
-  const terminalStore = await publicClient.readContract({
-    address: multiTerminal,
-    abi: JB_TERMINAL_STORE_ADDRESS_ABI,
-    functionName: 'STORE',
-  })
+  // Both reads depend only on the terminal address
+  const [contexts, terminalStore] = await Promise.all([
+    publicClient.readContract({
+      address: multiTerminal,
+      abi: JB_TERMINAL_ACCOUNTING_CONTEXTS_ABI,
+      functionName: 'accountingContextsOf',
+      args: [BigInt(projectId)],
+    }),
+    publicClient.readContract({
+      address: multiTerminal,
+      abi: JB_TERMINAL_STORE_ADDRESS_ABI,
+      functionName: 'STORE',
+    }),
+  ])
 
   const canonicalUsdc = USDC_ADDRESSES[chainId as SupportedChainId]?.toLowerCase()
   const resolved = await Promise.all(contexts.map(async context => {
@@ -1163,22 +1152,25 @@ export async function fetchProjectAccountingContexts(
         ?? truncateAddress(context.token)
     }
 
-    const accountingTerminal = await getPaymentTerminal(
-      publicClient,
-      chainId,
-      BigInt(projectId),
-      context.token,
-      'accounting',
-    )
+    // Independent reads: the live-terminal check and the store balance
+    const [accountingTerminal, balance] = await Promise.all([
+      getPaymentTerminal(
+        publicClient,
+        chainId,
+        BigInt(projectId),
+        context.token,
+        'accounting',
+      ),
+      publicClient.readContract({
+        address: terminalStore,
+        abi: JB_PROJECT_TOKEN_BALANCE_ABI,
+        functionName: 'balanceOf',
+        args: [multiTerminal, BigInt(projectId), context.token],
+      }),
+    ])
     if (accountingTerminal.address.toLowerCase() !== multiTerminal.toLowerCase()) {
       throw new Error(`Accounting terminal changed for token: ${context.token}`)
     }
-    const balance = await publicClient.readContract({
-      address: terminalStore,
-      abi: JB_PROJECT_TOKEN_BALANCE_ABI,
-      functionName: 'balanceOf',
-      args: [multiTerminal, BigInt(projectId), context.token],
-    })
 
     return {
       terminal: multiTerminal,
@@ -1195,14 +1187,6 @@ export async function fetchProjectAccountingContexts(
   if (unique.size !== resolved.length) throw new Error('Duplicate accounting context')
   return [...unique.values()]
 }
-
-const JB_TERMINAL_STORE_ABI = [{
-  name: 'STORE',
-  type: 'function',
-  stateMutability: 'view',
-  inputs: [],
-  outputs: [{ name: '', type: 'address' }],
-}] as const
 
 // ABI for JBController.currentRulesetOf - returns ruleset AND decoded metadata
 const JB_CONTROLLER_ABI = [
@@ -1582,22 +1566,6 @@ export async function fetchProjectWithRuleset(
 }
 
 // Check if user is project owner
-export async function isProjectOwner(
-  projectId: string,
-  chainId: number,
-  wallet: string
-): Promise<boolean> {
-  const publicClient = getPublicClient(chainId)
-  if (!publicClient) throw new Error(`Project ownership unavailable on unsupported chain ${chainId}`)
-  const owner = await publicClient.readContract({
-    address: JB_CONTRACTS.JBProjects,
-    abi: JB_PROJECTS_OWNER_OF_ABI,
-    functionName: 'ownerOf',
-    args: [BigInt(projectId)],
-  })
-  return owner.toLowerCase() === wallet.toLowerCase()
-}
-
 // Cache for projects by owner/deployer
 const projectsByOwnerCache = createCache<Project[]>(CACHE_DURATIONS.SHORT)
 
@@ -1650,28 +1618,6 @@ export async function fetchProjectsByOwner(
     console.error('fetchProjectsByOwner error:', err)
     throw new Error(`Owned projects unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
   }
-}
-
-// Check if payments are enabled for a project
-export async function arePaymentsEnabled(
-  projectId: string,
-  chainId: number
-): Promise<{ enabled: boolean; reason?: string }> {
-  const project = await fetchProjectWithRuleset(projectId, chainId)
-
-  if (!project) {
-    return { enabled: false, reason: 'Project not found' }
-  }
-
-  if (!project.currentRuleset) {
-    return { enabled: false, reason: 'No active ruleset' }
-  }
-
-  if (project.currentRuleset.pausePay) {
-    return { enabled: false, reason: 'Payments are currently paused for this project' }
-  }
-
-  return { enabled: true }
 }
 
 // Connected chain info for a project
@@ -1837,48 +1783,6 @@ function recognizedAccountingContext(
   return null
 }
 
-const LIVE_BALANCE_DIRECTORY_ABI = [{
-  name: 'terminalsOf',
-  type: 'function',
-  stateMutability: 'view',
-  inputs: [{ name: 'projectId', type: 'uint256' }],
-  outputs: [{ name: '', type: 'address[]' }],
-}] as const
-
-const LIVE_BALANCE_TERMINAL_ABI = [{
-  name: 'accountingContextsOf',
-  type: 'function',
-  stateMutability: 'view',
-  inputs: [{ name: 'projectId', type: 'uint256' }],
-  outputs: [{
-    name: '',
-    type: 'tuple[]',
-    components: [
-      { name: 'token', type: 'address' },
-      { name: 'decimals', type: 'uint8' },
-      { name: 'currency', type: 'uint32' },
-    ],
-  }],
-}, {
-  name: 'STORE',
-  type: 'function',
-  stateMutability: 'view',
-  inputs: [],
-  outputs: [{ name: '', type: 'address' }],
-}] as const
-
-const LIVE_BALANCE_STORE_ABI = [{
-  name: 'balanceOf',
-  type: 'function',
-  stateMutability: 'view',
-  inputs: [
-    { name: 'terminal', type: 'address' },
-    { name: 'projectId', type: 'uint256' },
-    { name: 'token', type: 'address' },
-  ],
-  outputs: [{ name: '', type: 'uint256' }],
-}] as const
-
 interface LiveProjectBalance {
   chainId: number
   projectId: number
@@ -1894,7 +1798,7 @@ async function fetchLiveProjectBalance(projectId: number, chainId: number): Prom
   try {
     const terminals = await publicClient.readContract({
       address: JB_CONTRACTS.JBDirectory,
-      abi: LIVE_BALANCE_DIRECTORY_ABI,
+      abi: JB_DIRECTORY_ABI,
       functionName: 'terminalsOf',
       args: [BigInt(projectId)],
     })
@@ -1903,12 +1807,20 @@ async function fetchLiveProjectBalance(projectId: number, chainId: number): Prom
     )
     if (accountingTerminals.length !== 1) return null
     const terminal = accountingTerminals[0]
-    const contexts = await publicClient.readContract({
-      address: terminal,
-      abi: LIVE_BALANCE_TERMINAL_ABI,
-      functionName: 'accountingContextsOf',
-      args: [BigInt(projectId)],
-    })
+    // Both reads depend only on the terminal address
+    const [contexts, store] = await Promise.all([
+      publicClient.readContract({
+        address: terminal,
+        abi: JB_TERMINAL_ACCOUNTING_CONTEXTS_ABI,
+        functionName: 'accountingContextsOf',
+        args: [BigInt(projectId)],
+      }),
+      publicClient.readContract({
+        address: terminal,
+        abi: JB_TERMINAL_STORE_ADDRESS_ABI,
+        functionName: 'STORE',
+      }),
+    ])
     if (contexts.length !== 1) return null
     const context = recognizedAccountingContext(
       contexts[0].token,
@@ -1918,25 +1830,23 @@ async function fetchLiveProjectBalance(projectId: number, chainId: number): Prom
     if (!context || Number(contexts[0].currency) !== Number(BigInt(contexts[0].token) & 0xffff_ffffn)) {
       return null
     }
-    const liveTerminal = await getPaymentTerminal(
-      publicClient,
-      chainId,
-      BigInt(projectId),
-      contexts[0].token,
-      'accounting',
-    )
+    // Independent reads: the live-terminal check and the store balance
+    const [liveTerminal, balance] = await Promise.all([
+      getPaymentTerminal(
+        publicClient,
+        chainId,
+        BigInt(projectId),
+        contexts[0].token,
+        'accounting',
+      ),
+      publicClient.readContract({
+        address: store,
+        abi: JB_PROJECT_TOKEN_BALANCE_ABI,
+        functionName: 'balanceOf',
+        args: [terminal, BigInt(projectId), contexts[0].token],
+      }),
+    ])
     if (liveTerminal.address.toLowerCase() !== terminal.toLowerCase()) return null
-    const store = await publicClient.readContract({
-      address: terminal,
-      abi: LIVE_BALANCE_TERMINAL_ABI,
-      functionName: 'STORE',
-    })
-    const balance = await publicClient.readContract({
-      address: store,
-      abi: LIVE_BALANCE_STORE_ABI,
-      functionName: 'balanceOf',
-      args: [terminal, BigInt(projectId), contexts[0].token],
-    })
     return {
       chainId,
       projectId,
@@ -1947,6 +1857,39 @@ async function fetchLiveProjectBalance(projectId: number, chainId: number): Prom
     }
   } catch {
     return null
+  }
+}
+
+/**
+ * Build the local-only SuckerGroupBalance shape used whenever group data is
+ * unavailable. Pass `local` when an indexed project row supplies a verified
+ * per-project payments count; omit it for the bare live-balance fallback.
+ */
+function localFallbackBalance(
+  liveLocal: LiveProjectBalance | null,
+  local?: { chainId: number; projectId: number; paymentsCount: number; paymentsAvailable: boolean },
+): SuckerGroupBalance {
+  return {
+    totalBalance: liveLocal?.balance ?? '',
+    totalVolume: '', // A current balance is not historical payment volume.
+    totalVolumeUsd: '',
+    totalPaymentsCount: local?.paymentsAvailable ? local.paymentsCount : Number.NaN,
+    currency: liveLocal?.currency ?? Number.NaN,
+    decimals: liveLocal?.decimals ?? Number.NaN,
+    projectBalances: local
+      ? [{
+          chainId: local.chainId,
+          projectId: local.projectId,
+          balance: liveLocal?.balance ?? '',
+          paymentsCount: local.paymentsAvailable ? local.paymentsCount : Number.NaN,
+          currency: liveLocal?.currency,
+          decimals: liveLocal?.decimals,
+        }]
+      : liveLocal ? [{ ...liveLocal, paymentsCount: 0 }] : [],
+    balanceAvailable: !!liveLocal,
+    volumeAvailable: false,
+    paymentsAvailable: local?.paymentsAvailable ?? false,
+    dataScope: liveLocal ? 'project' : 'unavailable',
   }
 }
 
@@ -1981,20 +1924,7 @@ export async function fetchSuckerGroupBalance(
 
     if (!projectData.project) {
       console.error('[fetchSuckerGroupBalance] Project not found:', projectId, chainId)
-      const liveLocal = await liveLocalBalancePromise
-      return {
-        totalBalance: liveLocal?.balance ?? '',
-        totalVolume: '',
-        totalVolumeUsd: '',
-        totalPaymentsCount: Number.NaN,
-        currency: liveLocal?.currency ?? Number.NaN,
-        decimals: liveLocal?.decimals ?? Number.NaN,
-        projectBalances: liveLocal ? [{ ...liveLocal, paymentsCount: 0 }] : [],
-        balanceAvailable: !!liveLocal,
-        volumeAvailable: false,
-        paymentsAvailable: false,
-        dataScope: liveLocal ? 'project' : 'unavailable',
-      }
+      return localFallbackBalance(await liveLocalBalancePromise)
     }
 
     const suckerGroupId = projectData.project.suckerGroupId
@@ -2003,27 +1933,12 @@ export async function fetchSuckerGroupBalance(
 
     // If no sucker group exists, return the verified local balance only.
     if (!suckerGroupId) {
-      const paymentsAvailable = Number.isFinite(projectData.project.paymentsCount)
-      return {
-        totalBalance: liveLocal?.balance ?? '',
-        totalVolume: '', // A current balance is not historical payment volume.
-        totalVolumeUsd: '',
-        totalPaymentsCount: paymentsAvailable ? projectData.project.paymentsCount : Number.NaN,
-        currency: liveLocal?.currency ?? Number.NaN,
-        decimals: liveLocal?.decimals ?? Number.NaN,
-        projectBalances: [{
-          chainId,
-          projectId: parseInt(projectId),
-          balance: liveLocal?.balance ?? '',
-          paymentsCount: paymentsAvailable ? projectData.project.paymentsCount : Number.NaN,
-          currency: liveLocal?.currency,
-          decimals: liveLocal?.decimals,
-        }],
-        balanceAvailable: !!liveLocal,
-        volumeAvailable: false,
-        paymentsAvailable,
-        dataScope: liveLocal ? 'project' : 'unavailable',
-      }
+      return localFallbackBalance(liveLocal, {
+        chainId,
+        projectId: parseInt(projectId),
+        paymentsCount: projectData.project.paymentsCount,
+        paymentsAvailable: Number.isFinite(projectData.project.paymentsCount),
+      })
     }
 
     // Query the suckerGroup directly for its pre-aggregated balance and volume
@@ -2058,27 +1973,12 @@ export async function fetchSuckerGroupBalance(
     if (!group) {
       // Preserve the verified single-project balance, but never substitute it
       // for historical payment volume.
-      const paymentsAvailable = Number.isFinite(projectData.project.paymentsCount)
-      return {
-        totalBalance: liveLocal?.balance ?? '',
-        totalVolume: '',
-        totalVolumeUsd: '',
-        totalPaymentsCount: paymentsAvailable ? projectData.project.paymentsCount : Number.NaN,
-        currency: liveLocal?.currency ?? Number.NaN,
-        decimals: liveLocal?.decimals ?? Number.NaN,
-        projectBalances: [{
-          chainId,
-          projectId: parseInt(projectId),
-          balance: liveLocal?.balance ?? '',
-          paymentsCount: paymentsAvailable ? projectData.project.paymentsCount : Number.NaN,
-          currency: liveLocal?.currency,
-          decimals: liveLocal?.decimals,
-        }],
-        balanceAvailable: !!liveLocal,
-        volumeAvailable: false,
-        paymentsAvailable,
-        dataScope: liveLocal ? 'project' : 'unavailable',
-      }
+      return localFallbackBalance(liveLocal, {
+        chainId,
+        projectId: parseInt(projectId),
+        paymentsCount: projectData.project.paymentsCount,
+        paymentsAvailable: Number.isFinite(projectData.project.paymentsCount),
+      })
     }
 
     const groupProjects = group.projects?.items || []
@@ -2136,20 +2036,7 @@ export async function fetchSuckerGroupBalance(
     }
   } catch (err) {
     console.error('Failed to fetch sucker group balance:', err)
-    const liveLocal = await liveLocalBalancePromise
-    return {
-      totalBalance: liveLocal?.balance ?? '',
-      totalVolume: '',
-      totalVolumeUsd: '',
-      totalPaymentsCount: Number.NaN,
-      currency: liveLocal?.currency ?? Number.NaN,
-      decimals: liveLocal?.decimals ?? Number.NaN,
-      projectBalances: liveLocal ? [{ ...liveLocal, paymentsCount: 0 }] : [],
-      balanceAvailable: !!liveLocal,
-      volumeAvailable: false,
-      paymentsAvailable: false,
-      dataScope: liveLocal ? 'project' : 'unavailable',
-    }
+    return localFallbackBalance(await liveLocalBalancePromise)
   }
 }
 
@@ -2251,16 +2138,13 @@ export async function fetchOwnersCount(
   }
 }
 
-// ETH price cache
-let ethPriceCache: { price: number; timestamp: number } | null = null
-const ETH_PRICE_CACHE_DURATION = 20 * 60 * 1000 // 20 minutes
+// ETH price cache (20 minutes)
+const ethPriceCache = createCache<number>(20 * 60 * 1000)
 
 // Fetch current ETH price in USD
 export async function fetchEthPrice(): Promise<number | null> {
-  // Check cache
-  if (ethPriceCache && Date.now() - ethPriceCache.timestamp < ETH_PRICE_CACHE_DURATION) {
-    return ethPriceCache.price
-  }
+  const cached = ethPriceCache.get('ethusd')
+  if (cached !== null) return cached
 
   try {
     const response = await fetch('https://juicebox.money/api/juicebox/prices/ethusd')
@@ -2268,8 +2152,7 @@ export async function fetchEthPrice(): Promise<number | null> {
     const price = parseFloat(data.price)
     if (!Number.isFinite(price) || price <= 0) throw new Error('ETH price response was invalid')
 
-    // Update cache
-    ethPriceCache = { price, timestamp: Date.now() }
+    ethPriceCache.set('ethusd', price)
 
     return price
   } catch (err) {
@@ -2321,22 +2204,15 @@ export async function fetchProjectTokenSymbol(
   if (!publicClient) throw new Error(`Project token unavailable on unsupported chain ${chainId}`)
 
   try {
-    const contracts = await getContractsForProject(projectId, chainId)
-    const tokenAddress = await publicClient.readContract({
-      address: contracts.JBTokens,
-      abi: TOKEN_ABI,
-      functionName: 'tokenOf',
-      args: [BigInt(projectId)],
-    })
+    // Reuse the address lookup (shares its cache and zero-address handling)
+    const tokenAddress = await fetchProjectTokenAddress(projectId, chainId, version)
 
-    // Zero address means no ERC20 token deployed yet
-    if (tokenAddress === ZERO_ADDRESS) {
-      return null
-    }
+    // No ERC20 token deployed yet
+    if (!tokenAddress) return null
 
     // Get the symbol from the token contract
     const symbol = await publicClient.readContract({
-      address: tokenAddress,
+      address: tokenAddress as `0x${string}`,
       abi: TOKEN_ABI,
       functionName: 'symbol',
     })
@@ -2346,6 +2222,8 @@ export async function fetchProjectTokenSymbol(
 
     return symbol
   } catch (err) {
+    // fetchProjectTokenAddress already wraps its failures with this label.
+    if (err instanceof Error && err.message.startsWith('Project token unavailable')) throw err
     console.error('Failed to fetch project token symbol:', err)
     throw new Error(`Project token unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
   }
@@ -2460,13 +2338,9 @@ export async function fetchPendingReservedTokens(
 
 // A live existing project is a Revnet only while its JBProjects NFT is owned by
 // the recognized REVOwner singleton.
-export const REVNET_OWNER_ADDRESSES: readonly string[] = [
-  REV_OWNER.toLowerCase(),
-]
-
 export function isRevnet(owner: string): boolean {
   if (!owner) return false
-  return REVNET_OWNER_ADDRESSES.includes(owner.toLowerCase())
+  return owner.toLowerCase() === REV_OWNER.toLowerCase()
 }
 
 export function isRevnetProject(
@@ -2627,16 +2501,18 @@ export async function fetchRevnetOperator(
     const uniqueCandidates = [...new Map(
       candidates.map(candidate => [candidate.operator.toLowerCase(), candidate])
     ).values()]
-    const verified = [] as string[]
-    for (const candidate of uniqueCandidates) {
-      const isCurrent = await publicClient.readContract({
+    // Independent view reads - verify all candidates in parallel
+    const currentFlags = await Promise.all(uniqueCandidates.map(candidate =>
+      publicClient.readContract({
         address: projectOwner,
         abi: REV_OWNER_OPERATOR_ABI,
         functionName: 'isOperatorOf',
         args: [projectIdBigInt, candidate.operator as `0x${string}`],
       })
-      if (isCurrent) verified.push(candidate.operator)
-    }
+    ))
+    const verified = uniqueCandidates
+      .filter((_, index) => currentFlags[index])
+      .map(candidate => candidate.operator)
     if (verified.length !== 1) throw new Error('Current Revnet operator could not be identified uniquely')
     const operator = verified[0]
 
@@ -3049,47 +2925,33 @@ export async function fetchUpcomingRulesetWithMetadata(
   projectId: string,
   chainId: number
 ): Promise<QueuedRulesetInfo | null> {
-  const publicClient = getPublicClient(chainId)
-  if (!publicClient) throw new Error(`Upcoming ruleset unavailable on unsupported chain ${chainId}`)
-
   try {
-    // Get the correct contracts for this project
-    const contracts = await getContractsForProject(projectId, chainId)
-
-    const queuedRuleset = await publicClient.readContract({
-      address: contracts.JBRulesets,
-      abi: JB_RULESETS_ABI,
-      functionName: 'upcomingOf',
-      args: [BigInt(projectId)],
-    })
+    const { upcoming } = await fetchQueuedRulesets(projectId, chainId)
 
     // If no queued ruleset, return null
-    if (!queuedRuleset || Number(queuedRuleset.cycleNumber) === 0) {
-      return null
-    }
-
-    // Decode the packed metadata
-    const decodedMetadata = decodeRulesetMetadata(queuedRuleset.metadata)
+    if (!upcoming) return null
 
     // Validate cash out tax rate is within bounds (0-10000)
-    const cashOutTaxRate = decodedMetadata.cashOutTaxRate
-    if (cashOutTaxRate < 0 || cashOutTaxRate > 10000) {
+    const cashOutTaxRate = upcoming.cashOutTaxRate ?? Number.NaN
+    if (!(cashOutTaxRate >= 0 && cashOutTaxRate <= 10000)) {
       throw new Error(`Upcoming cash-out tax rate is invalid: ${cashOutTaxRate}`)
     }
 
     return {
-      cycleNumber: Number(queuedRuleset.cycleNumber),
-      id: String(queuedRuleset.id),
-      start: Number(queuedRuleset.start),
-      duration: Number(queuedRuleset.duration),
-      weight: String(queuedRuleset.weight),
-      weightCutPercent: Number(queuedRuleset.weightCutPercent),
+      cycleNumber: upcoming.cycleNumber,
+      id: upcoming.id,
+      start: upcoming.start,
+      duration: upcoming.duration,
+      weight: upcoming.weight,
+      weightCutPercent: upcoming.weightCutPercent,
       cashOutTaxRate,
-      reservedPercent: decodedMetadata.reservedPercent,
-      baseCurrency: decodedMetadata.baseCurrency,
-      pausePay: decodedMetadata.pausePay,
+      reservedPercent: upcoming.reservedPercent ?? 0,
+      baseCurrency: upcoming.baseCurrency ?? 0,
+      pausePay: upcoming.pausePay ?? false,
     }
   } catch (err) {
+    // fetchQueuedRulesets already wraps its failures with this label.
+    if (err instanceof Error && err.message.startsWith('Upcoming ruleset unavailable')) throw err
     console.error('Failed to fetch queued ruleset with metadata:', err)
     throw new Error(`Upcoming ruleset unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
   }
@@ -3215,13 +3077,6 @@ const JB_TERMINAL_SURPLUS_ABI = [{
 // Reserved token splits = group 1 (JBSplitGroupIds.RESERVED_TOKENS)
 // Payout splits = uint256(uint160(token)) - computed from the payout token address
 const SPLIT_GROUP_RESERVED = 1n
-
-// Helper to compute payout split group ID from token address
-// In JB V6, payout split groups are keyed by uint256(uint160(token))
-function getPayoutSplitGroup(tokenAddress: `0x${string}`): bigint {
-  // Convert address to uint160, then to bigint
-  return BigInt(tokenAddress)
-}
 
 // Split recipient
 export interface JBSplitData {
@@ -3356,7 +3211,7 @@ export async function fetchProjectSplits(
       }
       const store = await publicClient.readContract({
         address: terminal,
-        abi: JB_TERMINAL_STORE_ABI,
+        abi: JB_TERMINAL_STORE_ADDRESS_ABI,
         functionName: 'STORE',
       })
       return contexts.map(context => ({
@@ -3396,7 +3251,8 @@ export async function fetchProjectSplits(
     validateSplitGroup(reservedSplits, 'Reserved token')
 
     const payoutGroups = await Promise.all(terminalContexts.map(async context => {
-      const groupId = getPayoutSplitGroup(context.token)
+      // V6 payout split groups are keyed by uint256(uint160(token))
+      const groupId = BigInt(context.token)
       const result = await publicClient.readContract({
         address: contracts.JBSplits,
         abi: JB_SPLITS_ABI,
@@ -3566,6 +3422,55 @@ function nextHistoryCursor(
   return pageInfo.endCursor
 }
 
+type HistoryConnection<TRaw> = { items: TRaw[]; pageInfo: HistoryPageInfo }
+
+interface HistoryQueryParams<TRaw, TItem> {
+  client: GraphQLClient
+  query: RequestDocument
+  variables: Variables
+  /** Response field holding the connection, e.g. 'payEvents'. */
+  field: string
+  validate: (item: TRaw) => TItem
+  /** Human label used in malformed/limit error messages, e.g. 'Payment history'. */
+  label: string
+}
+
+// Fetch and validate a single cursor page of a history connection.
+async function fetchHistoryPage<TRaw, TItem = TRaw>(
+  params: HistoryQueryParams<TRaw, TItem> & { after: string | null },
+): Promise<{ items: TItem[]; hasNextPage: boolean; endCursor: string | null }> {
+  const data = await params.client.request<Record<string, HistoryConnection<TRaw>>>(params.query, {
+    ...params.variables,
+    after: params.after,
+  })
+  const connection = data[params.field]
+  if (!Array.isArray(connection?.items)) throw new Error(`${params.label} is malformed`)
+  const endCursor = nextHistoryCursor(connection.pageInfo, params.after)
+  return {
+    items: connection.items.map(params.validate),
+    hasNextPage: endCursor !== null,
+    endCursor,
+  }
+}
+
+// Follow the cursor chain until exhausted or the safety limit trips.
+async function fetchAllHistoryPages<TRaw, TItem = TRaw>(
+  params: HistoryQueryParams<TRaw, TItem> & { maxItems: number },
+): Promise<TItem[]> {
+  const all: TItem[] = []
+  let cursor: string | null = null
+  do {
+    const page: Awaited<ReturnType<typeof fetchHistoryPage<TRaw, TItem>>> = await fetchHistoryPage<
+      TRaw,
+      TItem
+    >({ ...params, after: cursor })
+    all.push(...page.items)
+    cursor = page.endCursor
+  } while (cursor && all.length < params.maxItems)
+  if (cursor) throw new Error(`${params.label} exceeds the safe page limit`)
+  return all
+}
+
 function isSafeTimestamp(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) > 0
 }
@@ -3636,32 +3541,17 @@ export async function fetchCashOutTaxSnapshots(
 ): Promise<CashOutTaxSnapshot[]> {
   requireHistoryLimit(limit)
   const client = getClient(chainId ? getNetworkOption(chainId) : undefined)
-  const allSnapshots: CashOutTaxSnapshot[] = []
-  let cursor: string | null = null
-
-  type CashOutTaxResponse = {
-    cashOutTaxSnapshots: {
-      items: IndexedCashOutTaxSnapshot[]
-      pageInfo: { hasNextPage: boolean; endCursor: string }
-    }
-  }
 
   try {
-    do {
-      const data: CashOutTaxResponse = await client.request<CashOutTaxResponse>(CASH_OUT_TAX_SNAPSHOTS_QUERY, {
-        suckerGroupId,
-        limit,
-        after: cursor,
-      })
-
-      if (!Array.isArray(data.cashOutTaxSnapshots?.items)) throw new Error('Cash-out tax history is malformed')
-      allSnapshots.push(...data.cashOutTaxSnapshots.items.map(item => normalizeCashOutTaxSnapshot(item, suckerGroupId)))
-      cursor = nextHistoryCursor(data.cashOutTaxSnapshots.pageInfo, cursor)
-    } while (cursor && allSnapshots.length < 5000) // Safety limit
-
-    if (cursor) throw new Error('Cash-out tax history exceeds the safe page limit')
-
-    return allSnapshots
+    return await fetchAllHistoryPages<IndexedCashOutTaxSnapshot, CashOutTaxSnapshot>({
+      client,
+      query: CASH_OUT_TAX_SNAPSHOTS_QUERY,
+      variables: { suckerGroupId, limit },
+      field: 'cashOutTaxSnapshots',
+      validate: item => normalizeCashOutTaxSnapshot(item, suckerGroupId),
+      label: 'Cash-out tax history',
+      maxItems: 5000,
+    })
   } catch (err) {
     console.error('Failed to fetch cash out tax snapshots:', err)
     throw new Error(`Cash-out tax history unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
@@ -3676,32 +3566,17 @@ export async function fetchSuckerGroupMoments(
 ): Promise<SuckerGroupMoment[]> {
   requireHistoryLimit(limit)
   const client = getClient(chainId ? getNetworkOption(chainId) : undefined)
-  const allMoments: SuckerGroupMoment[] = []
-  let cursor: string | null = null
-
-  type MomentsResponse = {
-    suckerGroupMoments: {
-      items: SuckerGroupMoment[]
-      pageInfo: { hasNextPage: boolean; endCursor: string }
-    }
-  }
 
   try {
-    do {
-      const data: MomentsResponse = await client.request<MomentsResponse>(SUCKER_GROUP_MOMENTS_QUERY, {
-        suckerGroupId,
-        limit,
-        after: cursor,
-      })
-
-      if (!Array.isArray(data.suckerGroupMoments?.items)) throw new Error('Treasury history is malformed')
-      allMoments.push(...data.suckerGroupMoments.items.map(item => validateSuckerGroupMoment(item, suckerGroupId)))
-      cursor = nextHistoryCursor(data.suckerGroupMoments.pageInfo, cursor)
-    } while (cursor && allMoments.length < 10000) // Safety limit
-
-    if (cursor) throw new Error('Treasury history exceeds the safe page limit')
-
-    return allMoments
+    return await fetchAllHistoryPages<SuckerGroupMoment>({
+      client,
+      query: SUCKER_GROUP_MOMENTS_QUERY,
+      variables: { suckerGroupId, limit },
+      field: 'suckerGroupMoments',
+      validate: item => validateSuckerGroupMoment(item, suckerGroupId),
+      label: 'Treasury history',
+      maxItems: 10000,
+    })
   } catch (err) {
     console.error('Failed to fetch sucker group moments:', err)
     throw new Error(`Treasury history unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
@@ -3717,34 +3592,17 @@ export async function fetchPayEventsHistory(
 ): Promise<PayEventHistoryItem[]> {
   requireHistoryLimit(limit)
   const client = getClient(getNetworkOption(chainId))
-  const allEvents: PayEventHistoryItem[] = []
-  let cursor: string | null = null
-
-  type PayEventsResponse = {
-    payEvents: {
-      items: PayEventHistoryItem[]
-      pageInfo: { hasNextPage: boolean; endCursor: string }
-    }
-  }
 
   try {
-    do {
-      const data: PayEventsResponse = await client.request<PayEventsResponse>(PAY_EVENTS_HISTORY_QUERY, {
-        projectId: parseInt(projectId),
-        chainId,
-        version,
-        limit,
-        after: cursor,
-      })
-
-      if (!Array.isArray(data.payEvents?.items)) throw new Error('Payment history is malformed')
-      allEvents.push(...data.payEvents.items.map(validatePayHistoryItem))
-      cursor = nextHistoryCursor(data.payEvents.pageInfo, cursor)
-    } while (cursor && allEvents.length < 10000) // Safety limit
-
-    if (cursor) throw new Error('Payment history exceeds the safe page limit')
-
-    return allEvents
+    return await fetchAllHistoryPages<PayEventHistoryItem>({
+      client,
+      query: PAY_EVENTS_HISTORY_QUERY,
+      variables: { projectId: parseInt(projectId), chainId, version, limit },
+      field: 'payEvents',
+      validate: validatePayHistoryItem,
+      label: 'Payment history',
+      maxItems: 10000,
+    })
   } catch (err) {
     console.error('Failed to fetch pay events history:', err)
     throw new Error(`Payment history unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
@@ -3768,75 +3626,19 @@ export async function fetchPayEventsPage(
   requireHistoryLimit(limit)
   const client = getClient(getNetworkOption(chainId))
 
-  type PayEventsResponse = {
-    payEvents: {
-      items: PayEventHistoryItem[]
-      pageInfo: { hasNextPage: boolean; endCursor: string }
-    }
-  }
-
   try {
-    const data: PayEventsResponse = await client.request<PayEventsResponse>(PAY_EVENTS_HISTORY_QUERY, {
-      projectId: parseInt(projectId),
-      chainId,
-      version,
-      limit,
+    return await fetchHistoryPage<PayEventHistoryItem>({
+      client,
+      query: PAY_EVENTS_HISTORY_QUERY,
+      variables: { projectId: parseInt(projectId), chainId, version, limit },
+      field: 'payEvents',
+      validate: validatePayHistoryItem,
+      label: 'Payment activity',
       after: after || null,
     })
-
-    if (!Array.isArray(data.payEvents?.items)) throw new Error('Payment activity is malformed')
-    const endCursor = nextHistoryCursor(data.payEvents.pageInfo, after || null)
-    return {
-      items: data.payEvents.items.map(validatePayHistoryItem),
-      hasNextPage: endCursor !== null,
-      endCursor,
-    }
   } catch (err) {
     console.error('Failed to fetch pay events page:', err)
     throw new Error(`Payment activity unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
-  }
-}
-
-// Fetch cash out events history for redemption visualization
-export async function fetchCashOutEventsHistory(
-  projectId: string,
-  chainId: number,
-  version: number = 6,
-  limit: number = 1000
-): Promise<CashOutEventHistoryItem[]> {
-  requireHistoryLimit(limit)
-  const client = getClient(getNetworkOption(chainId))
-  const allEvents: CashOutEventHistoryItem[] = []
-  let cursor: string | null = null
-
-  type CashOutEventsResponse = {
-    cashOutTokensEvents: {
-      items: CashOutEventHistoryItem[]
-      pageInfo: { hasNextPage: boolean; endCursor: string }
-    }
-  }
-
-  try {
-    do {
-      const data: CashOutEventsResponse = await client.request<CashOutEventsResponse>(CASH_OUT_EVENTS_HISTORY_QUERY, {
-        projectId: parseInt(projectId),
-        chainId,
-        version,
-        limit,
-        after: cursor,
-      })
-
-      if (!Array.isArray(data.cashOutTokensEvents?.items)) throw new Error('Cash-out history is malformed')
-      allEvents.push(...data.cashOutTokensEvents.items.map(validateCashOutHistoryItem))
-      cursor = nextHistoryCursor(data.cashOutTokensEvents.pageInfo, cursor)
-    } while (cursor && allEvents.length < 10000) // Safety limit
-
-    if (cursor) throw new Error('Cash-out history exceeds the safe page limit')
-
-    return allEvents
-  } catch (err) {
-    console.error('Failed to fetch cash out events history:', err)
-    throw new Error(`Cash-out history unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
   }
 }
 
@@ -3857,29 +3659,16 @@ export async function fetchCashOutEventsPage(
   requireHistoryLimit(limit)
   const client = getClient(getNetworkOption(chainId))
 
-  type CashOutEventsResponse = {
-    cashOutTokensEvents: {
-      items: CashOutEventHistoryItem[]
-      pageInfo: { hasNextPage: boolean; endCursor: string }
-    }
-  }
-
   try {
-    const data: CashOutEventsResponse = await client.request<CashOutEventsResponse>(CASH_OUT_EVENTS_HISTORY_QUERY, {
-      projectId: parseInt(projectId),
-      chainId,
-      version,
-      limit,
+    return await fetchHistoryPage<CashOutEventHistoryItem>({
+      client,
+      query: CASH_OUT_EVENTS_HISTORY_QUERY,
+      variables: { projectId: parseInt(projectId), chainId, version, limit },
+      field: 'cashOutTokensEvents',
+      validate: validateCashOutHistoryItem,
+      label: 'Cash-out activity',
       after: after || null,
     })
-
-    if (!Array.isArray(data.cashOutTokensEvents?.items)) throw new Error('Cash-out activity is malformed')
-    const endCursor = nextHistoryCursor(data.cashOutTokensEvents.pageInfo, after || null)
-    return {
-      items: data.cashOutTokensEvents.items.map(validateCashOutHistoryItem),
-      hasNextPage: endCursor !== null,
-      endCursor,
-    }
   } catch (err) {
     console.error('Failed to fetch cash out events page:', err)
     throw new Error(`Cash-out activity unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
@@ -4039,74 +3828,6 @@ function aggregateParticipants(
   return { participants, totalSupply }
 }
 
-export async function fetchAggregatedParticipants(
-  suckerGroupId: string,
-  limit: number = 100,
-  fallbackProjectId?: string,
-  fallbackChainId?: number
-): Promise<{ participants: AggregatedParticipant[]; totalSupply: bigint }> {
-  const client = getClient(fallbackChainId ? getNetworkOption(fallbackChainId) : undefined)
-
-  if (suckerGroupId) {
-    try {
-      const [participantsData, suckerGroupData] = await Promise.all([
-        client.request<{
-          participants: {
-            totalCount: number
-            items: Array<{ address: string; chainId: number; balance: string }>
-          }
-        }>(SUCKER_GROUP_PARTICIPANTS_QUERY, {
-          suckerGroupId,
-          version: 6,
-          limit: PARTICIPANT_QUERY_LIMIT,
-        }),
-        client.request<{
-          suckerGroup: { tokenSupply: string } | null
-        }>(SUCKER_GROUP_BY_ID_QUERY, { id: suckerGroupId })
-      ])
-      const tokenSupply = suckerGroupData.suckerGroup?.tokenSupply
-      if (!isRawAmount(tokenSupply)) throw new Error('Sucker group token supply is unavailable')
-      const items = parseParticipantPage(participantsData.participants)
-      return aggregateParticipants(items, BigInt(tokenSupply), limit)
-    } catch (err) {
-      throw new Error(`Member data unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
-    }
-  }
-
-  if (fallbackProjectId && fallbackChainId) {
-    try {
-      const [participantsData, projectData] = await Promise.all([
-        client.request<{
-          participants: {
-            totalCount: number
-            items: Array<{ address: string; chainId: number; balance: string }>
-          }
-        }>(TOKEN_HOLDERS_QUERY, {
-          projectId: parseInt(fallbackProjectId),
-          chainIds: [fallbackChainId],
-          version: 6,
-          limit: PARTICIPANT_QUERY_LIMIT,
-        }),
-        client.request<{
-          project: { tokenSupply?: string } | null
-        }>(PROJECT_QUERY, {
-          projectId: parseInt(fallbackProjectId),
-          chainId: fallbackChainId,
-          version: 6
-        })
-      ])
-      const tokenSupply = projectData.project?.tokenSupply
-      if (!isRawAmount(tokenSupply)) throw new Error('Project token supply is unavailable')
-      const items = parseParticipantPage(participantsData.participants, fallbackChainId)
-      return aggregateParticipants(items, BigInt(tokenSupply), limit)
-    } catch (err) {
-      throw new Error(`Member data unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
-    }
-  }
-
-  throw new Error('Member data unavailable: no verified project scope')
-}
-
 // Fetch participants from all connected chains and aggregate them. Match the
 // versioned `chainId_in` query used by website/; Bendystraw's singular chainId
 // participant filter returns an internal error for otherwise valid V6 projects.
@@ -4201,35 +3922,17 @@ export async function fetchProjectMoments(
 ): Promise<ProjectMoment[]> {
   requireHistoryLimit(limit)
   const client = getClient(getNetworkOption(chainId))
-  const allMoments: ProjectMoment[] = []
-  let cursor: string | null = null
-
-  type ProjectMomentsResponse = {
-    projectMoments: {
-      items: ProjectMoment[]
-      pageInfo: HistoryPageInfo
-    }
-  }
 
   try {
-    do {
-      const data: ProjectMomentsResponse = await client.request<ProjectMomentsResponse>(
-        PROJECT_MOMENTS_QUERY,
-        {
-          projectId: parseInt(projectId),
-          chainId,
-          version,
-          limit,
-          after: cursor,
-        }
-      )
-      if (!Array.isArray(data.projectMoments?.items)) throw new Error('Project history is malformed')
-      allMoments.push(...data.projectMoments.items.map(validateProjectMoment))
-      cursor = nextHistoryCursor(data.projectMoments.pageInfo, cursor)
-    } while (cursor && allMoments.length < 10_000)
-
-    if (cursor) throw new Error('Project history exceeds the safe page limit')
-    return allMoments
+    return await fetchAllHistoryPages<ProjectMoment>({
+      client,
+      query: PROJECT_MOMENTS_QUERY,
+      variables: { projectId: parseInt(projectId), chainId, version, limit },
+      field: 'projectMoments',
+      validate: validateProjectMoment,
+      label: 'Project history',
+      maxItems: 10_000,
+    })
   } catch (err) {
     console.error('Failed to fetch project moments:', err)
     throw new Error(`Project history unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)

@@ -3,6 +3,8 @@
  * Handles biometric and hardware key authentication in the browser
  */
 
+import { arrayBufferToBase64Url, base64UrlToArrayBuffer } from './base64url'
+
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
 // ============================================================================
@@ -46,27 +48,6 @@ interface PasskeyInfo {
 // Helpers
 // ============================================================================
 
-function base64UrlToArrayBuffer(base64url: string): ArrayBuffer {
-  const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/')
-  const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4)
-  const binary = atob(padded)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i)
-  }
-  return bytes.buffer
-}
-
-function arrayBufferToBase64Url(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer)
-  let binary = ''
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte)
-  }
-  const base64 = btoa(binary)
-  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
-}
-
 async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {},
@@ -104,15 +85,6 @@ export function isPasskeySupported(): boolean {
     window.PublicKeyCredential &&
     typeof window.PublicKeyCredential === 'function'
   )
-}
-
-export async function isPasskeyAutofillSupported(): Promise<boolean> {
-  if (!isPasskeySupported()) return false
-  try {
-    return await PublicKeyCredential.isConditionalMediationAvailable()
-  } catch {
-    return false
-  }
 }
 
 // ============================================================================

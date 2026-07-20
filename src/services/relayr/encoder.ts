@@ -6,7 +6,6 @@
 import { encodeFunctionData, pad, type Address, type Hex } from 'viem'
 import {
   JB_CONTROLLER_ABI,
-  JB_OMNICHAIN_DEPLOYER_ABI,
   JB_OMNICHAIN_DEPLOYER_ADDRESS,
   REV_DEPLOYER_ABI,
   REV_DEPLOYER_ADDRESS,
@@ -308,18 +307,6 @@ export interface JBSuckerDeploymentConfig {
   salt: string
 }
 
-export interface JBLaunchProjectRequest {
-  chainIds: number[]
-  owner: string
-  projectUri: string
-  rulesetConfigurations: JBRulesetConfig[]
-  terminalConfigurations: JBTerminalConfig[]
-  memo: string
-  suckerDeploymentConfiguration?: JBSuckerDeploymentConfig
-  /** Exact JBProjects.creationFee(), verified on this destination chain. */
-  creationFeeWei: string
-}
-
 export interface REVStageConfig {
   startsAtOrAfter: number
   splitPercent: number
@@ -399,55 +386,6 @@ function requireCreationFee(value: string | undefined, chainId: number): string 
     throw new Error(`Invalid project creation fee on chain ${chainId}`)
   }
   return value
-}
-
-/**
- * Encode JBOmnichainDeployer.launchProjectFor() calldata (Juicebox V6).
- * V6 has no `controller` parameter and the call is payable (creation fee).
- */
-export function encodeLaunchProjectTransaction(
-  chainId: number,
-  request: JBLaunchProjectRequest
-): JBTransactionResponse {
-  const rulesetConfigs = request.rulesetConfigurations.map(toRulesetConfigTuple)
-
-  const terminalConfigs = request.terminalConfigurations.map(tc => ({
-    terminal: tc.terminal as Address,
-    accountingContextsToAccept: tc.accountingContextsToAccept.map(ctx => ({
-      token: ctx.token as Address,
-      decimals: ctx.decimals,
-      currency: ctx.currency,
-    })),
-  }))
-
-  const suckerConfig = toSuckerConfigTuple(request.suckerDeploymentConfiguration)
-
-  const data = encodeFunctionData({
-    abi: JB_OMNICHAIN_DEPLOYER_ABI,
-    functionName: 'launchProjectFor',
-    args: [
-      request.owner as Address,
-      request.projectUri,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      rulesetConfigs as any, // Complex struct - viem handles conversion
-      terminalConfigs,
-      request.memo,
-      suckerConfig,
-    ],
-  })
-
-  const value = requireCreationFee(request.creationFeeWei, chainId)
-
-  return {
-    txData: {
-      to: JB_OMNICHAIN_DEPLOYER_ADDRESS,
-      data,
-      value,
-      chainId,
-    },
-    estimatedGas: '2000000', // Complex deployment needs more gas
-    description: `Launch project for ${request.owner}`,
-  }
 }
 
 // Mirrors omnichainDeployer.formatTierConfig — the V6 JB721TierConfig tuple

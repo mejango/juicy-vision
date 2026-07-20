@@ -11,7 +11,7 @@
  * - Sucker mappings: remoteToken is bytes32, config has a `peer` field, minBridgeAmount removed
  */
 
-import { createPublicClient, encodeFunctionData, http, pad } from 'viem'
+import { createPublicClient, encodeFunctionData, http, isAddress, pad } from 'viem'
 import { tokenCurrencyId } from '@bananapus/nana-sdk-core/v6'
 import {
   JB_OMNICHAIN_DEPLOYER_ABI,
@@ -37,6 +37,7 @@ import {
   shouldConfigureSuckers,
   CCIP_SUCKER_DEPLOYER_ADDRESSES,
   ZERO_BYTES32,
+  type JBSuckerBridge,
 } from '../utils/suckerConfig'
 import {
   requireRecognizedApprovalHook,
@@ -110,21 +111,11 @@ function requireCreationFee(value: string | undefined, chainId: number): string 
 /**
  * Validate that an address is a proper 40-character hex string.
  * Throws an error if invalid, providing the field name for debugging.
+ * strict: false matches the historical behavior (no checksum enforcement).
  */
 function validateAddress(address: string, fieldName: string): `0x${string}` {
-  if (!address || typeof address !== 'string') {
-    throw new Error(`${fieldName}: Address is required but got ${typeof address}`)
-  }
-  const normalized = address.toLowerCase()
-  if (!normalized.startsWith('0x')) {
-    throw new Error(`${fieldName}: Address must start with 0x, got "${address}"`)
-  }
-  const hexPart = normalized.slice(2)
-  if (hexPart.length !== 40) {
-    throw new Error(`${fieldName}: Address must be 40 hex characters (got ${hexPart.length}): "${address}"`)
-  }
-  if (!/^[0-9a-f]+$/.test(hexPart)) {
-    throw new Error(`${fieldName}: Address contains invalid characters: "${address}"`)
+  if (typeof address !== 'string' || !isAddress(address, { strict: false })) {
+    throw new Error(`${fieldName}: Invalid address: "${address}"`)
   }
   return address as `0x${string}`
 }
@@ -204,21 +195,6 @@ function validateSuckerDeployerAddress(address: string, fieldName: string): `0x$
   }
 
   return validated
-}
-
-/**
- * Validate an address that can be user-controlled (beneficiary, owner, etc.)
- * Only validates format, not against known list.
- */
-function validateUserAddress(address: string, fieldName: string): `0x${string}` {
-  return validateAddress(address, fieldName)
-}
-
-/**
- * Validate a token address. Allows native token (0xEEEE...) and validates format.
- */
-function validateTokenAddress(address: string, fieldName: string): `0x${string}` {
-  return validateAddress(address, fieldName)
 }
 
 function requireRecognizedAccountingToken(
@@ -359,7 +335,7 @@ function formatSuckerDeploymentConfiguration(
         peer: ZERO_BYTES32,
         mappings: dc.mappings.map((mapping, mapIdx) => {
           const mappingField = `${field}.mappings[${mapIdx}]`
-          const localToken = validateTokenAddress(mapping.localToken, `${mappingField}.localToken`)
+          const localToken = validateAddress(mapping.localToken, `${mappingField}.localToken`)
           requireRecognizedAccountingToken(localToken, chainId, `${mappingField}.localToken`)
           if (seenLocalTokens.has(localToken.toLowerCase())) {
             throw new Error(`${mappingField}.localToken: Duplicate token mapping`)
@@ -392,6 +368,63 @@ function formatSuckerDeploymentConfiguration(
 }
 
 /**
+ * Extract the per-chain ERC-20 accounting token (first non-native accounting
+ * context) from each chain's terminal configurations. Used to build sucker
+ * token mappings for ERC20-based projects (e.g., USDC).
+ */
+export function extractChainTokenAddresses(
+  chainIds: number[],
+  terminalConfigurationsFor: (chainId: number) => JBTerminalConfig[],
+): Record<number, `0x${string}`> {
+  const tokenAddresses: Record<number, `0x${string}`> = {}
+  for (const chainId of chainIds) {
+    for (const terminal of terminalConfigurationsFor(chainId)) {
+      for (const ctx of terminal.accountingContextsToAccept) {
+        // Skip native token (0xEEEe...) - we want ERC20 tokens
+        if (ctx.token && ctx.token.toLowerCase() !== '0x000000000000000000000000000000000000eeee') {
+          tokenAddresses[chainId] = ctx.token as `0x${string}`
+          break
+        }
+      }
+      if (tokenAddresses[chainId]) break
+    }
+  }
+  return tokenAddresses
+}
+
+/**
+ * Auto-generate the sucker deployment configuration for one chain of a
+ * multi-chain deployment (deployers connecting this chain to the OTHER chains).
+ */
+export function perChainSuckerConfig(params: {
+  chainId: number
+  chainIds: number[]
+  sharedSalt: `0x${string}`
+  tokenAddresses: Record<number, `0x${string}`>
+  bridge?: JBSuckerBridge
+}): JBSuckerDeploymentConfig {
+  const hasTokenAddresses = Object.keys(params.tokenAddresses).length > 0
+  const generatedConfig = parseSuckerDeployerConfig(params.chainId, params.chainIds, {
+    salt: params.sharedSalt,
+    tokenAddresses: hasTokenAddresses ? params.tokenAddresses : undefined,
+    bridge: params.bridge,
+  })
+  return {
+    deployerConfigurations: generatedConfig.deployerConfigurations.map(dc => ({
+      deployer: dc.deployer,
+      peer: dc.peer,
+      mappings: dc.mappings.map(m => ({
+        // V6 JBTokenMapping: localToken, minGas, remoteToken (bytes32)
+        localToken: m.localToken,
+        minGas: m.minGas,
+        remoteToken: m.remoteToken,
+      })),
+    })),
+    salt: generatedConfig.salt,
+  }
+}
+
+/**
  * Encode launchProjectFor calldata for JBOmnichainDeployer (V6).
  * This creates a project and optionally deploys suckers atomically.
  */
@@ -415,7 +448,7 @@ export function encodeLaunchProjectFor(params: {
   } = params
 
   // Validate the owner address format
-  const validatedOwner = validateUserAddress(owner, 'owner')
+  const validatedOwner = validateAddress(owner, 'owner')
 
   // Use the shared formatting functions with address validation
   const formattedTerminals = formatTerminalConfigurations(terminalConfigurations, chainId)
@@ -533,22 +566,10 @@ export function buildOmnichainLaunchTransactions(params: {
 
   // Extract per-chain token addresses from terminal configurations for sucker config
   // This enables proper ERC20 bridging (e.g., USDC on each chain)
-  const tokenAddresses: Record<number, `0x${string}`> = {}
-  for (const chainId of chainIds) {
-    const chainConfig = chainConfigMap.get(chainId)
-    const terminalConfigs = chainConfig?.terminalConfigurations ?? params.terminalConfigurations
-    // Look for the first non-native token in terminal configs
-    for (const terminal of terminalConfigs) {
-      for (const ctx of terminal.accountingContextsToAccept) {
-        // Skip native token (0xEEEe...) - we want ERC20 tokens
-        if (ctx.token && ctx.token.toLowerCase() !== '0x000000000000000000000000000000000000eeee') {
-          tokenAddresses[chainId] = ctx.token as `0x${string}`
-          break
-        }
-      }
-      if (tokenAddresses[chainId]) break
-    }
-  }
+  const tokenAddresses = extractChainTokenAddresses(
+    chainIds,
+    (chainId) => chainConfigMap.get(chainId)?.terminalConfigurations ?? params.terminalConfigurations,
+  )
 
   const transactions = params.chainIds.map(chainId => {
     // Get per-chain terminal configurations (use override if available)
@@ -567,25 +588,7 @@ export function buildOmnichainLaunchTransactions(params: {
       suckerConfig = params.suckerDeploymentConfiguration!
     } else if (shouldConfigureSuckers(chainIds)) {
       // Auto-generate sucker config for this chain connecting to other chains
-      // Pass token addresses for ERC20-based projects
-      const hasTokenAddresses = Object.keys(tokenAddresses).length > 0
-      const generatedConfig = parseSuckerDeployerConfig(chainId, chainIds, {
-        salt: sharedSalt,
-        tokenAddresses: hasTokenAddresses ? tokenAddresses : undefined,
-      })
-      suckerConfig = {
-        deployerConfigurations: generatedConfig.deployerConfigurations.map(dc => ({
-          deployer: dc.deployer,
-          peer: dc.peer,
-          mappings: dc.mappings.map(m => ({
-            // V6 JBTokenMapping: localToken, minGas, remoteToken (bytes32)
-            localToken: m.localToken,
-            minGas: m.minGas,
-            remoteToken: m.remoteToken,
-          })),
-        })),
-        salt: generatedConfig.salt,
-      }
+      suckerConfig = perChainSuckerConfig({ chainId, chainIds, sharedSalt, tokenAddresses })
     } else {
       // Single chain deployment - no suckers needed
       suckerConfig = {
@@ -635,7 +638,7 @@ function formatTerminalConfigurations(terminalConfigurations: JBTerminalConfig[]
       terminal: address,
       accountingContextsToAccept: terminal.accountingContextsToAccept.map((ctx, ctxIdx) => {
         const contextField = `${field}.accountingContextsToAccept[${ctxIdx}]`
-        const token = validateTokenAddress(ctx.token, `${contextField}.token`)
+        const token = validateAddress(ctx.token, `${contextField}.token`)
         const expectedDecimals = requireRecognizedAccountingToken(token, chainId, `${contextField}.token`)
         const expectedCurrency = tokenCurrencyId(token)
         if (acceptedTokens.has(token.toLowerCase())) {
@@ -724,7 +727,7 @@ function formatRulesetConfigurations(
           throw new Error(`${splitField}.projectId: Value exceeds uint64`)
         }
         requireInteger(split.lockedUntil, `${splitField}.lockedUntil`, 0, 2 ** 48 - 1)
-        const beneficiary = validateUserAddress(split.beneficiary, `${splitField}.beneficiary`)
+        const beneficiary = validateAddress(split.beneficiary, `${splitField}.beneficiary`)
         const hook = validateHookAddress(split.hook, `${splitField}.hook`)
         requireRecognizedSplitHook(hook)
         if (
@@ -754,7 +757,7 @@ function formatRulesetConfigurations(
         throw new Error(`Fund access terminal not recognized: ${group.terminal}`)
       }
       const terminal = validateTerminalAddress(group.terminal, chainId, `${groupField}.terminal`)
-      const token = validateTokenAddress(group.token, `${groupField}.token`)
+      const token = validateAddress(group.token, `${groupField}.token`)
       requireRecognizedAccountingToken(token, chainId, `${groupField}.token`)
       if (acceptedTokens && !acceptedTokens.has(token.toLowerCase())) {
         throw new Error(`${groupField}.token: Fund access token is not accepted by the terminal`)
@@ -839,7 +842,7 @@ function formatTierConfig(tier: JB721TierConfig) {
     initialSupply: tier.initialSupply,
     votingUnits: tier.votingUnits,
     reserveFrequency: tier.reserveFrequency,
-    reserveBeneficiary: validateUserAddress(tier.reserveBeneficiary, 'tier.reserveBeneficiary'),
+    reserveBeneficiary: validateAddress(tier.reserveBeneficiary, 'tier.reserveBeneficiary'),
     encodedIpfsUri: tier.encodedIPFSUri as `0x${string}`,
     category: tier.category,
     discountPercent: tier.discountPercent,
@@ -856,7 +859,7 @@ function formatTierConfig(tier: JB721TierConfig) {
     splits: (tier.splits ?? []).map(s => ({
       percent: s.percent,
       projectId: BigInt(s.projectId),
-      beneficiary: validateUserAddress(s.beneficiary, 'tier.splits[].beneficiary'),
+      beneficiary: validateAddress(s.beneficiary, 'tier.splits[].beneficiary'),
       preferAddToBalance: s.preferAddToBalance,
       lockedUntil: s.lockedUntil,
       hook: validateHookAddress(s.hook || ZERO_ADDRESS, 'tier.splits[].hook'),
@@ -906,7 +909,7 @@ function validateTiersHookConfiguration(config: JBDeployTiersHookConfig, chainId
     if (tier.initialSupply === 1 && tier.reserveFrequency > 0) {
       throw new Error(`Tier ${index + 1} has a deadlocked reserve configuration`)
     }
-    const reserveBeneficiary = validateUserAddress(
+    const reserveBeneficiary = validateAddress(
       tier.reserveBeneficiary,
       `tiers[${index}].reserveBeneficiary`,
     ).toLowerCase()
@@ -970,7 +973,7 @@ function validateTiersHookConfiguration(config: JBDeployTiersHookConfig, chainId
       if (!Number.isSafeInteger(split.lockedUntil) || split.lockedUntil < 0 || split.lockedUntil > 2 ** 48 - 1) {
         throw new Error(`Tier ${index + 1} has an invalid split lock time`)
       }
-      const beneficiary = validateUserAddress(split.beneficiary, `tiers[${index}].splits[].beneficiary`)
+      const beneficiary = validateAddress(split.beneficiary, `tiers[${index}].splits[].beneficiary`)
       const hook = validateHookAddress(split.hook || ZERO_ADDRESS, `tiers[${index}].splits[].hook`)
       requireRecognizedSplitHook(hook)
       if (
@@ -1304,7 +1307,7 @@ export function encodeLaunch721ProjectFor(params: {
   } = params
 
   // Validate the owner address format
-  const validatedOwner = validateUserAddress(owner, 'owner')
+  const validatedOwner = validateAddress(owner, 'owner')
 
   // Reuse the shared formatting helpers (identical FULL metadata as the non-721 encoder)
   const formattedTerminals = formatTerminalConfigurations(terminalConfigurations, chainId)
@@ -1415,21 +1418,10 @@ export function buildOmnichainLaunch721Transactions(params: {
 
   // Extract per-chain token addresses from terminal configurations for sucker config
   // This enables proper ERC20 bridging (e.g., USDC on each chain)
-  const tokenAddresses: Record<number, `0x${string}`> = {}
-  for (const chainId of chainIds) {
-    const chainConfig = chainConfigMap.get(chainId)
-    const terminalConfigs = chainConfig?.terminalConfigurations ?? params.terminalConfigurations
-    for (const terminal of terminalConfigs) {
-      for (const ctx of terminal.accountingContextsToAccept) {
-        // Skip native token (0xEEEe...) - we want ERC20 tokens
-        if (ctx.token && ctx.token.toLowerCase() !== '0x000000000000000000000000000000000000eeee') {
-          tokenAddresses[chainId] = ctx.token as `0x${string}`
-          break
-        }
-      }
-      if (tokenAddresses[chainId]) break
-    }
-  }
+  const tokenAddresses = extractChainTokenAddresses(
+    chainIds,
+    (chainId) => chainConfigMap.get(chainId)?.terminalConfigurations ?? params.terminalConfigurations,
+  )
 
   return chainIds.map(chainId => {
     // Get per-chain terminal configurations (use override if available)
@@ -1455,23 +1447,7 @@ export function buildOmnichainLaunch721Transactions(params: {
     if (hasProvidedConfig) {
       suckerConfig = params.suckerDeploymentConfiguration!
     } else if (shouldConfigureSuckers(chainIds)) {
-      const hasTokenAddresses = Object.keys(tokenAddresses).length > 0
-      const generatedConfig = parseSuckerDeployerConfig(chainId, chainIds, {
-        salt: sharedSalt,
-        tokenAddresses: hasTokenAddresses ? tokenAddresses : undefined,
-      })
-      suckerConfig = {
-        deployerConfigurations: generatedConfig.deployerConfigurations.map(dc => ({
-          deployer: dc.deployer,
-          peer: dc.peer,
-          mappings: dc.mappings.map(m => ({
-            localToken: m.localToken,
-            minGas: m.minGas,
-            remoteToken: m.remoteToken,
-          })),
-        })),
-        salt: generatedConfig.salt,
-      }
+      suckerConfig = perChainSuckerConfig({ chainId, chainIds, sharedSalt, tokenAddresses })
     } else {
       // Single chain deployment - no suckers needed
       suckerConfig = {

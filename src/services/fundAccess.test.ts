@@ -3,7 +3,6 @@ import { decodeErrorResult, encodeErrorResult, toFunctionSelector, type Address,
 import { JB_CONTRACTS, NATIVE_TOKEN } from '../constants'
 import {
   accountingAmountInConfiguredCurrency,
-  availableFundAccessAmount,
   formatFundAccessAmount,
   fundAccessErrorMessage,
   FUND_ACCESS_TERMINAL_ABI,
@@ -102,10 +101,6 @@ describe('deployed V6 fund access math', () => {
     expect(decodeErrorResult({ abi: FUND_ACCESS_TERMINAL_ABI, data: staleBalance }).errorName).toBe(
       'JBTerminalStore_InadequateTerminalStoreBalance',
     )
-  })
-
-  it('caps a payout limit at the terminal balance', () => {
-    expect(availableFundAccessAmount(10n ** 20n, 25n, 10n ** 18n)).toBe(25n)
   })
 
   it('converts 0.000025 ETH at 1,817.53 USD/ETH to exactly 0.04543825 USD', () => {

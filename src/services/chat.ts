@@ -8,6 +8,7 @@ import { useAuthStore } from '../stores/authStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { getSessionId } from './session'
 import { getWalletSessionToken } from './siwe'
+import { apiRequest, apiRequestEnvelope } from './apiClient'
 import { WS_CONFIG } from '../constants'
 import type {
   Chat,
@@ -18,55 +19,6 @@ import type {
 } from '../stores/chatStore'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
-
-// ============================================================================
-// API Client
-// ============================================================================
-
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: string
-}
-
-async function apiRequest<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const token = useAuthStore.getState().token
-  const siweToken = getWalletSessionToken()
-  const sessionId = getSessionId()
-
-  // Debug logging
-  console.log('[apiRequest] endpoint:', endpoint)
-  console.log('[apiRequest] sessionId:', sessionId)
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'X-Session-ID': sessionId, // Always include session ID
-    ...(options.headers as Record<string, string>),
-  }
-
-  // Include auth token if available (managed wallets or SIWE self-custody wallets)
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  } else if (siweToken) {
-    headers['Authorization'] = `Bearer ${siweToken}`
-  }
-
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  })
-
-  const data: ApiResponse<T> = await response.json()
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error || 'Request failed')
-  }
-
-  return data.data as T
-}
 
 // ============================================================================
 // Chat Management
@@ -98,41 +50,12 @@ export async function fetchMyChats(options?: {
   }
   const queryString = params.toString()
 
-  const token = useAuthStore.getState().token
-  const siweToken = getWalletSessionToken()
-  const sessionId = getSessionId()
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'X-Session-ID': sessionId,
-  }
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  } else if (siweToken) {
-    headers['Authorization'] = `Bearer ${siweToken}`
-  }
-
-  const response = await fetch(`${API_BASE_URL}/chat${queryString ? `?${queryString}` : ''}`, {
-    headers,
-  })
-  const result = await response.json()
-
-  if (!response.ok || !result.success) {
-    throw new Error(result.error || 'Request failed')
-  }
+  const result = await apiRequestEnvelope<Chat[]>(`/chat${queryString ? `?${queryString}` : ''}`)
 
   return {
     chats: result.data as Chat[],
     total: result.total ?? result.data?.length ?? 0,
   }
-}
-
-export async function fetchPublicChats(
-  limit = 20,
-  offset = 0
-): Promise<Chat[]> {
-  return apiRequest<Chat[]>(
-    `/chat/public?limit=${limit}&offset=${offset}`
-  )
 }
 
 export async function fetchChat(chatId: string): Promise<Chat> {
@@ -143,22 +66,6 @@ export async function createChat(params: CreateChatParams): Promise<Chat> {
   return apiRequest<Chat>('/chat', {
     method: 'POST',
     body: JSON.stringify(params),
-  })
-}
-
-interface MigrateMessage {
-  role: 'user' | 'assistant'
-  content: string
-}
-
-/**
- * Migrate a local chat to a persistent DB chat
- * This converts a localStorage-based conversation into a shareable chat
- */
-export async function migrateChat(title: string, messages?: MigrateMessage[]): Promise<{ chatId: string; name: string }> {
-  return apiRequest<{ chatId: string; name: string }>('/chat/migrate', {
-    method: 'POST',
-    body: JSON.stringify({ title, messages }),
   })
 }
 
@@ -400,47 +307,9 @@ export async function createInvite(
   })
 }
 
-export async function revokeInvite(chatId: string, inviteId: string): Promise<void> {
-  await apiRequest<void>(`/chat/${chatId}/invites/${inviteId}`, {
-    method: 'DELETE',
-  })
-}
-
-export interface InviteInfo {
-  chatId: string
-  chatName: string
-  chatDescription?: string
-  role: 'admin' | 'member'
-  canSendMessages: boolean
-  canInviteOthers: boolean
-}
-
-export async function getInviteInfo(code: string): Promise<InviteInfo> {
-  return apiRequest<InviteInfo>(`/chat/invite/${code}`)
-}
-
-export async function joinViaInvite(code: string): Promise<{ chatId: string; chatName?: string; role: string }> {
-  return apiRequest<{ chatId: string; chatName?: string; role: string }>(`/chat/invite/${code}/join`, {
-    method: 'POST',
-  })
-}
-
 // ============================================================================
 // AI Integration
 // ============================================================================
-
-export interface AiBalanceStatus {
-  chatId: string
-  balanceWei: string
-  totalSpentWei: string
-  estimatedRequestsRemaining: number
-  isLow: boolean
-  isEmpty: boolean
-}
-
-export async function getAiBalance(chatId: string): Promise<AiBalanceStatus> {
-  return apiRequest<AiBalanceStatus>(`/chat/${chatId}/ai/balance`)
-}
 
 export async function invokeAi(
   chatId: string,
@@ -470,23 +339,6 @@ export async function toggleAiEnabled(chatId: string, enabled: boolean): Promise
   return apiRequest<Chat>(`/chat/${chatId}/ai/toggle`, {
     method: 'PATCH',
     body: JSON.stringify({ enabled }),
-  })
-}
-
-// ============================================================================
-// Feedback
-// ============================================================================
-
-export type JuicyRating = 'wow' | 'great' | 'meh' | 'bad'
-
-export async function submitFeedback(
-  chatId: string,
-  rating: JuicyRating,
-  comment?: string
-): Promise<void> {
-  await apiRequest<void>(`/chat/${chatId}/feedback`, {
-    method: 'POST',
-    body: JSON.stringify({ rating, comment }),
   })
 }
 
@@ -540,7 +392,6 @@ class WebSocketManager {
   // Polling fallback state
   private pollingTimer: ReturnType<typeof setInterval> | null = null
   private isPolling = false
-  private lastMessageId: string | null = null
   private consecutiveSuccessfulPolls = 0
   private lastPollTime: number | null = null
 
@@ -595,12 +446,6 @@ class WebSocketManager {
     if (!this.currentChatId || !this.isOnline) return
 
     try {
-      // Fetch messages newer than our last known message
-      const params = new URLSearchParams({ limit: '20' })
-      if (this.lastMessageId) {
-        params.set('after', this.lastMessageId)
-      }
-
       const messages = await fetchMessages(this.currentChatId, 20)
 
       this.lastPollTime = Date.now()
@@ -608,9 +453,6 @@ class WebSocketManager {
 
       // Deliver any new messages to handlers
       if (messages.length > 0) {
-        // Update last message ID for next poll
-        this.lastMessageId = messages[messages.length - 1].id
-
         messages.forEach((message) => {
           this.handlers.forEach((handler) => {
             handler({

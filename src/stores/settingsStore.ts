@@ -127,41 +127,8 @@ export const useSettingsStore = create<SettingsState>()(
             ankrApiKey: '',
           }
         }
-        if (version < 6) {
-          // Migration: add theGraphApiKey with default
-          state = {
-            ...state,
-            theGraphApiKey: DEFAULT_THEGRAPH_API_KEY,
-          }
-        }
-        if (version < 7) {
-          // Migration: add language preference
-          state = {
-            ...state,
-            language: 'en',
-          }
-        }
-        if (version < 8) {
-          // Migration: add selectedFruit preference
-          state = {
-            ...state,
-            selectedFruit: null,
-          }
-        }
-        if (version < 9) {
-          // Migration: add privateMode preference (default false = open/shareable)
-          state = {
-            ...state,
-            privateMode: false,
-          }
-        }
-        if (version < 10) {
-          // Migration: add relayrApiKey
-          state = {
-            ...state,
-            relayrApiKey: '',
-          }
-        }
+        // Versions 6-10 only introduced brand-new keys; zustand persist's
+        // default shallow merge fills those from initial state automatically.
         return state
       },
     }

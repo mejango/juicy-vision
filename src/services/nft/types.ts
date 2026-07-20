@@ -60,28 +60,6 @@ export interface ResolvedNFTTier extends NFTTier {
 }
 
 /**
- * 721 Hook configuration for a project
- */
-export interface NFTHookConfig {
-  hookAddress: `0x${string}`
-  storeAddress: `0x${string}`
-  projectId: bigint
-  totalTiers: number
-}
-
-/**
- * Mint event details
- */
-export interface NFTMintEvent {
-  txHash: string
-  tierId: number
-  tokenId: bigint
-  beneficiary: `0x${string}`
-  amount: bigint
-  timestamp: number
-}
-
-/**
  * Collection-wide permission flags for JB721TiersHook
  * These flags control what operations are allowed on the entire collection
  */

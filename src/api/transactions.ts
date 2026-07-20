@@ -5,10 +5,7 @@
  * transaction tracking and history.
  */
 
-import { useAuthStore } from '../stores/authStore'
-import { getSessionId } from '../services/session'
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || ''
+import { apiRequest as sharedApiRequest } from '../services/apiClient'
 
 // =============================================================================
 // Types
@@ -47,41 +44,9 @@ export interface Transaction {
 // API Client
 // =============================================================================
 
-interface ApiResponse<T> {
-  success: boolean
-  data?: T
-  error?: string
-}
-
-async function apiRequest<T>(
-  endpoint: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const token = useAuthStore.getState().token
-  const sessionId = getSessionId()
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'X-Session-ID': sessionId,
-    ...(options.headers as Record<string, string>),
-  }
-
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`
-  }
-
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  })
-
-  const data: ApiResponse<T> = await response.json()
-
-  if (!response.ok || !data.success) {
-    throw new Error(data.error || 'Request failed')
-  }
-
-  return data.data as T
+function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  // These endpoints historically only sent the managed auth token.
+  return sharedApiRequest<T>(endpoint, options, { includeSiweAuth: false })
 }
 
 // =============================================================================

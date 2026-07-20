@@ -3,7 +3,6 @@ import { decodeFunctionData } from 'viem'
 import { JB_721_TIERS_HOOK_ABI } from '../constants/abis'
 import {
   encodeAdjustTiers,
-  encodeSetDiscountPercentOf,
   encodeSetDiscountPercentsOf,
   type JB721TierConfigInput,
 } from './tiersHook'
@@ -59,7 +58,7 @@ describe('encodeAdjustTiers', () => {
 
 describe('tier discount encoding', () => {
   it('uses the V6 batch function for one human-reviewed tier update', () => {
-    const calldata = encodeSetDiscountPercentOf({ tierId: 7, discountPercent: 40 })
+    const calldata = encodeSetDiscountPercentsOf({ configs: [{ tierId: 7, discountPercent: 40 }] })
     const decoded = decodeFunctionData({ abi: JB_721_TIERS_HOOK_ABI, data: calldata })
     expect(decoded.functionName).toBe('setDiscountPercentsOf')
     expect(decoded.args?.[0]).toEqual([{ tierId: 7, discountPercent: 40 }])
