@@ -21,11 +21,11 @@ export default function SharedChatPage() {
   }, [chatId, setActiveChat, navigate])
 
   return (
-    <div className={`h-screen flex flex-col ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
+    <div className={`relative h-[100dvh] safe-area-frame flex flex-col ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
       {/* Minimal back button */}
       <button
         onClick={() => navigate('/')}
-        className={`absolute top-4 left-4 z-10 p-2 rounded-full transition-colors ${
+        className={`absolute top-4 left-4 z-10 flex size-11 items-center justify-center rounded-full transition-colors ${
           theme === 'dark'
             ? 'text-gray-500 hover:text-white hover:bg-white/10'
             : 'text-gray-400 hover:text-gray-900 hover:bg-black/5'

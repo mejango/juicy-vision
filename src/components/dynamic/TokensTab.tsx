@@ -26,6 +26,7 @@ import { ExplainerMessage } from '../ui/ExplainerMessage'
 import { resolveProjectChains } from '../../utils/projectChains'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { ProjectSplitRoute } from './ProjectSplitRoute'
+import { Skeleton } from '../ui/Skeleton'
 
 interface TokensTabProps {
   projectId: string
@@ -433,7 +434,7 @@ export default function TokensTab({ projectId, chainId, isOwner, onDeployErc20 }
                   </span>
                   <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
                     {userBalanceLoading
-                      ? 'Loading…'
+                      ? <Skeleton className="inline-block h-4 w-20 align-middle" />
                       : userBalanceAvailable ? formatTokenAmount(userBalance) : 'Unavailable'}
                   </span>
                 </div>

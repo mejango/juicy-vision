@@ -1,4 +1,5 @@
 import { formatEthBalance } from '../../hooks'
+import { Skeleton } from '../ui/Skeleton'
 
 export function GasBalanceStatus({
   balance,
@@ -19,11 +20,9 @@ export function GasBalanceStatus({
   const insufficient = !managed && !loading && available && !hasGasBalance
   const value = managed
     ? 'Managed wallet'
-    : loading
-      ? 'Loading...'
-      : unavailable
-        ? 'Unavailable'
-        : `${formatEthBalance(balance)} ETH`
+    : unavailable
+      ? 'Unavailable'
+      : `${formatEthBalance(balance)} ETH`
 
   return (
     <>
@@ -31,9 +30,13 @@ export function GasBalanceStatus({
         isDark ? 'text-gray-400' : 'text-gray-500'
       }`}>
         <span>Your ETH balance (for gas)</span>
-        <span className={`font-mono ${unavailable || insufficient ? 'text-red-400' : ''}`}>
-          {value}
-        </span>
+        {loading && !managed ? (
+          <Skeleton className="h-4 w-24" role="status" aria-label="Loading gas balance" />
+        ) : (
+          <span className={`font-mono ${unavailable || insufficient ? 'text-red-400' : ''}`}>
+            {value}
+          </span>
+        )}
       </div>
 
       {(unavailable || insufficient) && (

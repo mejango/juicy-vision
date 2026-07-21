@@ -15,6 +15,7 @@ import { buildAutoIssueTx, getAmountToAutoIssue } from '@bananapus/nana-sdk-core
 import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
 import { ExplainerMessage } from '../../ui/ExplainerMessage'
+import { SkeletonTable } from '../../ui/Skeleton'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import { publicClientFor, type GuardedTxPhase } from '../../../services/projectTx'
 import type { Project } from '../../../services/bendystraw'
@@ -244,7 +245,10 @@ export function AutoIssuanceSubtab({ project, chainIds, chainProjects }: AutoIss
           Could not load auto issuance.
         </p>
       ) : !rows ? (
-        <p className={`text-sm ${mutedText}`}>Loading from Bendystraw…</p>
+        <div role="status" aria-label="Loading auto issuance">
+          <span className="sr-only">Loading auto issuance</span>
+          <SkeletonTable rows={5} columns={6} />
+        </div>
       ) : !rows.length ? (
         <p className={`text-sm ${bodyText}`}>No auto issuance configured for this revnet.</p>
       ) : (

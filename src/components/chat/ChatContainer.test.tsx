@@ -364,7 +364,7 @@ describe('ChatContainer', () => {
       expect(state.activeChatId).toBeNull()
     })
 
-    it('renders existing messages when chat is active', () => {
+    it('renders existing messages when chat is active', async () => {
       const mockChat = createMockChat({
         id: 'chat-1',
         name: 'Test Chat',
@@ -374,6 +374,10 @@ describe('ChatContainer', () => {
         ],
       })
 
+      vi.mocked(chatApi.fetchChat).mockResolvedValue(mockChat)
+      vi.mocked(chatApi.fetchMessages).mockResolvedValue(mockChat.messages ?? [])
+      vi.mocked(chatApi.fetchMembers).mockResolvedValue(mockChat.members ?? [])
+
       useChatStore.setState({
         chats: [mockChat],
         activeChatId: 'chat-1',
@@ -382,8 +386,8 @@ describe('ChatContainer', () => {
       renderWithProviders(<ChatContainer forceActiveChatId="chat-1" />)
 
       // Messages should be visible
-      expect(screen.getByText('Hello')).toBeInTheDocument()
-      expect(screen.getByText('Hi there!')).toBeInTheDocument()
+      expect(await screen.findByText('Hello')).toBeInTheDocument()
+      expect(await screen.findByText('Hi there!')).toBeInTheDocument()
     })
   })
 

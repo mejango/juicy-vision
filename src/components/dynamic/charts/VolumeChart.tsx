@@ -339,6 +339,7 @@ export default function VolumeChart({
             heightClass="h-[180px]"
             isDark={isDark}
             loading={loading}
+            skeletonVariant="bar"
             error={error}
             isEmpty={data.length === 0}
             emptyMessage="No payment data for this range"

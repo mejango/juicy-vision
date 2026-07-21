@@ -7,20 +7,21 @@ import DashboardPage from './pages/DashboardPage'
 import ChatsPage from './pages/ChatsPage'
 import QueuedPaymentsPage from './pages/QueuedPaymentsPage'
 import EscalationsPage from './pages/EscalationsPage'
+import { RouteSkeleton } from '../components/loading/LoadingSkeletons'
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes
+      gcTime: 1000 * 60 * 15,
       retry: 2,
+      refetchOnWindowFocus: false,
     },
   },
 })
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const { user, token, _hasHydrated } = useAuthStore()
-  const { theme } = useThemeStore()
-  const isDark = theme === 'dark'
   const [timedOut, setTimedOut] = useState(false)
 
   // Fallback timeout in case hydration gets stuck
@@ -31,13 +32,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   // Wait for auth store hydration (with timeout fallback)
   if (!_hasHydrated && !timedOut) {
-    return (
-      <div className={`min-h-screen flex items-center justify-center ${
-        isDark ? 'bg-zinc-950' : 'bg-gray-50'
-      }`}>
-        <div className="w-8 h-8 border-2 border-juice-orange border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
+    return <RouteSkeleton />
   }
 
   // Not authenticated - show login

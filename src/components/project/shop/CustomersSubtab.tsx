@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
 import { ExplainerMessage } from '../../ui/ExplainerMessage'
+import { SkeletonLines, SkeletonTable } from '../../ui/Skeleton'
 import Modal from '../../ui/Modal'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import { truncateAddress } from '../../../utils'
@@ -246,7 +247,7 @@ export function CustomersSubtab({ projectId, chainId, chains, isRevnet }: Custom
         {!activeAddress ? (
           <p className={`text-sm ${keyText}`}>Connect a wallet to see the items you own.</p>
         ) : youLoading && !you ? (
-          <p className={`text-sm ${keyText}`}>Loading your items…</p>
+          <SkeletonLines lines={4} className="mt-3" />
         ) : youError ? (
           <p className="text-sm text-red-400" role="alert">Could not load your items.</p>
         ) : you && !you.rows.length ? (
@@ -283,7 +284,10 @@ export function CustomersSubtab({ projectId, chainId, chains, isRevnet }: Custom
       <div className={cardClass}>
         <div className={cardTitleClass}>All</div>
         {allLoading && !all ? (
-          <p className={`text-sm ${keyText}`}>Loading customers…</p>
+          <div role="status" aria-label="Loading customers">
+            <span className="sr-only">Loading customers</span>
+            <SkeletonTable rows={5} columns={3} />
+          </div>
         ) : allError ? (
           <p className="text-sm text-red-400" role="alert">Could not load customers.</p>
         ) : all && !all.rows.length ? (

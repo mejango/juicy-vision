@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useThemeStore } from '../../stores'
 import { useAuthStore } from '../../stores/authStore'
 import EscalationViewer from '../components/EscalationViewer'
+import { TableLoadingSkeleton } from '../../components/loading/LoadingSkeletons'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
@@ -199,9 +200,7 @@ export default function EscalationsPage() {
         isDark ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-gray-200'
       }`}>
         {isLoading ? (
-          <div className="p-8 text-center">
-            <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Loading...</div>
-          </div>
+          <TableLoadingSkeleton rows={6} columns={5} label="Loading escalations" />
         ) : escalationsData?.escalations.length === 0 ? (
           <div className="p-8 text-center">
             <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>

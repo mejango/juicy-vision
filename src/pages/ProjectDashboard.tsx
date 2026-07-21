@@ -11,6 +11,8 @@ import { resolveEnsName, truncateAddress } from '../utils/ens'
 import { getWalletSession } from '../services/siwe'
 import { formatBalanceUsd, formatBalanceNative } from '../utils/currency'
 import { IpfsImage } from '../components/ui/IpfsMedia'
+import { Skeleton, SkeletonLines } from '../components/ui/Skeleton'
+import { ProjectDashboardSkeleton } from '../components/loading/LoadingSkeletons'
 
 // Chat components
 import { ChatInput } from '../components/chat'
@@ -156,6 +158,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>([])
   const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
   const [suckerGroupBalance, setSuckerGroupBalance] = useState<SuckerGroupBalance | null>(null)
+  const [suckerGroupBalanceLoading, setSuckerGroupBalanceLoading] = useState(true)
   const [revnetOperator, setRevnetOperator] = useState<string | null>(null)
   const [revnetOperatorError, setRevnetOperatorError] = useState<string | null>(null)
   const [displayAddressEns, setDisplayAddressEns] = useState<string | null>(null)
@@ -238,43 +241,56 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
       setConnectedChains([{ chainId, projectId }])
       setChainMappingAvailable(true)
       setSuckerGroupBalance(null)
+      setSuckerGroupBalanceLoading(true)
       setNftHookError(null)
+      setNftHookProbed(false)
+      setEthPrice(null)
       try {
-        const nftHookResult = hasNFTHook(String(projectId), chainId)
-          .then(value => ({ value, error: null }))
-          .catch(error => ({
-            value: false,
-            error: error instanceof Error ? error.message : 'Reward configuration unavailable',
-          }))
-        const [projectResult, chainsResult, balanceResult, nftResult, priceResult] = await Promise.allSettled([
-          fetchProject(String(projectId), chainId),
-          fetchConnectedChains(String(projectId), chainId),
-          fetchSuckerGroupBalance(String(projectId), chainId),
-          nftHookResult,
-          fetchEthPrice(),
-        ])
-        if (cancelled) return
-        if (projectResult.status === 'rejected') throw projectResult.reason
+        const projectRequest = fetchProject(String(projectId), chainId)
 
-        setProject(projectResult.value)
-        if (chainsResult.status === 'fulfilled') {
-          setConnectedChains(chainsResult.value.length > 0
-            ? chainsResult.value
-            : [{ chainId, projectId }])
-        } else {
-          setConnectedChains([{ chainId, projectId }])
-          setChainMappingAvailable(false)
-        }
-        setSuckerGroupBalance(balanceResult.status === 'fulfilled' ? balanceResult.value : null)
-        if (nftResult.status === 'fulfilled') {
-          setHasNftHook(nftResult.value.value)
-          setNftHookError(nftResult.value.error)
-        } else {
-          setHasNftHook(false)
-          setNftHookError('Reward configuration unavailable')
-        }
-        setNftHookProbed(true)
-        setEthPrice(priceResult.status === 'fulfilled' ? priceResult.value : null)
+        void fetchConnectedChains(String(projectId), chainId)
+          .then(chains => {
+            if (cancelled) return
+            setConnectedChains(chains.length > 0 ? chains : [{ chainId, projectId }])
+          })
+          .catch(() => {
+            if (cancelled) return
+            setConnectedChains([{ chainId, projectId }])
+            setChainMappingAvailable(false)
+          })
+
+        void fetchSuckerGroupBalance(String(projectId), chainId)
+          .then(balance => {
+            if (!cancelled) setSuckerGroupBalance(balance)
+          })
+          .catch(() => {
+            if (!cancelled) setSuckerGroupBalance(null)
+          })
+          .finally(() => {
+            if (!cancelled) setSuckerGroupBalanceLoading(false)
+          })
+
+        void hasNFTHook(String(projectId), chainId)
+          .then(value => {
+            if (cancelled) return
+            setHasNftHook(value)
+            setNftHookError(null)
+          })
+          .catch(error => {
+            if (cancelled) return
+            setHasNftHook(false)
+            setNftHookError(error instanceof Error ? error.message : 'Reward configuration unavailable')
+          })
+          .finally(() => {
+            if (!cancelled) setNftHookProbed(true)
+          })
+
+        void fetchEthPrice().then(price => {
+          if (!cancelled) setEthPrice(price)
+        })
+
+        const loadedProject = await projectRequest
+        if (!cancelled) setProject(loadedProject)
       } catch (error) {
         console.error('Failed to load project:', error)
         if (!cancelled) {
@@ -394,7 +410,13 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
           <TokenPriceChart projectId={String(projectId)} chainId={String(chainId)} />
         }
         summary={
-          <>
+          suckerGroupBalanceLoading ? (
+            <div className="border border-current/10 p-4" role="status" aria-label="Loading project summary">
+              <span className="sr-only">Loading project summary</span>
+              <Skeleton className="mb-4 h-5 w-32" />
+              <SkeletonLines lines={5} />
+            </div>
+          ) : <>
             <ProjectSummary
               projectName={project.name}
               balance={displayBalance}
@@ -556,7 +578,9 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 onClick={() => setShowBalanceTooltip(prev => !prev)}
               >
                 <span className={`font-semibold cursor-pointer ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {balanceAvailable
+                  {suckerGroupBalanceLoading
+                    ? <Skeleton className="inline-block h-4 w-32 align-middle" />
+                    : balanceAvailable
                     ? `${formatBalanceUsd(displayBalance, ethPrice, suckerGroupBalance?.currency, suckerGroupBalance?.decimals)} balance${balanceScope}`
                     : 'Balance unavailable'}
                 </span>
@@ -591,7 +615,11 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               </div>
               <span>
                 <span className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {paymentsAvailable ? displayPaymentsCount.toLocaleString() : 'Unavailable'}
+                  {suckerGroupBalanceLoading
+                    ? <Skeleton className="inline-block h-4 w-10 align-middle" />
+                    : paymentsAvailable
+                      ? displayPaymentsCount.toLocaleString()
+                      : 'Unavailable'}
                 </span>
                 {' '}payment{!paymentsAvailable || displayPaymentsCount !== 1 ? 's' : ''}
               </span>
@@ -735,14 +763,14 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
                 className="absolute inset-0 bg-black/80 backdrop-blur-sm"
                 onClick={() => setActiveModal(null)}
               />
-              <div className={`relative w-full ${mobile ? '' : `${maxWidth} `}max-h-[90vh] overflow-y-auto${title ? '' : ' p-4'} ${
+              <div className={`relative w-full ${mobile ? '' : `${maxWidth} `}max-h-[90dvh] overflow-y-auto${title ? '' : ' p-4'} ${
                 mobile
                   ? (isDark ? 'bg-juice-dark border-t border-white/10' : 'bg-white border-t border-gray-200')
                   : (isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200')
               }`}>
                 <button
                   onClick={() => setActiveModal(null)}
-                  className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
+                  className={`absolute top-4 right-4 z-10 flex size-11 items-center justify-center transition-colors ${
                     isDark ? 'text-gray-400 hover:text-white hover:bg-white/10' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
                   }`}
                   aria-label={textClose ? 'Close' : undefined}
@@ -776,13 +804,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   }
 
   if (projectLoading) {
-    return (
-      <div className={`min-h-screen flex items-center justify-center ${
-        isDark ? 'bg-juice-dark' : 'bg-white'
-      }`}>
-        <div className="w-8 h-8 border-2 border-juice-orange border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
+    return <ProjectDashboardSkeleton />
   }
 
   if (!project) {
@@ -802,7 +824,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
           )}
           <button
             onClick={handleBackClick}
-            className="px-6 py-2 bg-juice-orange text-juice-dark font-medium hover:bg-juice-orange/90 transition-colors"
+            className="min-h-11 px-6 py-2 bg-juice-orange text-juice-dark font-medium hover:bg-juice-orange/90 transition-colors"
           >
             {t('ui.goHome', 'Go home')}
           </button>
@@ -814,7 +836,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
   // Desktop layout with two-column structure
   if (!isMobile) {
     return (
-      <div className={`h-screen flex overflow-hidden ${isDark ? 'bg-juice-dark' : 'bg-white'}`}>
+      <div className={`h-[100dvh] safe-area-frame flex overflow-hidden ${isDark ? 'bg-juice-dark' : 'bg-white'}`}>
         {/* Left border */}
         <div className="w-[4px] bg-juice-orange shrink-0" />
 
@@ -840,7 +862,12 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
               <ProjectCard
                 projectId={String(projectId)}
                 chainId={String(chainId)}
+                initialProject={project}
+                initialConnectedChains={connectedChains}
+                initialChainMappingAvailable={chainMappingAvailable}
+                initialSuckerBalance={suckerGroupBalance}
                 embedded
+                isRevnet={projectIsRevnet}
               >
                 {/* Activity Feed - rendered inside ProjectCard's scrollable area */}
                 <ActivityFeed
@@ -882,7 +909,7 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
 
   // Mobile layout - stacked, no sidebar
   return (
-    <div className={`min-h-screen flex flex-col ${isDark ? 'bg-juice-dark' : 'bg-white'}`}>
+    <div className={`min-h-[100dvh] safe-area-frame flex flex-col ${isDark ? 'bg-juice-dark' : 'bg-white'}`}>
       {/* Header with back button */}
       <div className={`sticky top-0 z-40 backdrop-blur-sm border-b ${
         isDark ? 'bg-juice-dark/80 border-white/10' : 'bg-white/80 border-gray-200'
@@ -899,6 +926,10 @@ export default function ProjectDashboard({ chainId, projectId }: ProjectDashboar
           <ProjectCard
             projectId={String(projectId)}
             chainId={String(chainId)}
+            initialProject={project}
+            initialConnectedChains={connectedChains}
+            initialChainMappingAvailable={chainMappingAvailable}
+            initialSuckerBalance={suckerGroupBalance}
             embedded
             isRevnet={projectIsRevnet}
           />

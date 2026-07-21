@@ -33,6 +33,7 @@ import { fetchProjectBalanceBreakdown, type ProjectBalanceBreakdown } from '../.
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { IpfsImage } from '../ui/IpfsMedia'
 import { ExplainerMessage } from '../ui/ExplainerMessage'
+import { Skeleton } from '../ui/Skeleton'
 import { resolvePayPreviewOutcome, TERMINAL_PREVIEW_PAY_ABI } from '../../utils/terminalPreview'
 import { buildNftPayMetadata } from '../../utils/nftPayMetadata'
 import {
@@ -166,6 +167,10 @@ function TierPreviewImage({
 interface ProjectCardProps {
   projectId: string
   chainId?: string
+  initialProject?: Project
+  initialConnectedChains?: ConnectedChain[]
+  initialChainMappingAvailable?: boolean
+  initialSuckerBalance?: SuckerGroupBalance | null
   messageId?: string // For persisting payment state to server (visible to all chat users)
   embedded?: boolean // For sidebar display mode - removes outer container styling
   children?: React.ReactNode // For embedded mode - content to render inside scrollable area (e.g., Activity)
@@ -375,12 +380,23 @@ function PaymentProgress({
   )
 }
 
-export default function ProjectCard({ projectId, chainId: initialChainId = '1', messageId, embedded = false, children, isRevnet }: ProjectCardProps) {
+export default function ProjectCard({
+  projectId,
+  chainId: initialChainId = '1',
+  initialProject,
+  initialConnectedChains,
+  initialChainMappingAvailable = true,
+  initialSuckerBalance,
+  messageId,
+  embedded = false,
+  children,
+  isRevnet,
+}: ProjectCardProps) {
   // Persistent payment state (visible to all chat users)
   const { state: persistedPayment, updateState: updatePersistedPayment } = useProjectCardPaymentState(messageId)
 
-  const [project, setProject] = useState<Project | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [project, setProject] = useState<Project | null>(initialProject ?? null)
+  const [loading, setLoading] = useState(!initialProject)
   const [error, setError] = useState<string | null>(null)
   const [amount, setAmount] = useState('1')
   const [memo, setMemo] = useState('')
@@ -394,20 +410,30 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   const [showBuyJuiceModal, setShowBuyJuiceModal] = useState(false)
   const amountInputRef = useRef<HTMLInputElement>(null)
   // Connected chains with their project IDs (may differ per chain)
-  const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>([])
+  const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>(
+    initialConnectedChains ?? [],
+  )
   // On-chain, all-accounting-tokens balance priced through JBPrices. Supersedes the indexed single-token
   // sucker-group figure once it resolves; balanceRefreshTick re-runs it after a balance-changing tx.
   const [balanceBreakdown, setBalanceBreakdown] = useState<ProjectBalanceBreakdown | null>(null)
   const [balanceRefreshTick, setBalanceRefreshTick] = useState(0)
-  const [chainMappingAvailable, setChainMappingAvailable] = useState(true)
+  const [chainMappingAvailable, setChainMappingAvailable] = useState(
+    initialChainMappingAvailable,
+  )
   const [payPreview, setPayPreview] = useState<PayCardPreview>({ status: 'idle' })
   // Unix start of the first ruleset when it is still in the future ("Starts in" gate).
   const [payStartsAt, setPayStartsAt] = useState<number | null>(null)
   const [countdownNow, setCountdownNow] = useState(() => Math.floor(Date.now() / 1000))
   // Full metadata from IPFS (has complete description)
-  const [fullMetadata, setFullMetadata] = useState<IpfsProjectMetadata | null>(null)
+  const [fullMetadata, setFullMetadata] = useState<IpfsProjectMetadata | null>(
+    (initialProject?.metadata as IpfsProjectMetadata | undefined) ?? null,
+  )
   // Sucker group balance (total + per-chain breakdown)
-  const [suckerBalance, setSuckerBalance] = useState<SuckerGroupBalance | null>(null)
+  const [suckerBalance, setSuckerBalance] = useState<SuckerGroupBalance | null>(
+    initialSuckerBalance ?? null,
+  )
+  const initialSuckerBalanceRef = useRef(initialSuckerBalance)
+  const initialSuckerBalanceConsumedRef = useRef(false)
   // ETH price in USD
   const [ethPrice, setEthPrice] = useState<number | null>(null)
   const [ethPriceLoading, setEthPriceLoading] = useState(true)
@@ -518,6 +544,12 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
 
   // Fetch connected chains on mount
   useEffect(() => {
+    if (initialConnectedChains) {
+      setConnectedChains(initialConnectedChains)
+      setChainMappingAvailable(initialChainMappingAvailable)
+      return
+    }
+
     async function loadConnectedChains() {
       try {
         const resolution = await resolveProjectChains(projectId, parseInt(initialChainId))
@@ -528,7 +560,11 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       }
     }
     loadConnectedChains()
-  }, [projectId, initialChainId])
+  }, [projectId, initialChainId, initialConnectedChains, initialChainMappingAvailable])
+
+  useEffect(() => {
+    if (initialSuckerBalance) setSuckerBalance(initialSuckerBalance)
+  }, [initialSuckerBalance])
 
   // Restore only payments which are still pending review or failed. Confirmed
   // payments clear their inputs so an old cart cannot be submitted twice.
@@ -630,7 +666,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   }, [])
 
   // Fetch project data when chain changes.
-  const hasLoadedProjectRef = useRef(false)
+  const hasLoadedProjectRef = useRef(Boolean(initialProject))
   useEffect(() => {
     async function load() {
       try {
@@ -640,9 +676,23 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
         }
         const chainIdNum = parseInt(selectedChainId)
 
+        const useInitialProject =
+          !!initialProject &&
+          selectedChainId === initialChainId &&
+          currentProjectId === projectId
+        const useInitialBalance =
+          !initialSuckerBalanceConsumedRef.current &&
+          !!initialSuckerBalanceRef.current &&
+          selectedChainId === initialChainId &&
+          currentProjectId === projectId
+        if (useInitialBalance) initialSuckerBalanceConsumedRef.current = true
         const [data, groupBalance, owners, tokenSymbol] = await Promise.all([
-          fetchProject(currentProjectId, chainIdNum),
-          fetchSuckerGroupBalance(currentProjectId, chainIdNum),
+          useInitialProject
+            ? Promise.resolve(initialProject)
+            : fetchProject(currentProjectId, chainIdNum),
+          useInitialBalance
+            ? Promise.resolve(initialSuckerBalanceRef.current!)
+            : fetchSuckerGroupBalance(currentProjectId, chainIdNum),
           fetchOwnersCount(currentProjectId, chainIdNum),
           fetchProjectTokenSymbol(currentProjectId, chainIdNum),
         ])
@@ -661,7 +711,13 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
       }
     }
     load()
-  }, [currentProjectId, selectedChainId])
+  }, [
+    currentProjectId,
+    selectedChainId,
+    initialChainId,
+    initialProject,
+    projectId,
+  ])
 
   // Refresh only the treasury total after a confirmed balance-changing tx (pay / cash out / payout /
   // surplus allowance), so the header USD figure never lags the Funds panel until a reload. Balance-only
@@ -1896,55 +1952,56 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
   if (loading) {
     return (
       <div className="w-full">
-        <div className={`max-w-md border p-4 animate-pulse ${isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'}`}>
+        <div className={`max-w-md border p-4 ${isDark ? 'bg-juice-dark-lighter border-gray-600' : 'bg-white border-gray-300'}`} role="status" aria-label="Loading project payment panel">
+          <span className="sr-only">Loading project payment panel</span>
           {/* Header skeleton */}
           <div className="flex items-center gap-3 mb-2">
-            <div className={`w-14 h-14 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            <Skeleton className="w-14 h-14" />
             <div className="flex-1">
-              <div className={`h-5 w-32 mb-1 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
-              <div className={`h-3 w-20 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+              <Skeleton className="h-5 w-32 mb-1" />
+              <Skeleton className="h-3 w-20" />
             </div>
           </div>
 
           {/* Tagline skeleton */}
-          <div className={`h-4 w-3/4 mb-3 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+          <Skeleton className="h-4 w-3/4 mb-3" />
 
           {/* Stats row skeleton */}
           <div className="flex gap-6 mb-3">
-            <div className={`h-4 w-24 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
-            <div className={`h-4 w-16 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
-            <div className={`h-4 w-20 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-16" />
+            <Skeleton className="h-4 w-20" />
           </div>
 
           {/* Pay form area skeleton */}
           <div className={`p-3 mb-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
             {/* Chain selector */}
-            <div className={`h-4 w-28 mb-3 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            <Skeleton className="h-4 w-28 mb-3" />
 
             {/* Amount input row */}
             <div className="flex gap-2 mb-2">
-              <div className={`flex-1 h-10 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
-              <div className={`w-16 h-10 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+              <Skeleton className="flex-1 h-10" />
+              <Skeleton className="w-16 h-10" />
             </div>
 
             {/* Quick amount chips */}
             <div className="flex gap-2 mb-2">
               {[1, 2, 3, 4].map((i) => (
-                <div key={i} className={`h-6 w-12 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+                <Skeleton key={i} className="h-6 w-12" />
               ))}
             </div>
 
             {/* Token preview */}
-            <div className={`h-4 w-40 mb-4 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            <Skeleton className="h-4 w-40 mb-4" />
 
             {/* Memo input */}
-            <div className={`h-8 w-full ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            <Skeleton className="h-8 w-full" />
           </div>
 
           {/* Pay Juicy checkbox skeleton */}
           <div className="flex items-center gap-2 mt-2">
-            <div className={`w-3.5 h-3.5 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
-            <div className={`h-4 w-28 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
+            <Skeleton className="w-3.5 h-3.5" />
+            <Skeleton className="h-4 w-28" />
           </div>
         </div>
       </div>
@@ -2572,13 +2629,15 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             </div>
           </div>
 
-          {/* Activity section header */}
-          <div className={`px-4 pt-3 pb-2 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-            <span className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Activity</span>
-          </div>
-
-          {/* Children (Activity feed) */}
-          {children}
+          {/* Desktop embeds Activity here; mobile renders it as a project tab. */}
+          {children ? (
+            <>
+              <div className={`px-4 pt-3 pb-2 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+                <span className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Activity</span>
+              </div>
+              {children}
+            </>
+          ) : null}
         </div>
 
           {renderFundingPopover()}

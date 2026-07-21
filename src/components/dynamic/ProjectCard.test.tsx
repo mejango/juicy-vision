@@ -182,8 +182,9 @@ describe('ProjectCard', () => {
 
       render(<ProjectCard projectId="1" />)
 
-      const skeleton = document.querySelector('.animate-pulse')
-      expect(skeleton).toBeInTheDocument()
+      expect(
+        screen.getByRole('status', { name: 'Loading project payment panel' })
+      ).toBeInTheDocument()
     })
   })
 

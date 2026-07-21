@@ -27,6 +27,7 @@ import {
 import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
 import { ExplainerMessage } from '../../ui/ExplainerMessage'
+import { Skeleton } from '../../ui/Skeleton'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import { publicClientFor, type GuardedTxPhase } from '../../../services/projectTx'
 import type { Project } from '../../../services/bendystraw'
@@ -539,7 +540,7 @@ export function OpenLoanModal({ isOpen, onClose, project, chainIds, chainProject
                       </button>
                     </>
                   ) : activeAddress ? (
-                    'Loading your balance…'
+                    <Skeleton className="inline-block h-3 w-32 align-middle" role="status" aria-label="Loading token balance" />
                   ) : (
                     'Connect a wallet to see your balance.'
                   )}

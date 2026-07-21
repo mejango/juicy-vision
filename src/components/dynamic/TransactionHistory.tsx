@@ -3,6 +3,7 @@ import { CHAINS, MAINNET_CHAINS } from '../../constants'
 import { getSessionTransactions, getUserTransactions, type Transaction as PersistedTransaction } from '../../api/transactions'
 import { getSessionId } from '../../services/session'
 import { useAuthStore, useThemeStore, useTransactionStore } from '../../stores'
+import { SkeletonTable } from '../ui/Skeleton'
 
 function shortHash(hash: string): string {
   return `${hash.slice(0, 8)}…${hash.slice(-6)}`
@@ -81,7 +82,10 @@ export default function TransactionHistory() {
         </p>
       </div>
       {loading && rows.length === 0 ? (
-        <div className={`p-4 text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Loading history…</div>
+        <div className="p-4" role="status" aria-label="Loading transaction history">
+          <span className="sr-only">Loading transaction history</span>
+          <SkeletonTable rows={5} columns={3} />
+        </div>
       ) : rows.length === 0 ? (
         <div className={`p-4 text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
           No reviewed transactions yet.{error ? ` ${error}.` : ''}

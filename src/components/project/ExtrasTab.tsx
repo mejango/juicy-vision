@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isAddress, zeroAddress } from 'viem'
 import { useThemeStore } from '../../stores'
 import { ExplainerMessage } from '../ui/ExplainerMessage'
+import { SkeletonLines } from '../ui/Skeleton'
 import { CHAINS } from '../../constants'
 import { useGuardedTx } from '../../hooks/useGuardedTx'
 import { useOmnichainDeployProjectPayer } from '../../hooks/relayr'
@@ -563,7 +564,7 @@ export default function ExtrasTab({ projectId, chainId, tokenSymbol, connectedCh
         <div className="pt-2 space-y-2">
           <div className={label}>Deployed payer addresses</div>
           {payers === null && !payersError && (
-            <div className={subText}>Loading payer addresses from Bendystraw…</div>
+            <SkeletonLines lines={4} className="mt-3" />
           )}
           {payersError && (
             <div className={subText}>Could not load payer addresses from Bendystraw.</div>

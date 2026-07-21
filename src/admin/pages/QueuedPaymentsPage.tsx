@@ -6,6 +6,7 @@ import {
   useProcessSpend,
   type JuiceSpend,
 } from '../hooks'
+import { TableLoadingSkeleton } from '../../components/loading/LoadingSkeletons'
 
 const CHAIN_NAMES: Record<number, string> = {
   1: 'Ethereum',
@@ -255,9 +256,7 @@ export default function QueuedPaymentsPage() {
         isDark ? 'bg-zinc-900 border-zinc-700' : 'bg-white border-gray-200'
       }`}>
         {spendsLoading ? (
-          <div className="p-8 text-center">
-            <div className="w-8 h-8 border-2 border-juice-orange border-t-transparent rounded-full animate-spin mx-auto" />
-          </div>
+          <TableLoadingSkeleton rows={7} columns={6} label="Loading queued payments" />
         ) : spends.length === 0 ? (
           <div className={`p-8 text-center text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
             No {statusFilter} payments found

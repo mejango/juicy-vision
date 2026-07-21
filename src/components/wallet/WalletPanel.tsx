@@ -20,12 +20,27 @@ import { useStripeCheckout, PAY_CREDITS_RATE, PRESET_AMOUNTS } from '../juice/us
 import { AccountLinkingBanner } from './AccountLinkingBanner'
 import { useAllChainBalances } from './useAllChainBalances'
 import { walletDappUrl, mobileWalletLinks, isMobileDevice } from '../../utils/walletLinks'
+import { Skeleton } from '../ui/Skeleton'
 
 export interface AnchorPosition {
   top: number
   left: number
   width: number
   height: number
+}
+
+function WalletBalanceRowsSkeleton({ rows = 3 }: { rows?: number }) {
+  return (
+    <div className="divide-y divide-current/10" role="status" aria-label="Loading balances">
+      <span className="sr-only">Loading balances</span>
+      {Array.from({ length: rows }, (_, index) => (
+        <div key={index} className="flex items-center justify-between px-3 py-2" aria-hidden="true">
+          <Skeleton className="h-3 w-20" />
+          <Skeleton className="h-3 w-24" />
+        </div>
+      ))}
+    </div>
+  )
 }
 
 // Payment context when opened from a pay intent
@@ -874,23 +889,27 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsuff
           <div className="flex justify-between text-xs">
             <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Total</span>
             <div className="flex gap-4">
-              {totalUsdc > 0 && (
-                <span className={isDark ? 'text-white' : 'text-gray-900'}>
-                  {loading ? '...' : `${totalUsdc.toFixed(2)} USDC`}
-                </span>
+              {loading ? (
+                <Skeleton className="h-3 w-24" role="status" aria-label="Loading total balance" />
+              ) : (
+                <>
+                  {totalUsdc > 0 && (
+                    <span className={isDark ? 'text-white' : 'text-gray-900'}>
+                      {totalUsdc.toFixed(2)} USDC
+                    </span>
+                  )}
+                  <span className={isDark ? 'text-white' : 'text-gray-900'}>
+                    {totalEth.toFixed(4)} ETH
+                  </span>
+                </>
               )}
-              <span className={isDark ? 'text-white' : 'text-gray-900'}>
-                {loading ? '...' : `${totalEth.toFixed(4)} ETH`}
-              </span>
             </div>
           </div>
         </div>
 
         {/* Per-chain breakdown */}
         {loading ? (
-          <div className={`px-3 py-3 text-xs text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-            Loading balances...
-          </div>
+          <WalletBalanceRowsSkeleton />
         ) : (
           <div className="divide-y divide-white/5">
             {balances.map((b) => {
@@ -1112,23 +1131,27 @@ function PasskeyWalletView({ wallet, onTopUp, onDisconnect }: {
           <div className="flex justify-between text-xs">
             <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Total</span>
             <div className="flex gap-4">
-              {totalUsdc > 0 && (
-                <span className={isDark ? 'text-white' : 'text-gray-900'}>
-                  {loading ? '...' : `${totalUsdc.toFixed(2)} USDC`}
-                </span>
+              {loading ? (
+                <Skeleton className="h-3 w-24" role="status" aria-label="Loading total balance" />
+              ) : (
+                <>
+                  {totalUsdc > 0 && (
+                    <span className={isDark ? 'text-white' : 'text-gray-900'}>
+                      {totalUsdc.toFixed(2)} USDC
+                    </span>
+                  )}
+                  <span className={isDark ? 'text-white' : 'text-gray-900'}>
+                    {totalEth.toFixed(4)} ETH
+                  </span>
+                </>
               )}
-              <span className={isDark ? 'text-white' : 'text-gray-900'}>
-                {loading ? '...' : `${totalEth.toFixed(4)} ETH`}
-              </span>
             </div>
           </div>
         </div>
 
         {/* Per-chain breakdown */}
         {loading ? (
-          <div className={`px-3 py-3 text-xs text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-            Loading balances...
-          </div>
+          <WalletBalanceRowsSkeleton />
         ) : (
           <div className="divide-y divide-white/5">
             {balances.map((b) => {
@@ -1236,7 +1259,7 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSetJuicyId }: {
               Failed to load. Tap to retry.
             </button>
           ) : (
-            <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Loading...</span>
+            <Skeleton className="h-4 w-32" role="status" aria-label="Loading account address" />
           )}
           {copied && <span className={`ml-2 text-xs ${isDark ? 'text-green-400' : 'text-green-600'}`}>Copied!</span>}
         </div>
@@ -1251,9 +1274,7 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSetJuicyId }: {
       {/* Balances - Juice, USDC (aggregate), ETH (aggregate) */}
       <div className={`border ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
         {loading ? (
-          <div className={`px-3 py-3 text-xs text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-            Loading...
-          </div>
+          <WalletBalanceRowsSkeleton rows={4} />
         ) : walletError ? (
           <button
             onClick={refetchWallet}
@@ -1266,9 +1287,13 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSetJuicyId }: {
             {/* Pay Credits - fiat payment balance */}
             <div className="px-3 py-2 flex justify-between items-center text-xs">
               <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{t('wallet.payCredits', 'Pay Credits')}</span>
-              <span className={isDark ? 'text-white' : 'text-gray-900'}>
-                {juiceLoading ? '...' : (juiceBalance?.balance ?? 0).toLocaleString()}
-              </span>
+              {juiceLoading ? (
+                <Skeleton className="h-3 w-12" role="status" aria-label="Loading pay credits" />
+              ) : (
+                <span className={isDark ? 'text-white' : 'text-gray-900'}>
+                  {(juiceBalance?.balance ?? 0).toLocaleString()}
+                </span>
+              )}
             </div>
             {/* USDC - aggregate across all chains */}
             <div className="px-3 py-2 flex justify-between text-xs">

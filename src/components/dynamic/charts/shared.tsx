@@ -2,6 +2,7 @@
 import { useState, type ReactElement, type ReactNode } from 'react'
 import { TimeRange } from './utils'
 import ChainToggleBar from './ChainToggleBar'
+import { ChartSkeleton, type ChartSkeletonVariant } from '../../ui/Skeleton'
 
 // Row of range buttons shown in each chart header
 export function RangeSelector({
@@ -40,6 +41,7 @@ export function ChartState({
   heightClass,
   isDark,
   loading,
+  skeletonVariant = 'line',
   error,
   errorNode,
   isEmpty,
@@ -49,6 +51,7 @@ export function ChartState({
   heightClass: string
   isDark: boolean
   loading: boolean
+  skeletonVariant?: ChartSkeletonVariant
   error: string | null
   errorNode?: ReactElement
   isEmpty: boolean
@@ -57,11 +60,10 @@ export function ChartState({
 }) {
   if (loading) {
     return (
-      <div className={`${heightClass} flex items-center justify-center ${
-        isDark ? 'text-gray-500' : 'text-gray-400'
-      }`}>
-        Loading...
-      </div>
+      <ChartSkeleton
+        className={`${heightClass} ${isDark ? 'text-gray-500' : 'text-gray-400'}`}
+        variant={skeletonVariant}
+      />
     )
   }
   if (error) {

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useThemeStore, useChatStore } from '../../stores'
 import * as chatApi from '../../services/chat'
 import { formatTimeAgo } from './chatDisplay'
+import { ListLoadingSkeleton } from '../loading/LoadingSkeletons'
 
 interface ChatListProps {
   onCreateChat: () => void
@@ -92,15 +93,7 @@ export default function ChatList({ onCreateChat }: ChatListProps) {
       {/* Chat list */}
       <div className="flex-1 overflow-y-auto">
         {isLoading ? (
-          <div className="p-4 text-center">
-            <div
-              className={`text-sm ${
-                theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-              }`}
-            >
-              {t('ui.loading', 'Loading...')}
-            </div>
-          </div>
+          <ListLoadingSkeleton rows={6} label={t('chat.loading', 'Loading chats')} />
         ) : chats.length === 0 ? (
           <div className="p-4 text-center">
             <div

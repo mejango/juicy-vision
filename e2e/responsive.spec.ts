@@ -26,6 +26,97 @@ const VIEWPORTS = {
   desktop4k: { width: 3840, height: 2160, name: '4K (3840px)' },
 }
 
+const STRICT_APP_VIEWPORTS = [
+  { width: 320, height: 568 },
+  { width: 375, height: 667 },
+  { width: 600, height: 900 },
+  { width: 601, height: 900 },
+  { width: 768, height: 1024 },
+]
+
+test.describe('Responsive - Strict mobile and tablet contracts', () => {
+  for (const viewport of STRICT_APP_VIEWPORTS) {
+    test(`has exact viewport geometry at ${viewport.width}px`, async ({ page }) => {
+      await page.setViewportSize(viewport)
+      await page.goto('/')
+      await page.waitForLoadState('domcontentloaded')
+
+      const geometry = await page.evaluate(() => ({
+        viewportWidth: window.innerWidth,
+        htmlWidth: document.documentElement.scrollWidth,
+        bodyWidth: document.body.scrollWidth,
+        rootRight: document.getElementById('root')?.getBoundingClientRect().right ?? 0,
+      }))
+
+      expect(geometry.viewportWidth).toBe(viewport.width)
+      expect(geometry.htmlWidth).toBe(viewport.width)
+      expect(geometry.bodyWidth).toBe(viewport.width)
+      expect(geometry.rootRight).toBeLessThanOrEqual(viewport.width)
+    })
+  }
+
+  test('keeps primary phone controls at least 44px and browser zoom available', async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 667 })
+    await page.goto('/')
+    await page.waitForLoadState('domcontentloaded')
+
+    const viewportContent = await page.locator('meta[name="viewport"]').getAttribute('content')
+    expect(viewportContent).toContain('viewport-fit=cover')
+    expect(viewportContent).not.toContain('user-scalable=no')
+    expect(viewportContent).not.toContain('maximum-scale=1')
+
+    const controls = [
+      page.getByRole('button', { name: 'Shuffle' }),
+      page.getByTitle('Chat history'),
+      page.getByTitle('Attach file'),
+      page.getByTitle('Change language'),
+      page.getByTitle(/Switch to (light|dark) mode/),
+      page.getByTitle('Settings'),
+      page.getByRole('button', { name: 'create form' }),
+      page.getByRole('button', { name: 'Beta' }),
+      page.getByRole('button', { name: 'More options' }),
+      page.getByRole('button', { name: 'Sign in' }),
+      page.getByRole('button', { name: /Set your Juicy ID/ }),
+    ]
+
+    for (const control of controls) {
+      await expect(control.first()).toBeVisible()
+      const box = await control.first().boundingBox()
+      expect(box, 'visible control must have a layout box').not.toBeNull()
+      expect(box!.width).toBeGreaterThanOrEqual(44)
+      expect(box!.height).toBeGreaterThanOrEqual(44)
+    }
+  })
+
+  test('bounds prompt-canvas DOM while keeping horizontal coverage seamless', async ({ page }) => {
+    await page.setViewportSize({ width: 768, height: 1024 })
+    await page.goto('/')
+    await page.waitForLoadState('domcontentloaded')
+
+    const canvas = page.getByTestId('welcome-prompt-canvas')
+    await expect(canvas).toBeVisible()
+
+    const chipCount = await canvas.locator('[data-prompt-chip]').count()
+    const duplicateCount = await canvas.locator('[data-prompt-duplicate="true"]').count()
+    expect(chipCount).toBeGreaterThan(0)
+    expect(chipCount).toBeLessThanOrEqual(1800)
+    expect(duplicateCount).toBe(chipCount * 2 / 3)
+
+    const inertDuplicates = await canvas
+      .locator('[data-prompt-duplicate="true"]')
+      .evaluateAll(chips => chips.every(chip => chip.getAttribute('aria-hidden') === 'true' && chip.getAttribute('tabindex') === '-1'))
+    expect(inertDuplicates).toBe(true)
+
+    await canvas.hover({ position: { x: 200, y: 180 } })
+    await page.mouse.wheel(5000, 0)
+    await page.waitForTimeout(100)
+    const centerCovered = await page.evaluate(() =>
+      document.elementsFromPoint(100, 180).some(element => element.hasAttribute('data-prompt-chip')),
+    )
+    expect(centerCovered).toBe(true)
+  })
+})
+
 // ============================================================================
 // Core Layout Tests
 // ============================================================================

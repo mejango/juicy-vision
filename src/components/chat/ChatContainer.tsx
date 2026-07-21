@@ -7,26 +7,33 @@ import { useAuthStore } from '../../stores/authStore'
 import * as chatApi from '../../services/chat'
 import { useChatScroll, usePopoverPositioning } from './hooks'
 import { useJuicyIdentityDisplay } from './hooks/useJuicyIdentityDisplay'
-import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import WelcomeScreen from './WelcomeScreen'
 import WelcomeGreeting from './WelcomeGreeting'
-import ConversationHistory from './ConversationHistory'
-import ChatHistorySidebar from './ChatHistorySidebar'
 import { useIsMobile } from '../../hooks'
 import WalletInfo from './WalletInfo'
-import { SettingsPanel } from '../settings'
-import InviteModal from './InviteModal'
-import SaveModal from './SaveModal'
-import AuthOptionsModal from './AuthOptionsModal'
 // Migration no longer needed - all chats are on server
 import { useAccount } from 'wagmi'
 import { type PasskeyWallet, getPasskeyWallet } from '../../services/passkeyWallet'
-import WalletPanel from '../wallet/WalletPanel'
 import { getSessionId, getSessionPseudoAddress, getCurrentUserAddress } from '../../services/session'
 import { parseMessageContent } from '../../utils/messageParser'
+import {
+  CardGridLoadingSkeleton,
+  MessageLoadingSkeleton,
+  ModalLoadingSkeleton,
+  SidePanelLoadingSkeleton,
+  TabSkeleton,
+} from '../loading/LoadingSkeletons'
 
 const CreateFlowWizard = lazy(() => import('../dynamic/CreateFlowWizard'))
+const MessageList = lazy(() => import('./MessageList'))
+const ConversationHistory = lazy(() => import('./ConversationHistory'))
+const ChatHistorySidebar = lazy(() => import('./ChatHistorySidebar'))
+const SettingsPanel = lazy(() => import('../settings/SettingsPanel'))
+const InviteModal = lazy(() => import('./InviteModal'))
+const SaveModal = lazy(() => import('./SaveModal'))
+const AuthOptionsModal = lazy(() => import('./AuthOptionsModal'))
+const WalletPanel = lazy(() => import('../wallet/WalletPanel'))
 
 // getCurrentUserAddress is imported from session.ts - see that file for the
 // priority logic: SIWE wallet > Smart account (managed mode) > Pseudo-address
@@ -64,7 +71,7 @@ function DockControls({
         {/* History sidebar toggle */}
         <button
           onClick={onHistoryClick}
-          className={`p-1.5 transition-colors ${
+          className={`flex size-11 items-center justify-center transition-colors ${
             theme === 'dark'
               ? 'text-gray-400 hover:text-white'
               : 'text-gray-500 hover:text-gray-900'
@@ -78,7 +85,7 @@ function DockControls({
         {/* Attachments button */}
         <button
           onClick={() => window.dispatchEvent(new CustomEvent('juice:trigger-file-upload'))}
-          className={`p-1.5 transition-colors ${
+          className={`flex size-11 items-center justify-center transition-colors ${
             theme === 'dark'
               ? 'text-gray-400 hover:text-white'
               : 'text-gray-500 hover:text-gray-900'
@@ -96,7 +103,7 @@ function DockControls({
         {/* Theme toggle */}
         <button
           onClick={toggleTheme}
-          className={`p-1.5 transition-colors ${
+          className={`flex size-11 items-center justify-center transition-colors ${
             theme === 'dark'
               ? 'text-gray-400 hover:text-white'
               : 'text-gray-500 hover:text-gray-900'
@@ -117,7 +124,7 @@ function DockControls({
         <button
           ref={settingsButtonRef}
           onClick={onSettingsClick}
-          className={`p-1.5 transition-colors ${
+          className={`flex size-11 items-center justify-center transition-colors ${
             theme === 'dark'
               ? 'text-gray-400 hover:text-white'
               : 'text-gray-500 hover:text-gray-900'
@@ -1489,7 +1496,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                             }
                             setLangMenuOpen(!langMenuOpen)
                           }}
-                          className={`px-2 py-1 transition-colors text-xs ${
+                          className={`min-h-11 px-2 py-1 transition-colors text-xs ${
                             theme === 'dark'
                               ? 'text-gray-400 hover:text-white'
                               : 'text-gray-500 hover:text-gray-900'
@@ -1519,7 +1526,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                                     setLanguage(lang.code)
                                     setLangMenuOpen(false)
                                   }}
-                                  className={`w-full px-3 py-1.5 text-left text-xs flex items-center gap-2 whitespace-nowrap ${
+                                  className={`min-h-11 w-full px-3 py-1.5 text-left text-xs flex items-center gap-2 whitespace-nowrap ${
                                     language === lang.code
                                       ? theme === 'dark' ? 'bg-white/10' : 'bg-gray-100'
                                       : ''
@@ -1559,20 +1566,22 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                   />
 
                   {/* Subtext - tight below prompt, hidden when dock is pinned */}
-                  <div className={`flex items-center justify-between px-6 overflow-hidden transition-all duration-200 ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-10 opacity-100 -mt-2 mb-3'}`}>
+                  <div className={`flex min-h-11 items-center justify-between px-6 overflow-hidden transition-all duration-200 ${dockScrollEnabled ? 'max-h-0 opacity-0' : 'max-h-14 opacity-100 -mt-1 mb-2'}`}>
                     <div className={`text-xs ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
-                      {t('dock.askAbout', 'Let\'s make it real.')}{' '}
-                      {t('dock.orGoSolo', 'Or, go on your own with the')}{' '}
+                      <span className="hidden sm:inline">
+                        {t('dock.askAbout', 'Let\'s make it real.')}{' '}
+                        {t('dock.orGoSolo', 'Or, go on your own with the')}{' '}
+                      </span>
                       <button
                         onClick={() => setShowCreateFlow(true)}
-                        className={`transition-colors ${
+                        className={`inline-flex min-h-11 items-center transition-colors ${
                           theme === 'dark'
                             ? 'text-juice-orange/70 hover:text-juice-orange'
                             : 'text-juice-orange/80 hover:text-juice-orange'
                         }`}
                       >
                         {t('dock.createForm', 'create form')}
-                      </button>.
+                      </button><span className="hidden sm:inline">.</span>
                     </div>
                     <div className="flex items-center gap-2">
                       {/* Beta button */}
@@ -1592,7 +1601,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                           }
                           setShowBetaPopover(!showBetaPopover)
                         }}
-                        className="px-2 py-0.5 text-xs font-semibold bg-transparent border border-yellow-400 text-yellow-400 hover:border-yellow-300 hover:text-yellow-300 transition-colors"
+                        className="min-h-11 px-2 py-0.5 text-xs font-semibold bg-transparent border border-yellow-400 text-yellow-400 hover:border-yellow-300 hover:text-yellow-300 transition-colors"
                       >
                         Beta
                       </button>
@@ -1610,7 +1619,8 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                             }
                             setShowOptionsMenu(!showOptionsMenu)
                           }}
-                          className={`p-1 transition-colors ${
+                          aria-label="More options"
+                          className={`flex size-11 items-center justify-center transition-colors ${
                             theme === 'dark' ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
                           }`}
                         >
@@ -1656,7 +1666,9 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
 
                 {/* Conversation history - scrolling the dock reveals it */}
                 <div className="pt-6 pb-8">
-                  <ConversationHistory />
+                  <Suspense fallback={<CardGridLoadingSkeleton cards={6} label="Loading conversations" />}>
+                    <ConversationHistory />
+                  </Suspense>
                 </div>
               </div>
             )}
@@ -1684,8 +1696,8 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                       </button>
                     </div>
                     <Suspense fallback={
-                      <div className={`p-8 text-center text-sm ${theme === 'dark' ? 'text-gray-400 bg-juice-dark-lighter' : 'text-gray-500 bg-white'}`}>
-                        {t('common.loading', 'Loading...')}
+                      <div className={theme === 'dark' ? 'bg-juice-dark-lighter text-gray-300' : 'bg-white text-gray-700'}>
+                        <TabSkeleton />
                       </div>
                     }>
                       <CreateFlowWizard onClose={() => setShowCreateFlow(false)} />
@@ -1702,18 +1714,20 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             {/* Messages scroll under header (pt-[14.44vh]) and dock with padding at bottom */}
             {(topOnly || (!topOnly && !bottomOnly)) && (
               <div ref={messagesScrollRef} className="overflow-y-auto flex-1 relative pt-[14.44vh]">
-                <MessageList
-                  messages={messages}
-                  members={members}
-                  isWaitingForResponse={isWaitingForAi || pendingNewChat}
-                  chatId={activeChatId || undefined}
-                  currentUserMember={currentUserMember}
-                  onlineMembers={onlineMembers}
-                  onMemberUpdated={handleMemberUpdated}
-                  showNudgeButton={showContinueButton}
-                  onNudge={handleContinue}
-                  scrollContainerRef={messagesScrollRef}
-                />
+                <Suspense fallback={<MessageLoadingSkeleton rows={6} />}>
+                  <MessageList
+                    messages={messages}
+                    members={members}
+                    isWaitingForResponse={isWaitingForAi || pendingNewChat}
+                    chatId={activeChatId || undefined}
+                    currentUserMember={currentUserMember}
+                    onlineMembers={onlineMembers}
+                    onMemberUpdated={handleMemberUpdated}
+                    showNudgeButton={showContinueButton}
+                    onNudge={handleContinue}
+                    scrollContainerRef={messagesScrollRef}
+                  />
+                </Suspense>
                 {/* Bottom padding - larger when waiting for AI or streaming to create space for response */}
                 <div className={`transition-all duration-200 ease-out ${(isWaitingForAi || pendingNewChat || hasStreamingMessage) ? "h-[70vh]" : "h-[14.44vh]"}`} />
               </div>
@@ -1781,7 +1795,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                                 }
                                 setShowOverflowMenu(!showOverflowMenu)
                               }}
-                              className={`p-1.5 transition-colors ${
+                              className={`flex size-11 items-center justify-center transition-colors ${
                                 theme === 'dark' ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
                               }`}
                               title="More options"
@@ -1906,7 +1920,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                               }
                               setShowBetaPopover(!showBetaPopover)
                             }}
-                            className="px-2 py-0.5 text-xs font-semibold bg-transparent border border-yellow-400 text-yellow-400 hover:border-yellow-300 hover:text-yellow-300 transition-colors"
+                            className="min-h-11 px-2 py-0.5 text-xs font-semibold bg-transparent border border-yellow-400 text-yellow-400 hover:border-yellow-300 hover:text-yellow-300 transition-colors"
                           >
                             Beta
                           </button>
@@ -1924,64 +1938,82 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       {/* when topOnly and bottomOnly are both rendered in WelcomeLayout */}
       {!topOnly && (
         <>
-          <SettingsPanel isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} anchorPosition={settingsAnchorPosition} />
+          {settingsOpen && (
+            <Suspense fallback={<ModalLoadingSkeleton label="Loading settings" />}>
+              <SettingsPanel isOpen onClose={() => setSettingsOpen(false)} anchorPosition={settingsAnchorPosition} />
+            </Suspense>
+          )}
 
           {/* Invite Modal - for authenticated users with server-side chats */}
           {inviteChatId && (
-            <InviteModal
-              isOpen={showInviteModal}
-              onClose={() => {
-                setShowInviteModal(false)
-                setInviteChatId(null)
-              }}
-              chatId={inviteChatId}
-              canInvite={canInvite}
-              canGrantAdmin={currentUserMember?.role === 'founder' || currentUserMember?.role === 'admin'}
-              canGrantInvitePermission={canInvite}
-              canGrantAiPermission={currentUserMember?.role === 'founder' || currentUserMember?.role === 'admin' || currentUserMember?.canInvokeAi !== false}
-              canGrantPauseAiPermission={currentUserMember?.role === 'founder' || currentUserMember?.role === 'admin' || currentUserMember?.canPauseAi === true}
-              anchorPosition={inviteAnchorPosition}
-            />
+            <Suspense fallback={<ModalLoadingSkeleton label="Loading invite" />}>
+              <InviteModal
+                isOpen={showInviteModal}
+                onClose={() => {
+                  setShowInviteModal(false)
+                  setInviteChatId(null)
+                }}
+                chatId={inviteChatId}
+                canInvite={canInvite}
+                canGrantAdmin={currentUserMember?.role === 'founder' || currentUserMember?.role === 'admin'}
+                canGrantInvitePermission={canInvite}
+                canGrantAiPermission={currentUserMember?.role === 'founder' || currentUserMember?.role === 'admin' || currentUserMember?.canInvokeAi !== false}
+                canGrantPauseAiPermission={currentUserMember?.role === 'founder' || currentUserMember?.role === 'admin' || currentUserMember?.canPauseAi === true}
+                anchorPosition={inviteAnchorPosition}
+              />
+            </Suspense>
           )}
 
           {/* Local Share Modal removed - all chats are now server-synced */}
 
           {/* Save Modal - for wallet-connected users */}
-          <SaveModal
-            isOpen={showSaveModal}
-            onClose={() => setShowSaveModal(false)}
-            onWalletClick={() => {
-              setWalletPanelInitialView('self_custody')
-              setShowWalletPanel(true)
-            }}
-            onPasskeySuccess={handlePasskeySuccess}
-            anchorPosition={saveAnchorPosition}
-          />
+          {showSaveModal && (
+            <Suspense fallback={<ModalLoadingSkeleton label="Loading save options" />}>
+              <SaveModal
+                isOpen
+                onClose={() => setShowSaveModal(false)}
+                onWalletClick={() => {
+                  setWalletPanelInitialView('self_custody')
+                  setShowWalletPanel(true)
+                }}
+                onPasskeySuccess={handlePasskeySuccess}
+                anchorPosition={saveAnchorPosition}
+              />
+            </Suspense>
+          )}
 
           {/* Auth Options Modal - for users not connected with wallet */}
-          <AuthOptionsModal
-            isOpen={showAuthOptionsModal}
-            onClose={() => setShowAuthOptionsModal(false)}
-            onWalletClick={() => {
-              setWalletPanelInitialView('self_custody')
-              setShowWalletPanel(true)
-            }}
-            onPasskeySuccess={handlePasskeySuccess}
-            title={authModalContext === 'connect' ? t('auth.connectTitle', 'Connect') : undefined}
-            description={authModalContext === 'connect' ? t('auth.connectDescription', 'Choose how to connect your account.') : undefined}
-            anchorPosition={authModalAnchorPosition}
-          />
+          {showAuthOptionsModal && (
+            <Suspense fallback={<ModalLoadingSkeleton label="Loading account options" />}>
+              <AuthOptionsModal
+                isOpen
+                onClose={() => setShowAuthOptionsModal(false)}
+                onWalletClick={() => {
+                  setWalletPanelInitialView('self_custody')
+                  setShowWalletPanel(true)
+                }}
+                onPasskeySuccess={handlePasskeySuccess}
+                title={authModalContext === 'connect' ? t('auth.connectTitle', 'Connect') : undefined}
+                description={authModalContext === 'connect' ? t('auth.connectDescription', 'Choose how to connect your account.') : undefined}
+                anchorPosition={authModalAnchorPosition}
+              />
+            </Suspense>
+          )}
 
           {/* Wallet Panel - for external wallet connection */}
-          <WalletPanel
-            isOpen={showWalletPanel}
-            onClose={() => {
-              setShowWalletPanel(false)
-              setWalletPanelInitialView('select')
-            }}
-            anchorPosition={walletPanelAnchorPosition}
-            initialView={walletPanelInitialView}
-          />
+          {showWalletPanel && (
+            <Suspense fallback={<ModalLoadingSkeleton label="Loading wallet" />}>
+              <WalletPanel
+                isOpen
+                onClose={() => {
+                  setShowWalletPanel(false)
+                  setWalletPanelInitialView('select')
+                }}
+                anchorPosition={walletPanelAnchorPosition}
+                initialView={walletPanelInitialView}
+              />
+            </Suspense>
+          )}
         </>
       )}
 
@@ -2214,11 +2246,15 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
       )}
 
       {/* Chat History Sidebar - slide-out panel for recent chats */}
-      <ChatHistorySidebar
-        isOpen={showHistorySidebar}
-        onClose={() => setShowHistorySidebar(false)}
-        currentChatId={activeChatId || undefined}
-      />
+      {showHistorySidebar && (
+        <Suspense fallback={<SidePanelLoadingSkeleton label="Loading chat history" />}>
+          <ChatHistorySidebar
+            isOpen
+            onClose={() => setShowHistorySidebar(false)}
+            currentChatId={activeChatId || undefined}
+          />
+        </Suspense>
+      )}
     </div>
   )
 }

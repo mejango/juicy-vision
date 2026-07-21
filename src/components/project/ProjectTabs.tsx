@@ -18,6 +18,7 @@ import {
   type ProjectTabId,
 } from './flavor'
 import type { ConnectedChain, Project, SuckerGroupBalance } from '../../services/bendystraw'
+import { TabSkeleton } from '../loading/LoadingSkeletons'
 
 // Tab bodies are heavy (charts, log scans, pool math) — only pay for the open one.
 const OverviewTab = lazy(() => import('./OverviewTab'))
@@ -73,12 +74,7 @@ export interface ProjectTabsProps {
 }
 
 function TabFallback() {
-  const isDark = useThemeStore(s => s.theme === 'dark')
-  return (
-    <div className={`py-10 text-center text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-      Loading…
-    </div>
-  )
+  return <TabSkeleton />
 }
 
 export default function ProjectTabs(props: ProjectTabsProps) {
@@ -261,7 +257,7 @@ export default function ProjectTabs(props: ProjectTabsProps) {
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`pb-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
+              className={`flex min-h-11 items-center pb-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
                 activeTab === tab.id
                   ? 'border-juice-orange text-juice-orange'
                   : isDark

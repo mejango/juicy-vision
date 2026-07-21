@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom'
 import { useThemeStore, useAuthStore } from '../../stores'
 import Button from '../../components/ui/Button'
 import { getChainName } from '../../components/dynamic/charts/utils'
+import { DashboardPageSkeleton } from '../../components/loading/LoadingSkeletons'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
@@ -229,11 +230,7 @@ export default function TerminalsPage() {
 
   // Loading state
   if (loading && devices.length === 0) {
-    return (
-      <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-juice-dark' : 'bg-gray-50'}`}>
-        <div className="w-8 h-8 border-2 border-juice-cyan border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
+    return <DashboardPageSkeleton label="Loading payment terminals" />
   }
 
   return (

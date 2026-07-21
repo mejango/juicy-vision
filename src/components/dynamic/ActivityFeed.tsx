@@ -9,6 +9,7 @@ import {
   type CashOutEventHistoryItem,
 } from '../../services/bendystraw'
 import { MAINNET_CHAINS } from '../../constants'
+import { ActivityFeedSkeleton } from '../loading/LoadingSkeletons'
 
 interface ActivityFeedProps {
   projectId: string
@@ -336,9 +337,7 @@ export default function ActivityFeed({
     return (
       <div ref={containerRef} className={`divide-y ${isDark ? 'divide-white/5' : 'divide-gray-100'}`}>
         {loading ? (
-          <div className={`px-4 py-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-            Loading activity...
-          </div>
+          <ActivityFeedSkeleton rows={6} />
         ) : activityError && displayedEvents.length === 0 ? (
           <div className={`px-4 py-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
             Activity unavailable
@@ -354,9 +353,7 @@ export default function ActivityFeed({
             ))}
             {/* Infinite scroll indicator */}
             {loadingMore && (
-              <div className={`px-4 py-3 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                <span className="text-xs">Loading more...</span>
-              </div>
+              <ActivityFeedSkeleton rows={2} />
             )}
             {reachedEnd && (
               <div className={`px-4 py-4 text-center ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
@@ -389,9 +386,7 @@ export default function ActivityFeed({
         {/* Events list */}
         <div className={`divide-y ${isDark ? 'divide-white/5' : 'divide-gray-100'}`}>
           {loading ? (
-            <div className={`px-4 py-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-              Loading activity...
-            </div>
+            <ActivityFeedSkeleton rows={6} />
           ) : activityError && displayedEvents.length === 0 ? (
             <div className={`px-4 py-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
               Activity unavailable
@@ -407,9 +402,7 @@ export default function ActivityFeed({
               ))}
               {/* Infinite scroll indicator */}
               {loadingMore && (
-                <div className={`px-4 py-3 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  <span className="text-xs">Loading more...</span>
-                </div>
+                <ActivityFeedSkeleton rows={2} />
               )}
               {reachedEnd && (
                 <div className={`px-4 py-4 text-center ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>

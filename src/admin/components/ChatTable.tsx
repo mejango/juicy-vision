@@ -1,5 +1,6 @@
 import { useThemeStore } from '../../stores'
 import { useAdminChats, type AdminChat } from '../hooks/useAdminChats'
+import { TableLoadingSkeleton } from '../../components/loading/LoadingSkeletons'
 
 interface ChatTableProps {
   page: number
@@ -29,11 +30,7 @@ export default function ChatTable({ page, onPageChange, onSelectChat }: ChatTabl
   const { data, isLoading, error } = useAdminChats(page)
 
   if (isLoading) {
-    return (
-      <div className={`p-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-        Loading chats...
-      </div>
-    )
+    return <TableLoadingSkeleton rows={6} columns={5} label="Loading chats" />
   }
 
   if (error) {

@@ -15,6 +15,52 @@ import { deriveCycledWeight } from '../../utils/rulesetMath'
 // Mainnet chain IDs - used to detect when to route to mainnet API in staging
 const MAINNET_CHAIN_IDS = [1, 10, 8453, 42161] as const
 
+type RequestCacheEntry<T> = {
+  promise: Promise<T>
+  settled: boolean
+  expiresAt: number
+}
+
+function cachedRequest<T>(
+  cache: Map<string, RequestCacheEntry<T>>,
+  key: string,
+  ttlMs: number,
+  request: () => Promise<T>,
+): Promise<T> {
+  const existing = cache.get(key)
+  if (existing && (!existing.settled || existing.expiresAt > Date.now())) {
+    return existing.promise
+  }
+
+  const entry: RequestCacheEntry<T> = {
+    promise: Promise.resolve().then(request),
+    settled: false,
+    expiresAt: Number.POSITIVE_INFINITY,
+  }
+  cache.set(key, entry)
+  entry.promise.then(
+    () => {
+      entry.settled = true
+      entry.expiresAt = Date.now() + ttlMs
+      if (ttlMs === 0 && cache.get(key) === entry) cache.delete(key)
+    },
+    () => {
+      if (cache.get(key) === entry) cache.delete(key)
+    },
+  )
+  return entry.promise
+}
+
+const projectRequestCache = new Map<string, RequestCacheEntry<Project>>()
+const connectedChainsRequestCache = new Map<
+  string,
+  RequestCacheEntry<ConnectedChain[]>
+>()
+const suckerBalanceRequestCache = new Map<
+  string,
+  RequestCacheEntry<SuckerGroupBalance>
+>()
+
 /**
  * Get network option for API routing.
  * In staging (IS_TESTNET mode), mainnet chain IDs need to route to mainnet API.
@@ -634,7 +680,20 @@ export async function resolveProjectNameForDisplay(projectId: number, chainId: n
   }
 }
 
-export async function fetchProject(projectId: string, chainId: number = 1, version: number = 6): Promise<Project> {
+export function fetchProject(
+  projectId: string,
+  chainId: number = 1,
+  version: number = 6,
+): Promise<Project> {
+  return cachedRequest(
+    projectRequestCache,
+    `${chainId}:${projectId}:${version}`,
+    30_000,
+    () => fetchProjectUncached(projectId, chainId, version),
+  )
+}
+
+async function fetchProjectUncached(projectId: string, chainId: number, version: number): Promise<Project> {
   try {
     const data = await safeRequest<{ project: Project & { metadata: ProjectMetadata | string } }>(
       PROJECT_QUERY,
@@ -1628,10 +1687,23 @@ export interface ConnectedChain {
 
 // Get all chains a project exists on via suckerGroup
 // Returns an empty array only when the project is verified to have no sucker group.
-export async function fetchConnectedChains(
+export function fetchConnectedChains(
   projectId: string,
   chainId: number,
   version: number = 6
+): Promise<ConnectedChain[]> {
+  return cachedRequest(
+    connectedChainsRequestCache,
+    `${chainId}:${projectId}:${version}`,
+    5 * 60_000,
+    () => fetchConnectedChainsUncached(projectId, chainId, version),
+  )
+}
+
+async function fetchConnectedChainsUncached(
+  projectId: string,
+  chainId: number,
+  version: number,
 ): Promise<ConnectedChain[]> {
   try {
     const data = await safeRequest<{
@@ -1895,10 +1967,23 @@ function localFallbackBalance(
 
 // Get the total balance across all projects in a sucker group
 // Uses the suckerGroup entity's pre-aggregated balance (like revnet-app)
-export async function fetchSuckerGroupBalance(
+export function fetchSuckerGroupBalance(
   projectId: string,
   chainId: number,
   version: number = 6
+): Promise<SuckerGroupBalance> {
+  return cachedRequest(
+    suckerBalanceRequestCache,
+    `${chainId}:${projectId}:${version}`,
+    0,
+    () => fetchSuckerGroupBalanceUncached(projectId, chainId, version),
+  )
+}
+
+async function fetchSuckerGroupBalanceUncached(
+  projectId: string,
+  chainId: number,
+  version: number,
 ): Promise<SuckerGroupBalance> {
   const client = getClient(getNetworkOption(chainId))
   const numericProjectId = Number(projectId)
@@ -2140,12 +2225,22 @@ export async function fetchOwnersCount(
 
 // ETH price cache (20 minutes)
 const ethPriceCache = createCache<number>(20 * 60 * 1000)
+let ethPriceRequest: Promise<number | null> | null = null
 
 // Fetch current ETH price in USD
 export async function fetchEthPrice(): Promise<number | null> {
   const cached = ethPriceCache.get('ethusd')
   if (cached !== null) return cached
 
+  if (ethPriceRequest) return ethPriceRequest
+
+  ethPriceRequest = fetchEthPriceUncached().finally(() => {
+    ethPriceRequest = null
+  })
+  return ethPriceRequest
+}
+
+async function fetchEthPriceUncached(): Promise<number | null> {
   try {
     const response = await fetch('https://juicebox.money/api/juicebox/prices/ethusd')
     const data = await response.json()

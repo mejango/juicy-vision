@@ -18,6 +18,7 @@ import { jbControllerAbi } from '@bananapus/nana-sdk-core'
 import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
 import { ExplainerMessage } from '../../ui/ExplainerMessage'
+import { SkeletonLines } from '../../ui/Skeleton'
 import { ProjectSplitRoute } from '../../dynamic/ProjectSplitRoute'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import type { GuardedTxPhase } from '../../../services/projectTx'
@@ -446,7 +447,7 @@ export function SplitsSubtab({ project, chainIds, chainProjects, variant, onEdit
             <div className={`border-t pt-3 ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
               <div className={cardTitleClass}>Latest distributions</div>
               {!distributions ? (
-                <p className={`text-sm ${mutedText}`}>Loading from Bendystraw…</p>
+                <SkeletonLines lines={4} className="mt-3" />
               ) : !distributions.length ? (
                 <p className={`text-sm ${bodyText}`}>No reserved-token distributions indexed yet.</p>
               ) : (

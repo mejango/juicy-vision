@@ -26,6 +26,7 @@ import { resolveProjectChains } from '../../utils/projectChains'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import InlineChainSelector from './InlineChainSelector'
 import { ProjectSplitRoute } from './ProjectSplitRoute'
+import { SkeletonTable } from '../ui/Skeleton'
 
 // Build a per-chain block-explorer address URL. EXPLORER_URLS holds the tx-prefix
 // (e.g. "https://optimistic.etherscan.io/tx/"), so swap the path segment for /address/.
@@ -985,8 +986,9 @@ export default function RulesetSchedule({
         )}
 
         {loading ? (
-          <div className={`px-4 py-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-            Loading ruleset...
+          <div className="p-4" role="status" aria-label="Loading ruleset">
+            <span className="sr-only">Loading ruleset</span>
+            <SkeletonTable rows={6} columns={3} />
           </div>
         ) : error ? (
           <div className="px-4 py-8 text-center text-red-400">

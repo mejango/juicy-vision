@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useMemo, useCallback, memo } from 'react'
+import { useRef, useEffect, useLayoutEffect, useState, useMemo, useCallback, memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores'
 
@@ -2756,9 +2756,9 @@ const boldSuggestions = new Set([
 ])
 
 // Layout constants
-const CHIP_HEIGHT = 40
+const CHIP_HEIGHT = 44
 const ROW_COUNT = 80
-const CHIPS_PER_ROW = 40
+const CHIPS_PER_ROW = 16
 
 interface RowData {
   suggestions: string[]
@@ -2854,11 +2854,13 @@ const ChipButton = memo(function ChipButton({
   theme,
   onClick,
   t,
+  duplicate = false,
 }: {
   chip: ChipData
   theme: 'dark' | 'light'
   onClick: () => void
   t: (key: string, fallback: string) => string
+  duplicate?: boolean
 }) {
   const { displayText, isCategory, badgeType } = chip
   const isDark = theme === 'dark'
@@ -2901,6 +2903,10 @@ const ChipButton = memo(function ChipButton({
       onClick={onClick}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
+      aria-hidden={duplicate || undefined}
+      tabIndex={duplicate ? -1 : undefined}
+      data-prompt-chip
+      data-prompt-duplicate={duplicate || undefined}
       className={`px-3 py-2 border text-sm whitespace-nowrap select-none flex items-center gap-2 transition-[background-color,border-color,color] duration-100 ${className}`}
       style={{ height: CHIP_HEIGHT }}
     >
@@ -2911,6 +2917,91 @@ const ChipButton = memo(function ChipButton({
         </span>
       )}
     </button>
+  )
+})
+
+interface TiledChipRowProps {
+  row: RowData
+  top: number
+  offsetX: number
+  rowStagger: number
+  chipDataMap: Map<string, ChipData>
+  theme: 'dark' | 'light'
+  onChipClick: (suggestion: string) => void
+  t: (key: string, fallback: string) => string
+}
+
+/**
+ * Keep one accessible chip sequence and two inert edge copies. Measuring the
+ * sequence makes the horizontal wrap exact, so the canvas remains seamless
+ * without rendering thousands of far-offscreen buttons.
+ */
+const TiledChipRow = memo(function TiledChipRow({
+  row,
+  top,
+  offsetX,
+  rowStagger,
+  chipDataMap,
+  theme,
+  onChipClick,
+  t,
+}: TiledChipRowProps) {
+  const tileRef = useRef<HTMLDivElement>(null)
+  const [tileWidth, setTileWidth] = useState(0)
+
+  useLayoutEffect(() => {
+    const tile = tileRef.current
+    if (!tile) return
+
+    const updateWidth = () => {
+      // Intrinsic width stays stable when the parent canvas is pinch-zoomed.
+      const nextWidth = tile.scrollWidth
+      if (nextWidth > 0) setTileWidth(current => current === nextWidth ? current : nextWidth)
+    }
+
+    updateWidth()
+    const observer = new ResizeObserver(updateWidth)
+    observer.observe(tile)
+    return () => observer.disconnect()
+  }, [row.suggestions])
+
+  const wrappedOffset = tileWidth > 0
+    ? ((offsetX + rowStagger + tileWidth / 2) % tileWidth + tileWidth) % tileWidth - tileWidth / 2
+    : rowStagger
+
+  return (
+    <div
+      className="absolute left-1/2 flex"
+      style={{
+        top,
+        height: CHIP_HEIGHT,
+        transform: `translateX(calc(-50% + ${wrappedOffset}px))`,
+      }}
+    >
+      {[0, 1, 2].map(tileIndex => (
+        <div
+          key={tileIndex}
+          ref={tileIndex === 0 ? tileRef : undefined}
+          className="flex shrink-0"
+        >
+          {row.suggestions.map((suggestion, chipIndex) => {
+            const chipData = chipDataMap.get(suggestion)
+            if (!chipData) return null
+
+            return (
+              <ChipButton
+                key={`${tileIndex}_${chipIndex}`}
+                chip={chipData}
+                theme={theme}
+                onClick={() => onChipClick(chipData.displayText)}
+                t={t}
+                duplicate={tileIndex !== 1}
+              />
+            )
+          })}
+        </div>
+      ))}
+    </div>
   )
 })
 
@@ -2936,7 +3027,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
   // Direct DOM update for transform (bypasses React re-render)
   const updateTransform = useCallback(() => {
     if (transformRef.current) {
-      transformRef.current.style.transform = `translate(${offsetRef.current.x}px, ${offsetRef.current.y}px) scale(${scaleRef.current})`
+      transformRef.current.style.transform = `translateY(${offsetRef.current.y}px) scale(${scaleRef.current})`
     }
   }, [])
 
@@ -3218,7 +3309,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
         {scale !== 1 && (
           <button
             onClick={handleResetZoom}
-            className={`px-3 py-1.5 text-sm border transition-colors ${
+            className={`min-h-11 px-3 py-1.5 text-sm border transition-colors ${
               theme === 'dark'
                 ? 'border-white/40 text-white/80 hover:border-white/60 hover:text-white bg-juice-dark/70 backdrop-blur-sm'
                 : 'border-gray-400 text-gray-600 hover:border-gray-600 hover:text-gray-900 bg-white/70 backdrop-blur-sm'
@@ -3229,7 +3320,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
         )}
         <button
           onClick={handleShuffle}
-          className={`px-3 py-1.5 text-sm border transition-colors ${
+          className={`min-h-11 px-3 py-1.5 text-sm border transition-colors ${
             theme === 'dark'
               ? 'border-white/40 text-white/80 hover:border-white/60 hover:text-white bg-juice-dark/70 backdrop-blur-sm'
               : 'border-gray-400 text-gray-600 hover:border-gray-600 hover:text-gray-900 bg-white/70 backdrop-blur-sm'
@@ -3251,7 +3342,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
                 <button
                   key={traitId}
                   onClick={() => toggleTrait(traitId)}
-                  className={`px-3 py-2 text-sm border flex items-center gap-2 transition-colors ${
+                  className={`min-h-11 px-3 py-2 text-sm border flex items-center gap-2 transition-colors ${
                     theme === 'dark'
                       ? 'bg-juice-dark/70 backdrop-blur-sm border-juice-orange text-juice-orange hover:bg-juice-dark'
                       : 'bg-white/70 backdrop-blur-sm border-juice-orange text-orange-700 hover:bg-white'
@@ -3273,6 +3364,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
       {/* Full-width chips canvas (background layer) */}
       <div
         ref={containerRef}
+        data-testid="welcome-prompt-canvas"
         className="absolute inset-0 cursor-grab active:cursor-grabbing select-none overflow-hidden"
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
@@ -3282,7 +3374,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
           ref={transformRef}
           className="absolute inset-0"
           style={{
-            transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+            transform: `translateY(${offset.y}px) scale(${scale})`,
             transformOrigin: 'center center',
             willChange: 'transform', // GPU acceleration for smooth scrolling
           }}
@@ -3318,37 +3410,17 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
                 const rowStagger = (row.rowIndex * 0.618033988749 * 200) % 400 - 200
 
                 visibleRows.push(
-                  <div
+                  <TiledChipRow
                     key={`${ty}_${row.rowIndex}`}
-                    className="absolute flex"
-                    style={{
-                      top: screenY,
-                      height: CHIP_HEIGHT,
-                      // Start from far left, offset based on pan + row stagger
-                      left: -5000,
-                      transform: `translateX(${offset.x % 5000 + rowStagger}px)`,
-                    }}
-                  >
-                    {/* Render chips multiple times for horizontal tiling to fill space */}
-                    {[0, 1, 2, 3, 4].map(tileX => (
-                      <div key={tileX} className="flex">
-                        {row.suggestions.map((suggestion, chipIdx) => {
-                          const chipData = chipDataMap.get(suggestion)
-                          if (!chipData) return null
-
-                          return (
-                            <ChipButton
-                              key={`${tileX}_${chipIdx}`}
-                              chip={chipData}
-                              theme={theme}
-                              onClick={() => handleChipClick(chipData.displayText)}
-                              t={t}
-                            />
-                          )
-                        })}
-                      </div>
-                    ))}
-                  </div>
+                    row={row}
+                    top={screenY}
+                    offsetX={offset.x}
+                    rowStagger={rowStagger}
+                    chipDataMap={chipDataMap}
+                    theme={theme}
+                    onChipClick={handleChipClick}
+                    t={t}
+                  />
                 )
               }
             }

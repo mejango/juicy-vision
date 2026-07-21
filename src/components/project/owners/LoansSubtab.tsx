@@ -15,6 +15,7 @@ import { formatUnits } from 'viem'
 import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
 import { ExplainerMessage } from '../../ui/ExplainerMessage'
+import { SkeletonTable } from '../../ui/Skeleton'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import { formatTimeAgo } from '../../../utils/activityEvents'
 import type { Project } from '../../../services/bendystraw'
@@ -234,7 +235,10 @@ export function LoansSubtab({ project, chainIds, chainProjects }: LoansSubtabPro
         {loadError ? (
           <p className={`text-sm ${mutedText}`}>Could not load loans from Bendystraw.</p>
         ) : loans == null ? (
-          <p className={`text-sm ${mutedText}`}>Loading from Bendystraw…</p>
+          <div role="status" aria-label="Loading loans">
+            <span className="sr-only">Loading loans</span>
+            <SkeletonTable rows={5} columns={5} />
+          </div>
         ) : loans.length === 0 ? (
           <p className={`text-sm ${mutedText}`}>No active loans indexed.</p>
         ) : (

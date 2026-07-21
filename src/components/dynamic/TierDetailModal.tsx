@@ -6,6 +6,7 @@ import { getEffectiveTierPrice, type ResolvedNFTTier } from '../../services/nft'
 import { fetchMultiChainTierSupply, type MultiChainTierSupply } from '../../services/nft/multichain'
 import { isUsdcCurrency } from '../../utils/technicalDetails'
 import { IpfsMedia } from '../ui/IpfsMedia'
+import { Skeleton } from '../ui/Skeleton'
 
 interface TierDetailModalProps {
   isOpen: boolean
@@ -196,10 +197,9 @@ export default function TierDetailModal({
 
           {/* Inventory - prominent only when low/sold out */}
           {inventoryLoading ? (
-            /* Loading state for multi-chain inventory */
-            <div className={`mb-6 text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Inventory</span>{' '}
-              <span className={`font-mono ${isDark ? 'text-gray-600' : 'text-gray-300'}`}>loading...</span>
+            <div className="mb-6 flex items-center justify-between" role="status" aria-label="Loading inventory">
+              <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Inventory</span>
+              <Skeleton className="h-4 w-24" />
             </div>
           ) : (soldOut || isLowStock) ? (
             <div className={`mb-6 p-4 ${

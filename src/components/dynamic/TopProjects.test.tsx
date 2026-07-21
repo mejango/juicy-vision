@@ -85,7 +85,9 @@ describe('TopProjects', () => {
       )
 
       render(<TopProjects />)
-      expect(screen.getByText('Loading top projects...')).toBeInTheDocument()
+      expect(
+        screen.getByRole('status', { name: 'Loading top projects' })
+      ).toBeInTheDocument()
     })
   })
 

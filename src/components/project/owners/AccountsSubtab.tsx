@@ -9,6 +9,7 @@ import { formatUnits, type Address } from 'viem'
 import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
 import { ExplainerMessage } from '../../ui/ExplainerMessage'
+import { SkeletonTable } from '../../ui/Skeleton'
 import { HoldersChart } from '../../dynamic/charts'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import { truncateAddress } from '../../../utils/ens'
@@ -185,7 +186,14 @@ function HoldersTable({
   const rowBorder = `border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`
 
   if (error) return <p className={`text-sm ${muted}`}>Could not load owner distribution from Bendystraw.</p>
-  if (!data) return <p className={`text-sm ${muted}`}>Loading owners from Bendystraw…</p>
+  if (!data) {
+    return (
+      <div role="status" aria-label="Loading owners">
+        <span className="sr-only">Loading owners</span>
+        <SkeletonTable rows={6} columns={3} />
+      </div>
+    )
+  }
   if (!data.holders.length) {
     return (
       <p className={`text-sm ${muted}`}>

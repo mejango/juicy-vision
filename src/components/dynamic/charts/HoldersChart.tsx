@@ -216,6 +216,7 @@ export default function HoldersChart({
             heightClass="h-[300px]"
             isDark={isDark}
             loading={loading}
+            skeletonVariant="pie"
             error={error}
             errorNode={
               <div className="h-[300px] max-w-full overflow-hidden px-4 text-center text-sm text-red-400" role="alert">

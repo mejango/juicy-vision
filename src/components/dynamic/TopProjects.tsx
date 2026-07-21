@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { fetchProjects, type Project } from '../../services/bendystraw'
 import { useThemeStore } from '../../stores'
 import { IpfsImage } from '../ui/IpfsMedia'
+import { Skeleton } from '../ui/Skeleton'
 
 interface TopProjectsProps {
   limit?: number
@@ -144,16 +145,23 @@ export default function TopProjects({
     return (
       <div className={`rounded-lg border p-4 ${
         isDark ? 'bg-juice-dark-lighter border-white/10' : 'bg-white border-gray-200'
-      }`}>
-        <div className="flex items-center gap-3">
-          <div className="flex gap-1">
-            <span className="w-2 h-2 bg-juice-orange rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-            <span className="w-2 h-2 bg-juice-orange rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-            <span className="w-2 h-2 bg-juice-orange rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-          </div>
-          <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-            Loading top projects...
-          </span>
+      }`} role="status" aria-label="Loading top projects">
+        <span className="sr-only">Loading top projects</span>
+        <div className="border-b border-current/10 pb-3">
+          <Skeleton className="h-5 w-40" />
+        </div>
+        <div className="divide-y divide-current/10">
+          {Array.from({ length: Math.min(limit, 6) }, (_, index) => (
+            <div key={index} className="flex min-h-[64px] items-center gap-3 py-3">
+              <Skeleton className="h-3 w-4" />
+              <Skeleton className="h-10 w-10 shrink-0" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className={index % 2 ? 'h-3 w-28' : 'h-3 w-36'} />
+                <Skeleton className="h-2.5 w-20" />
+              </div>
+              <Skeleton className="h-3 w-16" />
+            </div>
+          ))}
         </div>
       </div>
     )

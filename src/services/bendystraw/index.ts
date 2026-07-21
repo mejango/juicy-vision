@@ -69,3 +69,10 @@ export {
   type ProjectSplitsData,
   type ProjectAccountingContext,
 } from './client'
+
+export {
+  fetchIndexedAmmPriceHistory,
+  priceFromSqrtPriceX96,
+  type IndexedAmmPriceHistory,
+  type IndexedAmmPricePoint,
+} from './ammPriceHistory'

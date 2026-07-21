@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useThemeStore } from '../../stores'
 import { useAuthStore } from '../../stores/authStore'
 import { useAdminChatDetail, type AdminChat, type ChatMessage, type ChatMember } from '../hooks/useAdminChats'
+import { MessageLoadingSkeleton } from '../../components/loading/LoadingSkeletons'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
@@ -258,9 +259,7 @@ export default function ChatViewer({ chat, onClose }: ChatViewerProps) {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-2">
           {isLoading ? (
-            <div className={`text-center py-8 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-              Loading messages...
-            </div>
+            <MessageLoadingSkeleton rows={6} />
           ) : error ? (
             <div className="text-center py-8 text-red-400">
               {error instanceof Error ? error.message : 'Failed to load messages'}

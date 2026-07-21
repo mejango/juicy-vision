@@ -24,6 +24,8 @@ import { fetchProjectsByOwner, type Project } from '../../services/bendystraw'
 import { useManagedWallet } from '../../hooks'
 import { CHAINS, MAINNET_CHAINS } from '../../constants'
 import { IpfsImage } from '../ui/IpfsMedia'
+import { Skeleton } from '../ui/Skeleton'
+import { CardGridLoadingSkeleton } from '../loading/LoadingSkeletons'
 import {
   getSupporterConversations,
   type ProjectConversation,
@@ -1060,7 +1062,9 @@ export default function ConversationHistory() {
                 theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
               }`}
             >
-              {isLoading ? 'Loading...' : ''}
+              {isLoading ? (
+                <Skeleton className="mx-auto h-3 w-24" role="status" aria-label="Loading more conversations" />
+              ) : null}
             </div>
           )}
         </>
@@ -1089,9 +1093,7 @@ export default function ConversationHistory() {
               <p className="text-sm">{t('wallet.connectToSeeProjects', 'Connect wallet to see your projects')}</p>
             </div>
           ) : projectsLoading ? (
-            <div className={`p-8 text-center ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
-              <p className="text-sm">{t('ui.loading', 'Loading...')}</p>
-            </div>
+            <CardGridLoadingSkeleton cards={6} label={t('projects.loading', 'Loading projects')} />
           ) : ownedProjects.length === 0 ? (
             <div className={`p-8 text-center ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
               <p className="text-sm">{t('projects.noOwned', "You don't own any projects yet")}</p>
@@ -1173,9 +1175,7 @@ export default function ConversationHistory() {
               <p className="text-sm">{t('wallet.connectToSeePayments', 'Connect wallet to see your payments')}</p>
             </div>
           ) : paymentsLoading ? (
-            <div className={`p-8 text-center ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
-              <p className="text-sm">{t('ui.loading', 'Loading...')}</p>
-            </div>
+            <CardGridLoadingSkeleton cards={6} label={t('payments.loading', 'Loading payment conversations')} />
           ) : supporterConversations.length === 0 ? (
             <div className={`p-8 text-center ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
               <p className="text-sm">{t('payments.noPayments', "You haven't supported any projects yet")}</p>

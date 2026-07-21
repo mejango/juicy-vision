@@ -11,6 +11,7 @@ import {
 } from 'recharts'
 import { useThemeStore } from '../../stores'
 import { useDauData, type DauDataPoint } from '../hooks/useDauData'
+import { ChartSkeleton } from '../../components/ui/Skeleton'
 import {
   TimeRange,
   CHART_COLORS,
@@ -149,11 +150,7 @@ export default function DauChart({ includeAnonymous = false, onToggleAnonymous }
         {/* Chart */}
         <div className="px-2 py-3">
           {isLoading ? (
-            <div className={`h-[200px] flex items-center justify-center ${
-              isDark ? 'text-gray-500' : 'text-gray-400'
-            }`}>
-              Loading...
-            </div>
+            <ChartSkeleton className="h-[200px]" />
           ) : error ? (
             <div className="h-[200px] flex items-center justify-center text-red-400">
               {error instanceof Error ? error.message : 'Failed to load data'}

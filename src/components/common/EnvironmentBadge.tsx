@@ -43,7 +43,10 @@ export function EnvironmentBadge() {
   if (!IS_TESTNET) return null
 
   return (
-    <div className="fixed top-0 left-1/2 -translate-x-1/2 z-50 px-3 py-1 bg-yellow-500 text-yellow-950 text-xs font-bold rounded-b-md shadow-lg flex items-center gap-2">
+    <div
+      className="fixed left-1/2 -translate-x-1/2 z-50 px-3 py-1 bg-yellow-500 text-yellow-950 text-xs font-bold rounded-b-md shadow-lg flex items-center gap-2"
+      style={{ top: 'env(safe-area-inset-top)' }}
+    >
       <span>TESTNET</span>
       <span className="opacity-60 font-mono text-[10px]">{BUILD_HASH}</span>
       {relativeTime && <span className="opacity-60 text-[10px]">{relativeTime}</span>}

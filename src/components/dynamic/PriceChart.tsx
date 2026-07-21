@@ -22,6 +22,7 @@ import {
 } from '../../services/bendystraw'
 import { resolveAccountingToken } from '../../utils/currency'
 import { deriveCycledWeight, issuancePriceFromWeight } from '../../utils/rulesetMath'
+import { ChartSkeleton } from '../ui/Skeleton'
 
 type RangeValue = '3m' | '6m' | '1y' | '2y' | '5y' | '10y' | 'all'
 
@@ -398,11 +399,7 @@ export default function PriceChart({
         {/* Chart */}
         <div className="px-2 py-3">
           {loading ? (
-            <div className={`h-[200px] flex items-center justify-center ${
-              isDark ? 'text-gray-500' : 'text-gray-400'
-            }`}>
-              Loading...
-            </div>
+            <ChartSkeleton className={`h-[200px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`} />
           ) : error ? (
             <div className="h-[200px] max-w-full overflow-hidden px-4 text-center text-sm text-red-400">
               {error}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { fetchMultiChainTierSupply, type MultiChainTierSupply } from '../../services/nft/multichain'
+import { Skeleton } from './Skeleton'
 
 interface SupplyBadgeProps {
   tierId: number
@@ -158,9 +159,13 @@ export default function SupplyBadge({
         </div>
 
         {loading ? (
-          <div className="flex items-center gap-2 py-2">
-            <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-            <span>Loading...</span>
+          <div className="space-y-2 py-2" role="status" aria-label="Loading supply by network">
+            {Array.from({ length: 3 }, (_, index) => (
+              <div key={index} className="flex items-center justify-between gap-4" aria-hidden="true">
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className="h-3 w-10" />
+              </div>
+            ))}
           </div>
         ) : supplyData ? (
           <div className="space-y-1.5">
@@ -220,10 +225,7 @@ export default function SupplyBadge({
         title={isMultiChain ? 'Click to see supply by network' : undefined}
       >
         {loading && isMultiChain ? (
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 border border-current border-t-transparent rounded-full animate-spin" />
-            <span>left</span>
-          </span>
+          <Skeleton className="inline-block h-3 w-10 bg-white/30" role="status" aria-label="Loading remaining supply" />
         ) : soldOut ? (
           'Sold Out'
         ) : (

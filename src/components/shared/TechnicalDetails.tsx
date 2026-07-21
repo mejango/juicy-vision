@@ -98,7 +98,11 @@ function AddressDisplay({ address, chainId, isDark }: { address: string; chainId
         )}
         {/* Loading indicator */}
         {loading && !label && (
-          <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>...</span>
+          <span
+            className="skeleton-shimmer inline-block h-3 w-16 align-middle"
+            role="status"
+            aria-label="Loading contract label"
+          />
         )}
         {/* Known label (contract name or token) */}
         {label && (

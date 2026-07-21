@@ -17,6 +17,7 @@ import { getAccountingContexts } from '@bananapus/nana-sdk-core/v6'
 import { useThemeStore } from '../../../stores'
 import { CHAINS, JB_CONTRACTS, RPC_ENDPOINTS, ALL_VIEM_CHAINS } from '../../../constants'
 import { ExplainerMessage } from '../../ui/ExplainerMessage'
+import { SkeletonLines } from '../../ui/Skeleton'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import { type GuardedTxPhase } from '../../../services/projectTx'
 import { getPaymentTerminal } from '../../../utils/paymentTerminal'
@@ -444,7 +445,7 @@ export function RedeemItemsModal({ isOpen, onClose, chains, defaultChainId, onRe
             {!activeAddress ? (
               <p className={`text-sm ${keyText}`}>Connect a wallet to redeem your items.</p>
             ) : owned == null ? (
-              <p className={`text-sm ${keyText}`}>Loading your items…</p>
+              <SkeletonLines lines={5} className="mt-3" />
             ) : loadError && !owned.length ? (
               <p className={`text-sm ${keyText}`}>{loadError}</p>
             ) : !owned.length ? (

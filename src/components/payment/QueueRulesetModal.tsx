@@ -28,6 +28,7 @@ import { txErrorMessage } from '../../utils/txErrors'
 import CopyTxButton from './CopyTxButton'
 import ChainStatusRow from './ChainStatusRow'
 import { buildTxLinkEntries } from '../../utils/txlink'
+import { Skeleton } from '../ui/Skeleton'
 
 interface ChainRulesetData {
   chainId: number
@@ -669,9 +670,13 @@ export default function QueueRulesetModal({
               />
 
               {controllersLoading && (
-                <div className={`p-3 text-sm flex items-center gap-2 ${isDark ? 'bg-purple-500/10 text-purple-300' : 'bg-purple-50 text-purple-600'}`}>
-                  <div className="animate-spin w-4 h-4 border-2 border-purple-500 border-t-transparent rounded-full" />
-                  Loading controller addresses...
+                <div
+                  className={`space-y-2 p-3 ${isDark ? 'bg-purple-500/10' : 'bg-purple-50'}`}
+                  role="status"
+                  aria-label="Loading controller addresses"
+                >
+                  <Skeleton className="h-3 w-44" />
+                  <Skeleton className="h-3 w-64 max-w-full" />
                 </div>
               )}
 

@@ -11,6 +11,7 @@ import { useAnchoredPopoverStyle } from '../ui/useAnchoredPopoverStyle'
 import { getPasskeyWallet, forgetPasskeyWallet, type PasskeyWallet } from '../../services/passkeyWallet'
 import { useAuthStore } from '../../stores'
 import { storage } from '../../services/storage'
+import { Skeleton } from '../ui/Skeleton'
 
 export interface JuicyIdentity {
   emoji: string
@@ -773,7 +774,7 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
                 setJuicyIdAnchorPosition({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
                 setJuicyIdPopoverOpen(true)
               }}
-              className={`ml-1 transition-colors ${
+              className={`ml-1 inline-flex min-h-11 items-center transition-colors ${
                 theme === 'dark'
                   ? 'text-juice-orange/70 hover:text-juice-orange'
                   : 'text-juice-orange/80 hover:text-juice-orange'
@@ -785,14 +786,14 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
           {/* Balances */}
           <button
             onClick={openWalletPanel}
-            className={`transition-colors ${
+            className={`inline-flex min-h-11 items-center transition-colors ${
               theme === 'dark'
                 ? 'text-gray-500 hover:text-gray-300'
                 : 'text-gray-400 hover:text-gray-600'
             }`}
           >
             {balancesLoading ? (
-              <span className="ml-2 opacity-50 hidden sm:inline">Loading...</span>
+              <Skeleton className="ml-2 hidden h-3 w-28 opacity-50 sm:block" role="status" aria-label="Loading wallet balances" />
             ) : !balancesAvailable ? (
               <span className="ml-2 opacity-50 hidden sm:inline">Balance unavailable</span>
             ) : (
@@ -810,7 +811,7 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
         <>
           <button
             onClick={openWalletPanel}
-            className={`flex items-center transition-colors ${
+            className={`flex min-h-11 items-center transition-colors ${
               theme === 'dark'
                 ? 'text-gray-500 hover:text-gray-300'
                 : 'text-gray-400 hover:text-gray-600'
@@ -827,7 +828,7 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
                 setJuicyIdAnchorPosition({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
                 setJuicyIdPopoverOpen(true)
               }}
-              className={`ml-1 transition-colors ${
+              className={`ml-1 inline-flex min-h-11 items-center transition-colors ${
                 theme === 'dark'
                   ? 'text-juice-orange/70 hover:text-juice-orange'
                   : 'text-juice-orange/80 hover:text-juice-orange'

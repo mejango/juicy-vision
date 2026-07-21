@@ -16,6 +16,7 @@ import {
 } from '../../api/projectConversations'
 import { formatTimeAgo, getChatDisplayTitle } from './chatDisplay'
 import { truncateAddress } from '../../utils/ens'
+import { ListLoadingSkeleton } from '../loading/LoadingSkeletons'
 
 type SidebarTab = 'chats' | 'projects' | 'payments'
 
@@ -415,11 +416,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
           {activeTab === 'chats' && (
             <>
               {isLoading && chats.length === 0 ? (
-                <div className="p-4 text-center">
-                  <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
-                    {t('ui.loading', 'Loading...')}
-                  </div>
-                </div>
+                <ListLoadingSkeleton rows={6} label={t('chat.loading', 'Loading chats')} />
               ) : sortedChats.length === 0 ? (
                 <div className="p-4 text-center">
                   <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -496,11 +493,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
           {activeTab === 'projects' && (
             <>
               {isWalletAccessLoading ? (
-                <div className="p-4 text-center">
-                  <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
-                    {t('ui.loading', 'Loading...')}
-                  </div>
-                </div>
+                <ListLoadingSkeleton rows={4} label={t('wallet.loadingAccess', 'Loading wallet access')} />
               ) : !hasWalletAccess ? (
                 <div className="p-4 text-center">
                   <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -514,11 +507,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
                   </button>
                 </div>
               ) : projectsLoading ? (
-                <div className="p-4 text-center">
-                  <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
-                    {t('ui.loading', 'Loading...')}
-                  </div>
-                </div>
+                <ListLoadingSkeleton rows={4} label={t('projects.loading', 'Loading projects')} />
               ) : ownedProjects.length === 0 ? (
                 <div className="p-4 text-center">
                   <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -624,11 +613,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
                             theme === 'dark' ? 'border-white/10' : 'border-gray-200'
                           }`}>
                             {isLoadingSupporters ? (
-                              <div className={`px-4 py-2 text-xs ${
-                                theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-                              }`}>
-                                {t('ui.loading', 'Loading...')}
-                              </div>
+                              <ListLoadingSkeleton rows={2} label={t('chat.loadingSupporters', 'Loading supporter conversations')} />
                             ) : supporters.length === 0 ? (
                               <div className={`px-4 py-2 text-xs ${
                                 theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
@@ -686,11 +671,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
           {activeTab === 'payments' && (
             <>
               {isWalletAccessLoading ? (
-                <div className="p-4 text-center">
-                  <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
-                    {t('ui.loading', 'Loading...')}
-                  </div>
-                </div>
+                <ListLoadingSkeleton rows={4} label={t('wallet.loadingAccess', 'Loading wallet access')} />
               ) : !hasWalletAccess ? (
                 <div className="p-4 text-center">
                   <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -704,11 +685,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
                   </button>
                 </div>
               ) : paymentsLoading ? (
-                <div className="p-4 text-center">
-                  <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>
-                    {t('ui.loading', 'Loading...')}
-                  </div>
-                </div>
+                <ListLoadingSkeleton rows={4} label={t('payments.loading', 'Loading payment conversations')} />
               ) : supporterConversations.length === 0 ? (
                 <div className="p-4 text-center">
                   <div className={`text-sm ${theme === 'dark' ? 'text-gray-500' : 'text-gray-400'}`}>

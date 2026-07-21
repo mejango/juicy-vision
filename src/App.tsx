@@ -9,6 +9,7 @@ const ProjectDashboard = lazy(() => import('./pages/ProjectDashboard'))
 const JoinChatPage = lazy(() => import('./components/JoinChatPage'))
 const PaymentPage = lazy(() => import('./pages/pay/PaymentPage'))
 const TerminalsPage = lazy(() => import('./pages/merchant/TerminalsPage'))
+const SettingsPanel = lazy(() => import('./components/settings/SettingsPanel'))
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
 import { useTranslation } from 'react-i18next'
@@ -17,7 +18,6 @@ import { EnvironmentBadge } from './components/common/EnvironmentBadge'
 import { QueryErrorPanel } from './components/debug/QueryErrorPanel'
 import { ChatContainer, ProtocolActivity, TrendingProjects, MascotPanel } from './components/chat'
 import ParticipantAvatars from './components/chat/ParticipantAvatars'
-import { SettingsPanel } from './components/settings'
 import ErrorBoundary from './components/ui/ErrorBoundary'
 import { useChatStore, useThemeStore, type ChatMember } from './stores'
 import { useTransactionExecutor, useManagedWallet, useIsMobile, useSafeApp } from './hooks'
@@ -26,22 +26,21 @@ import { getWalletSession } from './services/siwe'
 import { useEnsNameResolved } from './hooks'
 import { PaymentReviewModal } from './components/payment'
 import NetworkModeSelect from './components/common/NetworkModeSelect'
+import { ModalLoadingSkeleton, RouteSkeleton } from './components/loading/LoadingSkeletons'
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes
+      gcTime: 1000 * 60 * 15,
       retry: 2,
+      refetchOnWindowFocus: false,
     },
   },
 })
 
 function RouteFallback() {
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-950">
-      <div className="w-8 h-8 border-2 border-juice-orange border-t-transparent rounded-full animate-spin" />
-    </div>
-  )
+  return <RouteSkeleton />
 }
 
 function Header({ showActions = false }: { showActions?: boolean }) {
@@ -192,10 +191,12 @@ function Header({ showActions = false }: { showActions?: boolean }) {
     }))
   }
 
-  // 14.44vh normal, 38% of that (~5.49vh) when compact
-  const headerHeight = isCompact ? 'h-[5.49vh]' : 'h-[14.44vh]'
-  const logoSize = isCompact ? 'h-[36px]' : 'h-[96px]'
-  const logoPosition = isCompact ? 'top-[6px] left-[12px]' : 'top-[16px] left-[28px]'
+  // Preserve the roomy desktop header without letting short phone viewports clip the logo.
+  const headerHeight = isCompact
+    ? 'h-[clamp(52px,5.49dvh,64px)]'
+    : 'h-[clamp(80px,14.44dvh,148px)] sm:h-[clamp(96px,14.44dvh,148px)]'
+  const logoSize = isCompact ? 'h-9' : 'h-16 sm:h-24'
+  const logoPosition = isCompact ? 'top-1 left-3' : 'top-3 left-4 sm:top-4 sm:left-7'
 
   return (
     <>
@@ -211,7 +212,7 @@ function Header({ showActions = false }: { showActions?: boolean }) {
             navigate('/')
           }}
           onPointerDown={(e) => e.stopPropagation()}
-          className={`absolute ${logoPosition} hover:opacity-80 transition-all duration-150 ease-out touch-manipulation cursor-pointer z-50`}
+          className={`absolute ${logoPosition} min-h-11 min-w-11 hover:opacity-80 transition-all duration-150 ease-out touch-manipulation cursor-pointer z-50`}
         >
           <img
             src={theme === 'dark' ? '/head-dark.png' : '/head-light.png'}
@@ -243,7 +244,7 @@ function Header({ showActions = false }: { showActions?: boolean }) {
               {/* Invite to chat */}
               <button
                 onClick={handleInvite}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors ${
+                className={`flex min-h-11 items-center gap-1.5 px-3 py-1.5 text-xs transition-colors ${
                   canInvite
                     ? theme === 'dark'
                       ? 'text-gray-400 hover:text-white'
@@ -261,7 +262,7 @@ function Header({ showActions = false }: { showActions?: boolean }) {
               {/* Export */}
               <button
                 onClick={handleExport}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors ${
+                className={`flex min-h-11 items-center gap-1.5 px-3 py-1.5 text-xs transition-colors ${
                   theme === 'dark'
                     ? 'text-gray-400 hover:text-white'
                     : 'text-gray-500 hover:text-gray-900'
@@ -275,7 +276,7 @@ function Header({ showActions = false }: { showActions?: boolean }) {
               {/* Save - no right padding so text aligns with message content */}
               <button
                 onClick={handleSave}
-                className="flex items-center gap-1.5 pl-3 pr-0 py-1.5 text-xs font-medium transition-colors text-green-500 hover:text-green-400"
+                className="flex min-h-11 items-center gap-1.5 pl-3 pr-0 py-1.5 text-xs font-medium transition-colors text-green-500 hover:text-green-400"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
@@ -289,7 +290,7 @@ function Header({ showActions = false }: { showActions?: boolean }) {
         {/* Mobile menu button */}
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
-          className={`lg:hidden absolute top-4 right-4 p-2 ${
+          className={`lg:hidden absolute top-4 right-4 flex size-11 items-center justify-center ${
             theme === 'dark'
               ? 'text-gray-400 hover:text-white hover:bg-white/10'
               : 'text-gray-500 hover:text-gray-900 hover:bg-gray-200'
@@ -314,7 +315,7 @@ function Header({ showActions = false }: { showActions?: boolean }) {
               <h2 className={`font-semibold ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>Chats</h2>
               <button
                 onClick={() => setSidebarOpen(false)}
-                className={`p-2 ${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
+                className={`flex size-11 items-center justify-center ${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -332,7 +333,7 @@ function Header({ showActions = false }: { showActions?: boolean }) {
               New Chat
             </button>
 
-            <div className="space-y-1 overflow-y-auto max-h-[calc(100vh-150px)]">
+            <div className="space-y-1 overflow-y-auto max-h-[calc(100dvh-150px)]">
               {chats.map((chat) => (
                 <div
                   key={chat.id}
@@ -359,7 +360,11 @@ function Header({ showActions = false }: { showActions?: boolean }) {
         </div>
       )}
 
-      <SettingsPanel isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      {settingsOpen && (
+        <Suspense fallback={<ModalLoadingSkeleton label="Loading settings" />}>
+          <SettingsPanel isOpen onClose={() => setSettingsOpen(false)} />
+        </Suspense>
+      )}
     </>
   )
 }
@@ -429,7 +434,7 @@ function ChatNotFound() {
         </p>
         <button
           onClick={() => navigate('/')}
-          className="px-6 py-2 bg-juice-orange text-juice-dark font-medium hover:bg-juice-orange/90 transition-colors"
+          className="min-h-11 px-6 py-2 bg-juice-orange text-juice-dark font-medium hover:bg-juice-orange/90 transition-colors"
         >
           {t('chat.goHome', 'Start a new chat')}
         </button>
@@ -461,7 +466,7 @@ function ProjectRouteHandler() {
           </p>
           <button
             onClick={() => navigate('/')}
-            className="px-6 py-2 bg-juice-orange text-juice-dark font-medium hover:bg-juice-orange/90 transition-colors"
+            className="min-h-11 px-6 py-2 bg-juice-orange text-juice-dark font-medium hover:bg-juice-orange/90 transition-colors"
           >
             Go home
           </button>
@@ -506,11 +511,7 @@ function ChatRouteHandler() {
   const isReady = ready && activeChatId === chatId
 
   if (!isReady) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-juice-dark">
-        <div className="w-8 h-8 border-2 border-juice-orange border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
+    return <RouteSkeleton />
   }
 
   // Render the main app content - pass chatId directly to ensure it's used
@@ -548,8 +549,8 @@ function ActivitySidebar({ onProjectClick }: { onProjectClick: (query: string) =
       <div className={`px-3 py-2 border-b flex items-center justify-between ${
         theme === 'dark' ? 'border-white/10' : 'border-gray-200'
       }`}>
-        <div className="flex items-baseline gap-2.5 min-w-0">
-          <h2 className={`text-sm font-semibold whitespace-nowrap ${
+        <div className="flex min-w-0 flex-1 items-baseline gap-2.5 overflow-hidden">
+          <h2 title={t('ui.liveActivity', 'Live juicy activity')} className={`min-w-0 truncate text-sm font-semibold ${
             theme === 'dark' ? 'text-white' : 'text-gray-900'
           }`}>
             {t('ui.liveActivity', 'Live juicy activity')}
@@ -558,7 +559,7 @@ function ActivitySidebar({ onProjectClick }: { onProjectClick: (query: string) =
         </div>
         <button
           onClick={handleAddNote}
-          className={`p-1 rounded transition-colors ${
+          className={`shrink-0 p-1 rounded transition-colors ${
             theme === 'dark'
               ? 'text-gray-400 hover:text-juice-cyan'
               : 'text-gray-500 hover:text-teal-600'
@@ -783,7 +784,7 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   // Mobile layout: chat-first, activity toggleable
   if (isMobile) {
     return (
-      <div className={`h-screen overflow-hidden flex flex-col ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
+      <div className={`h-[100dvh] safe-area-frame overflow-hidden flex flex-col ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
         <TransactionExecutor />
         {/* Mobile header - only show when in chat mode */}
         {inChatMode && (
@@ -801,7 +802,7 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
                 </span>
                 <button
                   onClick={() => setShowMobileActivity(false)}
-                  className={`p-2 rounded-lg ${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
+                  className={`flex size-11 items-center justify-center rounded-lg ${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -822,7 +823,7 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   // Desktop layout: golden ratio with sidebar
   // Border structure: left + bottom on outer, top borders scroll with content for "hole" effect
   return (
-    <div className={`h-screen overflow-hidden flex ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
+    <div className={`h-[100dvh] safe-area-frame overflow-hidden flex ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
       {/* Transaction executor - listens for pay events */}
       <TransactionExecutor />
 

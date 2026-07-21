@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useThemeStore } from '../../stores'
 import { useAuthStore } from '../../stores/authStore'
+import { Skeleton, SkeletonLines } from '../../components/ui/Skeleton'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
@@ -154,8 +155,16 @@ export default function EscalationViewer({ escalation, onClose, onResolved }: Es
         </div>
 
         {isLoading ? (
-          <div className="p-6 text-center">
-            <div className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Loading...</div>
+          <div className="space-y-6 p-6" role="status" aria-label="Loading escalation details">
+            <span className="sr-only">Loading escalation details</span>
+            <div className="space-y-2" aria-hidden="true">
+              <Skeleton className="h-3 w-36" />
+              <Skeleton className="h-16 w-full" />
+            </div>
+            <div className="space-y-2" aria-hidden="true">
+              <Skeleton className="h-3 w-28" />
+              <SkeletonLines lines={4} />
+            </div>
           </div>
         ) : (
           <div className="p-6 space-y-6">

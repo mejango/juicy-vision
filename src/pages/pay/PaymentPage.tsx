@@ -13,6 +13,7 @@ import { NATIVE_TOKEN, type JBChainId } from '@bananapus/nana-sdk-core'
 import { buildPayTx } from '@bananapus/nana-sdk-core/v6'
 import { useThemeStore, useAuthStore } from '../../stores'
 import Button from '../../components/ui/Button'
+import { PaymentPageSkeleton } from '../../components/loading/LoadingSkeletons'
 import { getChainName } from '../../components/dynamic/charts/utils'
 import { RPC_ENDPOINTS, USDC_ADDRESSES, VIEM_CHAINS, type SupportedChainId } from '../../constants'
 import { getPaymentTerminal } from '../../utils/paymentTerminal'
@@ -640,14 +641,7 @@ export default function PaymentPage() {
 
   // Render loading state
   if (step === 'loading') {
-    return (
-      <div className={`min-h-screen flex items-center justify-center ${isDark ? 'bg-juice-dark' : 'bg-gray-50'}`}>
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-juice-cyan border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>Loading payment...</p>
-        </div>
-      </div>
-    )
+    return <PaymentPageSkeleton />
   }
 
   // Render error state

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useThemeStore } from '../../stores'
 import { ExplainerMessage } from '../ui/ExplainerMessage'
+import { SkeletonTable } from '../ui/Skeleton'
 import { resolveBaseCurrency } from '../../utils/currency'
 import { resolveProjectChains } from '../../utils/projectChains'
 import type { ConnectedChain } from '../../services/bendystraw'
@@ -270,8 +271,9 @@ export default function RulesetsTab({ projectId, chainId, isRevnet = false, onQu
     return (
       <div className="w-full space-y-3">
         {explainer}
-        <div className={`${cardClass} px-4 py-8 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-          Loading rulesets...
+        <div className={`${cardClass} p-4`} role="status" aria-label="Loading rulesets">
+          <span className="sr-only">Loading rulesets</span>
+          <SkeletonTable rows={6} columns={3} />
         </div>
       </div>
     )

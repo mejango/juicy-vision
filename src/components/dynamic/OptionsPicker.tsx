@@ -1267,7 +1267,7 @@ export default function OptionsPicker({ groups, submitLabel = 'Continue', allSel
                   ) : stillStreaming ? (
                     <span className="flex items-center gap-1.5">
                       <Spinner className="w-4 h-4 animate-spin" />
-                      Loading...
+                      Preparing choices…
                     </span>
                   ) : buttonLabel}
                 </button>

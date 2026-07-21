@@ -75,7 +75,9 @@ describe('HoldersChart', () => {
       )
 
       render(<HoldersChart projectId="1" />)
-      expect(screen.getByText('Loading...')).toBeInTheDocument()
+      expect(
+        screen.getByRole('status', { name: 'Loading chart' })
+      ).toBeInTheDocument()
     })
   })
 

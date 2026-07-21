@@ -77,7 +77,9 @@ describe('ActivityFeed', () => {
       )
 
       render(<ActivityFeed projectId="1" />)
-      expect(screen.getByText('Loading activity...')).toBeInTheDocument()
+      expect(
+        screen.getByRole('status', { name: 'Loading activity' })
+      ).toBeInTheDocument()
     })
   })
 

@@ -30,6 +30,7 @@ import { CHAINS, MAINNET_CHAINS } from '../../constants'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { ProjectSplitRoute } from './ProjectSplitRoute'
 import { resolveSplitEnsNames } from './resolveSplitEnsNames'
+import { Skeleton, SkeletonLines } from '../ui/Skeleton'
 
 interface FundsSectionProps {
   projectId: string
@@ -622,15 +623,12 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
 
   if (loading) {
     return (
-      <div className={`p-4 border animate-pulse ${
+      <div className={`p-4 border ${
         isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'
-      }`}>
-        <div className={`h-5 w-24 mb-4 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
-        <div className="space-y-3">
-          <div className={`h-4 w-32 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
-          <div className={`h-4 w-40 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
-          <div className={`h-4 w-28 ${isDark ? 'bg-white/10' : 'bg-gray-200'}`} />
-        </div>
+      }`} role="status" aria-label="Loading funds">
+        <span className="sr-only">Loading funds</span>
+        <Skeleton className="h-5 w-24 mb-4" />
+        <SkeletonLines lines={5} />
       </div>
     )
   }
@@ -799,7 +797,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                 <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                   Your balance: <span className={`font-mono ${userTokenBalance > 0n ? (isDark ? 'text-white' : 'text-gray-900') : ''}`}>
                     {userTokenBalanceLoading
-                      ? 'Loading…'
+                      ? <Skeleton className="inline-block h-3 w-16 align-middle" />
                       : userTokenBalanceAvailable ? formatBalance(userTokenBalance.toString(), 18) : 'Unavailable'}
                   </span> {userTokenBalanceAvailable && !userTokenBalanceLoading ? tokenSymbol || 'tokens' : ''}
                 </span>

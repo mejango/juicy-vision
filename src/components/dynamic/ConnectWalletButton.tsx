@@ -2,6 +2,7 @@ import { useAccount } from 'wagmi'
 import { formatEther } from 'viem'
 import { Button } from '../ui'
 import { useWalletBalances, useManagedWallet } from '../../hooks'
+import { Skeleton } from '../ui/Skeleton'
 
 interface ConnectWalletButtonProps {
   onConnect?: () => void
@@ -62,7 +63,10 @@ export default function ConnectWalletButton({ onConnect }: ConnectWalletButtonPr
     }
 
     if (balancesLoading) {
-      return { text: 'Loading...', icon: walletIcon }
+      return {
+        text: <Skeleton className="h-4 w-24" role="status" aria-label="Loading account balance" />,
+        icon: walletIcon,
+      }
     }
 
     if (!balancesAvailable) {

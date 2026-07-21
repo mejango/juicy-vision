@@ -268,7 +268,7 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }:
                   {loading ? (
                     <span className="flex items-center gap-2">
                       <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                      {t('wallet.loading', 'Loading...')}
+                      {t('wallet.startingCheckout', 'Starting checkout…')}
                     </span>
                   ) : (
                     t('wallet.buy', 'Buy')

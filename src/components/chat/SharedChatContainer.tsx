@@ -4,6 +4,8 @@ import { useThemeStore, useChatStore, type ChatMember, type ChatMessage } from '
 import * as chatApi from '../../services/chat'
 import { getPseudoAddress, getSessionId } from '../../services/session'
 import { getEmojiFromAddress } from './ParticipantAvatars'
+import { MessageLoadingSkeleton } from '../loading/LoadingSkeletons'
+import { Skeleton } from '../ui/Skeleton'
 
 interface TypingUser {
   address: string
@@ -279,14 +281,18 @@ export default function SharedChatContainer() {
   if (!chat) {
     return (
       <div
-        className={`flex-1 flex items-center justify-center ${
+        className={`flex flex-1 flex-col ${
           theme === 'dark' ? 'bg-juice-dark text-gray-400' : 'bg-gray-50 text-gray-500'
         }`}
       >
-        <div className="text-center">
-          <div className="w-8 h-8 border-2 border-juice-orange border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p>{t('chat.loading', 'Loading chat...')}</p>
+        <div className="flex items-center gap-3 border-b border-current/10 p-4" aria-hidden="true">
+          <Skeleton className="h-10 w-10 rounded-full" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-24" />
+          </div>
         </div>
+        <MessageLoadingSkeleton rows={6} className="flex-1" />
       </div>
     )
   }
@@ -364,15 +370,7 @@ export default function SharedChatContainer() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {isLoadingMessages ? (
-          <div className="flex justify-center py-8">
-            <div
-              className={`text-sm ${
-                theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
-              }`}
-            >
-              {t('ui.loading', 'Loading...')}
-            </div>
-          </div>
+          <MessageLoadingSkeleton rows={6} />
         ) : messages.length === 0 ? (
           <div className="flex justify-center py-8">
             <div

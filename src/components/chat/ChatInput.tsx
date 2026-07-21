@@ -428,7 +428,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
         <div className="flex justify-end gap-2 mb-2">
           <button
             onClick={onThemeClick || toggleTheme}
-            className={`p-1.5 transition-colors ${
+            className={`flex size-11 items-center justify-center transition-colors ${
               theme === 'dark'
                 ? 'text-gray-500 hover:text-gray-300'
                 : 'text-gray-400 hover:text-gray-600'
@@ -441,7 +441,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
           </button>
           <button
             onClick={onSettingsClick}
-            className={`p-1.5 transition-colors ${
+            className={`flex size-11 items-center justify-center transition-colors ${
               theme === 'dark'
                 ? 'text-gray-500 hover:text-gray-300'
                 : 'text-gray-400 hover:text-gray-600'

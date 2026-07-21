@@ -19,6 +19,7 @@ vi.mock('../../../services/bendystraw', () => ({
   fetchCashOutTaxSnapshots: vi.fn(),
   calculateFloorPrice: vi.fn(),
   fetchAllRulesets: vi.fn(),
+  fetchIndexedAmmPriceHistory: vi.fn(),
   isRevnetProject: vi.fn(),
 }))
 
@@ -88,6 +89,10 @@ describe('TokenPriceChart', () => {
     } as any)
     vi.mocked(bendystraw.isRevnetProject).mockReturnValue(false)
     vi.mocked(bendystraw.fetchProjectTokenAddress).mockResolvedValue(null)
+    vi.mocked(bendystraw.fetchIndexedAmmPriceHistory).mockResolvedValue({
+      hasPool: false,
+      points: [],
+    })
     vi.mocked(uniswap.discoverUniswapPool).mockResolvedValue(null)
     vi.mocked(uniswap.shouldUseHourlyData).mockReturnValue(false)
     vi.mocked(uniswap.getPoolRangeStartTimestamp).mockReturnValue(NOW - 86400 * 30)
