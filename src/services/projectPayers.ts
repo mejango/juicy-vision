@@ -130,6 +130,10 @@ export interface ProjectPayerDeployCall {
   chainId: number
   to: `0x${string}`
   data: `0x${string}`
+  review?: Pick<
+    ReturnType<typeof buildDeployProjectPayerTx>,
+    'abi' | 'functionName' | 'args'
+  >
 }
 
 /** Encode a JBProjectPayerDeployer.deployProjectPayer call for the guarded runner. */
@@ -155,5 +159,14 @@ export function buildProjectPayerDeployCall(params: ProjectPayerDeployParams): P
     functionName: request.functionName,
     args: request.args,
   })
-  return { chainId: Number(chainId), to: request.address, data }
+  return {
+    chainId: Number(chainId),
+    to: request.address,
+    data,
+    review: {
+      abi: request.abi,
+      functionName: request.functionName,
+      args: request.args,
+    },
+  }
 }

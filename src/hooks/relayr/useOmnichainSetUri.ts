@@ -21,6 +21,8 @@ import { getProjectController } from '../../utils/paymentTerminal'
 import { getSafetyPublicClient } from '../../utils/transactionSafety'
 import { RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants/chains'
 import { isIpfsUri } from '../../utils/ipfs'
+import { requireTransactionReview } from '../../utils/transactionReview'
+import { isSafeAppActive } from '../../services/safeApp'
 
 // Relayr app ID for sponsored bundles
 const RELAYR_APP_ID = import.meta.env.VITE_RELAYR_APP_ID || 'juicy-vision'
@@ -311,6 +313,12 @@ export function useOmnichainSetUri(
     }
 
     const useServerSigning = isManagedMode && !forceSelfCustody
+    if (!useServerSigning && isSafeAppActive()) {
+      bundle._setError(
+        'A Safe cannot authorize Relayr ERC-2771 requests as an EOA. Use a managed account for this Relayr update, or submit a single-chain owner action through the Safe proposal flow.',
+      )
+      return
+    }
     const signerAddress = useServerSigning ? managedAddress : connectedAddress
 
     if (!signerAddress) {
@@ -458,6 +466,25 @@ export function useOmnichainSetUri(
             message: messageData,
           }
 
+          await requireTransactionReview({
+            kind: 'authorization',
+            title: `Review Relayr signature on chain ${tx.chain}`,
+            description: 'This EIP-712 signature authorizes the Juicebox trusted forwarder to execute the exact project metadata call below. Signing is not execution; Relayr submits and tracks it afterward.',
+            confirmLabel: 'Agree & sign Relayr request',
+            authorization: {
+              type: 'ERC-2771 ForwardRequest',
+              ...typedData,
+            },
+            calls: [{
+              chainId: tx.chain,
+              from: signerAddress as Address,
+              to: tx.target as Address,
+              data: tx.data as Hex,
+              value: BigInt(tx.value || '0'),
+              label: 'Set project metadata on this destination chain',
+              contractName: 'JBController',
+            }],
+          })
           assertSignerUnchanged()
           const signature = await signTypedDataAsync(typedData)
           assertSignerUnchanged()

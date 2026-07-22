@@ -17,6 +17,15 @@ import { resolvePayPreviewOutcome, TERMINAL_PREVIEW_PAY_ABI } from '../utils/ter
 import { executeManagedTransaction, useManagedWallet } from './useManagedWallet'
 import { buildNftPayMetadata } from '../utils/nftPayMetadata'
 import { friendlyTransactionError } from '../utils/txErrors'
+import {
+  encodeApprovalTx,
+  getActiveSafeInfo,
+  proposeSafeTransactions,
+  waitForSafeExecution,
+  type SafeTx,
+} from '../services/safeApp'
+import { useSafeApp } from './useSafeApp'
+import { submitTrackedTokenApproval } from '../services/trackedTokenApproval'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
@@ -46,6 +55,7 @@ export function useTransactionExecutor() {
   const { updateTransaction } = useTransactionStore()
   const { token: authToken } = useAuthStore()
   const { address: managedAddress, isManagedMode } = useManagedWallet()
+  const { safeInfo } = useSafeApp()
 
   const buildPayCallData = useCallback((chainId: number, terminal: Address, projectId: number, tokenAddress: Address, amount: bigint, beneficiary: Address, memo: string, metadata: Hex, minReturnedTokens: bigint): Hex => {
     if (minReturnedTokens < 0n) throw new Error('Payment minimum cannot be negative')
@@ -78,7 +88,7 @@ export function useTransactionExecutor() {
         if (detail.token === 'PAY_CREDITS') {
           throw new Error('Pay Credits cannot be added directly to an onchain project balance')
         }
-        if (isManagedMode && isUsdc) {
+        if (!safeInfo && isManagedMode && isUsdc) {
           throw new Error('Managed balance contributions currently support ETH only')
         }
         const chain = CHAINS[chainId]
@@ -103,7 +113,12 @@ export function useTransactionExecutor() {
 
         let walletClient
         let account: Address
-        if (isManagedMode) {
+        if (safeInfo) {
+          if (safeInfo.chainId !== chainId) {
+            throw new Error(`This Safe is on chain ${safeInfo.chainId}, but the contribution targets chain ${chainId}.`)
+          }
+          account = safeInfo.safeAddress
+        } else if (isManagedMode) {
           if (!managedAddress) throw new Error('Managed wallet not ready')
           account = managedAddress as Address
         } else {
@@ -132,10 +147,12 @@ export function useTransactionExecutor() {
             }),
           ])
           if (balance < rawAmount) throw new Error('Insufficient USDC for this contribution')
-          if (nativeBalance === 0n) throw new Error('ETH is required for the network fee')
+          if (!safeInfo && nativeBalance === 0n) throw new Error('ETH is required for the network fee')
           reviewedAllowance = allowance
-        } else if (isManagedMode ? nativeBalance < rawAmount : nativeBalance <= rawAmount) {
-          throw new Error(isManagedMode ? 'Insufficient ETH for this contribution' : 'Insufficient ETH for this contribution and the network fee')
+        } else if (isManagedMode || safeInfo ? nativeBalance < rawAmount : nativeBalance <= rawAmount) {
+          throw new Error(isManagedMode || safeInfo
+            ? 'Insufficient ETH for this contribution'
+            : 'Insufficient ETH for this contribution and the network fee')
         }
 
         const approvalRequired = isUsdc && reviewedAllowance < rawAmount
@@ -184,11 +201,32 @@ export function useTransactionExecutor() {
           nfts: [],
         })
         if (!approved) throw new Error('Payment review cancelled')
+        const callKey = [account.toLowerCase(), chainId, terminalAddress.toLowerCase(), value.toString(), callData.toLowerCase(), approvalData?.toLowerCase() ?? ''].join(':')
+        const duplicate = useTransactionStore.getState().transactions.find(transaction =>
+          transaction.id !== txId &&
+          transaction.callKey === callKey &&
+          (transaction.status === 'pending' || transaction.status === 'submitted' || transaction.status === 'safe-proposed')
+        )
+        if (duplicate) throw new Error('This exact contribution is already pending. Wait for it to settle before trying again.')
+        updateTransaction(txId, {
+          account,
+          callKey,
+          label: `Add ${amount} ${token} to project #${projectId}`,
+        })
         if ((await resolveTerminal()).toLowerCase() !== terminalAddress.toLowerCase()) {
           throw new Error('The project accounting terminal changed. Review the contribution again.')
         }
 
-        if (isManagedMode) {
+        if (safeInfo) {
+          const currentSafe = getActiveSafeInfo()
+          if (
+            !currentSafe ||
+            currentSafe.chainId !== chainId ||
+            currentSafe.safeAddress.toLowerCase() !== account.toLowerCase()
+          ) {
+            throw new Error('The connected Safe changed. Review the contribution again.')
+          }
+        } else if (isManagedMode) {
           const auth = useAuthStore.getState()
           if (!auth.isAuthenticated() || auth.mode !== 'managed' || !auth.token) {
             throw new Error('Managed wallet session changed. Review the contribution again.')
@@ -221,28 +259,32 @@ export function useTransactionExecutor() {
             }
             if (allowance < rawAmount) {
               updateTransaction(txId, { stage: 'approving' })
-              const approvalHash = await walletClient.sendTransaction({
-                to: tokenAddress,
-                data: approvalData!,
-                value: 0n,
+              await submitTrackedTokenApproval({
+                chainId,
                 chain,
                 account,
+                token: tokenAddress,
+                spender: terminalAddress,
+                amount: rawAmount,
+                data: approvalData!,
+                walletClient,
+                publicClient,
               })
-              const approvalReceipt = await publicClient.waitForTransactionReceipt({
-                hash: approvalHash,
-              })
-              if (approvalReceipt.status !== 'success') throw new Error('Token approval reverted')
             }
           }
         }
 
         updateTransaction(txId, { stage: 'submitting' })
-        await publicClient.call({
-          account,
-          to: terminalAddress,
-          data: callData,
-          value,
-        })
+        if (safeInfo && approvalRequired) {
+          await publicClient.call({ account, to: tokenAddress, data: approvalData!, value: 0n })
+        } else {
+          await publicClient.call({
+            account,
+            to: terminalAddress,
+            data: callData,
+            value,
+          })
+        }
         try {
           const record = await createTransactionRecord({
             chainId,
@@ -257,15 +299,29 @@ export function useTransactionExecutor() {
           // Tracking is non-fatal; the exact transaction has already passed review and simulation.
         }
 
-        const hash = isManagedMode
-          ? ((await executeManagedTransaction(chainId, terminalAddress, callData, value.toString())) as Hex)
-          : await walletClient!.sendTransaction({
-              to: terminalAddress,
-              data: callData,
-              value,
-              chain,
-              account,
-            })
+        let hash: Hex
+        if (safeInfo) {
+          const txs: SafeTx[] = []
+          if (approvalRequired) txs.push(encodeApprovalTx(tokenAddress, terminalAddress, rawAmount))
+          txs.push({ to: terminalAddress, data: callData, value: `0x${value.toString(16)}` })
+          const safeTxHash = await proposeSafeTransactions(txs)
+          updateTransaction(txId, {
+            safeTxHash,
+            status: 'safe-proposed',
+            stage: undefined,
+          })
+          hash = await waitForSafeExecution(safeTxHash)
+        } else if (isManagedMode) {
+          hash = (await executeManagedTransaction(chainId, terminalAddress, callData, value.toString())) as Hex
+        } else {
+          hash = await walletClient!.sendTransaction({
+            to: terminalAddress,
+            data: callData,
+            value,
+            chain,
+            account,
+          })
+        }
         updateTransaction(txId, {
           hash,
           status: 'submitted',
@@ -330,7 +386,7 @@ export function useTransactionExecutor() {
         }
       }
     },
-    [isManagedMode, managedAddress, switchChainAsync, updateTransaction]
+    [isManagedMode, managedAddress, safeInfo, switchChainAsync, updateTransaction]
   )
 
   const executePayTransaction = useCallback(
@@ -509,7 +565,16 @@ export function useTransactionExecutor() {
 
       let client
       let currentAddress: Address
-      if (isManagedMode) {
+      if (safeInfo) {
+        if (safeInfo.chainId !== chainId) {
+          updateTransaction(txId, {
+            status: 'failed',
+            error: `This Safe is on chain ${safeInfo.chainId}, but the payment targets chain ${chainId}`,
+          })
+          return
+        }
+        currentAddress = safeInfo.safeAddress
+      } else if (isManagedMode) {
         if (isUsdc) {
           updateTransaction(txId, {
             status: 'failed',
@@ -582,8 +647,10 @@ export function useTransactionExecutor() {
           const nativeBalance = await publicClient.getBalance({
             address: currentAddress,
           })
-          if (!isUsdc && (isManagedMode ? nativeBalance < projectAmount : nativeBalance <= projectAmount)) {
-            throw new Error(isManagedMode ? 'Insufficient ETH for the payment' : 'Insufficient ETH for the payment and network fee')
+          if (!isUsdc && (isManagedMode || safeInfo ? nativeBalance < projectAmount : nativeBalance <= projectAmount)) {
+            throw new Error(isManagedMode || safeInfo
+              ? 'Insufficient ETH for the payment'
+              : 'Insufficient ETH for the payment and network fee')
           }
           if (isUsdc) {
             const tokenBalance = await publicClient.readContract({
@@ -595,7 +662,7 @@ export function useTransactionExecutor() {
             if (tokenBalance < projectAmount) {
               throw new Error('Insufficient USDC for this payment')
             }
-            if (nativeBalance === 0n) {
+            if (!safeInfo && nativeBalance === 0n) {
               throw new Error('ETH is required for the network fee')
             }
           }
@@ -731,9 +798,38 @@ export function useTransactionExecutor() {
         const approved = await requestPaymentReview(review)
         if (!approved) throw new Error('Payment review cancelled')
 
+        const callKey = [
+          currentAddress.toLowerCase(),
+          chainId,
+          terminalAddress.toLowerCase(),
+          (isUsdc ? 0n : projectAmount).toString(),
+          reviewedPayCallData.toLowerCase(),
+          approvalCallData?.toLowerCase() ?? '',
+        ].join(':')
+        const duplicate = useTransactionStore.getState().transactions.find(transaction =>
+          transaction.id !== txId &&
+          transaction.callKey === callKey &&
+          (transaction.status === 'pending' || transaction.status === 'submitted' || transaction.status === 'safe-proposed')
+        )
+        if (duplicate) throw new Error('This exact payment is already pending. Wait for it to settle before trying again.')
+        updateTransaction(txId, {
+          account: currentAddress,
+          callKey,
+          label: `Pay ${amount} ${isUsdc ? 'USDC' : 'ETH'} to project #${projectId}`,
+        })
+
         await assertFreshPayConfiguration()
         await assertFreshNFTSelection()
-        if (isManagedMode) {
+        if (safeInfo) {
+          const currentSafe = getActiveSafeInfo()
+          if (
+            !currentSafe ||
+            currentSafe.chainId !== chainId ||
+            currentSafe.safeAddress.toLowerCase() !== currentAddress.toLowerCase()
+          ) {
+            throw new Error('The connected Safe changed. Review the payment again.')
+          }
+        } else if (isManagedMode) {
           const auth = useAuthStore.getState()
           if (!auth.isAuthenticated() || auth.mode !== 'managed' || !auth.token) {
             throw new Error('Managed wallet session changed. Review the payment again.')
@@ -770,17 +866,17 @@ export function useTransactionExecutor() {
             }
             if (currentAllowance < projectAmount) {
               updateTransaction(txId, { stage: 'approving' })
-              const approveHash = await client.sendTransaction({
-                to: usdcAddress!,
-                data: approvalCallData!,
-                value: 0n,
+              await submitTrackedTokenApproval({
+                chainId,
                 chain,
                 account: currentAddress,
+                token: usdcAddress!,
+                spender: terminalAddress,
+                amount: projectAmount,
+                data: approvalCallData!,
+                walletClient: client,
+                publicClient,
               })
-              const approvalReceipt = await publicClient.waitForTransactionReceipt({
-                hash: approveHash,
-              })
-              if (approvalReceipt.status !== 'success') throw new Error('Token approval reverted')
             }
           }
         }
@@ -801,7 +897,7 @@ export function useTransactionExecutor() {
         if (payCallData.toLowerCase() !== reviewedPayCallData.toLowerCase()) {
           throw new Error('The payment calldata changed. Review the payment again.')
         }
-        if (!isManagedMode) {
+        if (!isManagedMode && !safeInfo) {
           client = await getWalletClient(wagmiConfig)
           if (!client?.account || client.account.address.toLowerCase() !== currentAddress.toLowerCase() || (await client.getChainId()) !== chainId) {
             throw new Error('Wallet account or network changed. Review the payment again.')
@@ -809,12 +905,21 @@ export function useTransactionExecutor() {
         }
 
         await assertSufficientLiveBalances()
-        await publicClient.call({
-          account: currentAddress,
-          to: terminalAddress,
-          data: payCallData,
-          value: isUsdc ? 0n : projectAmount,
-        })
+        if (safeInfo && approvalRequired) {
+          await publicClient.call({
+            account: currentAddress,
+            to: usdcAddress!,
+            data: approvalCallData!,
+            value: 0n,
+          })
+        } else {
+          await publicClient.call({
+            account: currentAddress,
+            to: terminalAddress,
+            data: payCallData,
+            value: isUsdc ? 0n : projectAmount,
+          })
+        }
 
         // Persist only after review and the final live preflight. Tracking
         // failures do not weaken the on-chain checks.
@@ -832,15 +937,38 @@ export function useTransactionExecutor() {
           // Non-fatal: transaction safety is enforced independently on chain.
         }
 
-        const hash = isManagedMode
-          ? ((await executeManagedTransaction(chainId, terminalAddress, payCallData, (isUsdc ? 0n : projectAmount).toString())) as Hex)
-          : await client!.sendTransaction({
-              to: terminalAddress,
-              data: payCallData,
-              value: isUsdc ? 0n : projectAmount,
-              chain,
-              account: currentAddress,
-            })
+        let hash: Hex
+        if (safeInfo) {
+          const txs: SafeTx[] = []
+          if (approvalRequired) txs.push(encodeApprovalTx(usdcAddress!, terminalAddress, projectAmount))
+          txs.push({
+            to: terminalAddress,
+            data: payCallData,
+            value: `0x${(isUsdc ? 0n : projectAmount).toString(16)}`,
+          })
+          const safeTxHash = await proposeSafeTransactions(txs)
+          updateTransaction(txId, {
+            safeTxHash,
+            status: 'safe-proposed',
+            stage: undefined,
+          })
+          hash = await waitForSafeExecution(safeTxHash)
+        } else if (isManagedMode) {
+          hash = (await executeManagedTransaction(
+            chainId,
+            terminalAddress,
+            payCallData,
+            (isUsdc ? 0n : projectAmount).toString(),
+          )) as Hex
+        } else {
+          hash = await client!.sendTransaction({
+            to: terminalAddress,
+            data: payCallData,
+            value: isUsdc ? 0n : projectAmount,
+            chain,
+            account: currentAddress,
+          })
+        }
 
         // Update to submitted and start confirming stage
         updateTransaction(txId, {
@@ -914,7 +1042,7 @@ export function useTransactionExecutor() {
         }
       }
     },
-    [switchChainAsync, updateTransaction, buildPayCallData, authToken, isManagedMode, managedAddress, executeAddToBalanceTransaction]
+    [switchChainAsync, updateTransaction, buildPayCallData, authToken, isManagedMode, managedAddress, safeInfo, executeAddToBalanceTransaction]
   )
 
   // Listen for pay events

@@ -378,6 +378,14 @@ export function OpenLoanModal({ isOpen, onClose, project, chainIds, chainProject
           chainId,
           to: grantRequest.address,
           data: encodeFunctionData({ abi: grantRequest.abi, functionName: grantRequest.functionName, args: grantRequest.args }),
+          review: {
+            title: 'Review loan permission grant',
+            label: 'Allow REVLoans to burn collateral for this project',
+            contractName: 'JBPermissions',
+            abi: grantRequest.abi,
+            functionName: grantRequest.functionName,
+            args: grantRequest.args,
+          },
           onPhase: phase => setStep({ kind: 'granting', phase }),
         })
       }
@@ -396,6 +404,14 @@ export function OpenLoanModal({ isOpen, onClose, project, chainIds, chainProject
         chainId,
         to: borrowRequest.address,
         data: encodeFunctionData({ abi: borrowRequest.abi, functionName: borrowRequest.functionName, args: borrowRequest.args }),
+        review: {
+          title: 'Review loan opening',
+          label: `Borrow against ${formatTokens18(collateral)} ${project.tokenSymbol || 'tokens'}`,
+          contractName: 'REVLoans',
+          abi: borrowRequest.abi,
+          functionName: borrowRequest.functionName,
+          args: borrowRequest.args,
+        },
         // Re-quote before the send: abort if the live quote dropped below the
         // reviewed 99% floor, or the grant is (no longer) in place.
         reverify: async () => {

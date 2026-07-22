@@ -30,19 +30,43 @@ vi.mock('wagmi', () => ({
   useSwitchChain: () => ({ switchChainAsync: mocks.switchChain }),
 }))
 
-vi.mock('@bananapus/nana-sdk-core/v6', () => ({ buildCashOutTx: mocks.buildCashOutTx }))
-
-vi.mock('../../stores', () => ({
-  useThemeStore: () => ({ theme: 'dark' }),
-  useTransactionStore: () => ({ addTransaction: mocks.addTransaction, updateTransaction: mocks.updateTransaction }),
-  useAuthStore: () => ({ mode: 'self_custody', isAuthenticated: () => false }),
+vi.mock('@bananapus/nana-sdk-core/v6', async importOriginal => ({
+  ...(await importOriginal<typeof import('@bananapus/nana-sdk-core/v6')>()),
+  buildCashOutTx: mocks.buildCashOutTx,
 }))
+
+vi.mock('../../stores', () => {
+  const useTransactionStore = Object.assign(
+    () => ({ addTransaction: mocks.addTransaction, updateTransaction: mocks.updateTransaction }),
+    {
+      getState: () => ({
+        transactions: [],
+        addTransaction: mocks.addTransaction,
+        updateTransaction: mocks.updateTransaction,
+      }),
+    },
+  )
+  return {
+    useThemeStore: () => ({ theme: 'dark' }),
+    useTransactionStore,
+    useAuthStore: () => ({ mode: 'self_custody', isAuthenticated: () => false }),
+  }
+})
 
 vi.mock('../../hooks', () => ({
   executeManagedTransaction: vi.fn(),
   useManagedWallet: () => ({ address: null }),
   useWalletBalances: () => ({ perChain: [{ chainId: 1, eth: 10n ** 18n }], loading: false, available: true }),
   formatEthBalance: (value: bigint) => value.toString(),
+}))
+
+vi.mock('../../hooks/useManagedWallet', () => ({
+  useManagedWallet: () => ({ address: null, isManagedMode: false }),
+  executeManagedTransaction: vi.fn(),
+}))
+
+vi.mock('../../hooks/useSafeApp', () => ({
+  useSafeApp: () => ({ isSafeApp: false, safeInfo: null, detecting: false }),
 }))
 
 vi.mock('../../hooks/useReviewedTransactionAccount', () => ({

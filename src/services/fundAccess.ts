@@ -306,6 +306,11 @@ export interface PreparedFundAccessTransaction {
   minimumOutput: bigint
   context: FundAccessContextSnapshot
   access: FundAccessAmountSnapshot
+  review: {
+    abi: typeof FUND_ACCESS_TERMINAL_ABI
+    functionName: 'sendPayoutsOf' | 'useAllowanceOf'
+    args: readonly unknown[]
+  }
 }
 
 function sameAddress(left: string, right: string): boolean {
@@ -614,6 +619,7 @@ export async function prepareFundAccessTransaction(params: {
   let quotedAmount: bigint
   let minimumOutput: bigint
   let data: Hex
+  let review: PreparedFundAccessTransaction['review']
   if (params.kind === 'payout') {
     const quoteArgs = [params.projectId, context.token, params.amount, params.currency, 0n] as const
     const simulation = await params.client.simulateContract({
@@ -639,6 +645,7 @@ export async function prepareFundAccessTransaction(params: {
       functionName: 'sendPayoutsOf',
       args: finalArgs,
     })
+    review = { abi: FUND_ACCESS_TERMINAL_ABI, functionName: 'sendPayoutsOf', args: finalArgs }
   } else {
     const quoteArgs = [
       params.projectId,
@@ -682,9 +689,10 @@ export async function prepareFundAccessTransaction(params: {
       functionName: 'useAllowanceOf',
       args: finalArgs,
     })
+    review = { abi: FUND_ACCESS_TERMINAL_ABI, functionName: 'useAllowanceOf', args: finalArgs }
   }
 
-  return { target: context.terminal, data, quotedAmount, minimumOutput, context, access }
+  return { target: context.terminal, data, quotedAmount, minimumOutput, context, access, review }
 }
 
 export function fundAccessErrorMessage(error: unknown, kind: FundAccessKind): string {

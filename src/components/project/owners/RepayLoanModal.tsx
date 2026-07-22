@@ -164,6 +164,14 @@ export function RepayLoanModal({ isOpen, onClose, project, loan, onRepaid }: Rep
         approval: nativeSource
           ? undefined
           : { token: fresh.sourceToken, spender: loans, amount: maxRepay },
+        review: {
+          title: 'Review loan repayment',
+          label: `Repay loan #${loanId.toString()} and reclaim collateral`,
+          contractName: 'REVLoans',
+          abi: request.abi,
+          functionName: request.functionName,
+          args: request.args,
+        },
         // Drift guard: abort if the loan moved between review and send (repaid,
         // reallocated, or replaced — the id would then point at stale state).
         reverify: async () => {

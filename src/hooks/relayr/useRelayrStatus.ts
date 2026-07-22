@@ -58,8 +58,9 @@ export function useRelayrStatus({
       })
       setError(null)
 
-      // Stop polling if bundle is complete or failed
-      if (stopOnComplete && (response.status === 'completed' || response.status === 'failed')) {
+      // Partial is terminal too: at least one destination failed and polling
+      // forever would conceal the actionable per-chain result.
+      if (stopOnComplete && (response.status === 'completed' || response.status === 'failed' || response.status === 'partial')) {
         setIsPolling(false)
         if (intervalRef.current) {
           clearInterval(intervalRef.current)
@@ -95,9 +96,11 @@ export function useRelayrStatus({
 
   // Auto-start polling when bundleId is set and enabled
   useEffect(() => {
-    if (bundleId && enabled && !isPolling) {
-      startPolling()
-    }
+    if (!bundleId || !enabled) return
+
+    setIsPolling(true)
+    void fetchStatus()
+    intervalRef.current = window.setInterval(fetchStatus, pollingInterval)
 
     return () => {
       if (intervalRef.current) {
@@ -105,7 +108,7 @@ export function useRelayrStatus({
         intervalRef.current = null
       }
     }
-  }, [bundleId, enabled]) // Don't include startPolling to avoid re-triggering
+  }, [bundleId, enabled, fetchStatus, pollingInterval])
 
   // Cleanup on unmount
   useEffect(() => {

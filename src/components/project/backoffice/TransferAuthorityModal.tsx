@@ -86,6 +86,12 @@ export function TransferAuthorityModal({
         chainId,
         to: request.to,
         data: request.data,
+        review: {
+          title: `Review ${roleLabel} transfer`,
+          label: `Transfer project #${pid.toString()} ${roleLabel} to ${newAuthority}`,
+          contractName: isRevnet ? 'REVOwner' : 'JBProjects',
+          ...request.review,
+        },
         // Reviewed-state re-verification: abort when the authority shown at
         // review time is no longer the current authority on this chain.
         reverify: async () => {

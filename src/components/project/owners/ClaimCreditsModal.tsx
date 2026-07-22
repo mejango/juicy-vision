@@ -107,6 +107,14 @@ export function ClaimCreditsModal({
         chainId: row.chainId,
         to: request.address,
         data,
+        review: {
+          title: 'Review credit claim',
+          label: `Claim ${formatCredits(claimAmount)} ${symbol} as transferable tokens`,
+          contractName: 'JBController',
+          abi: request.abi,
+          functionName: request.functionName,
+          args: request.args,
+        },
         // Reviewed-state re-verification: the runner calls this before the send
         // (and again after any chain switch). Abort when the live credit
         // balance dropped below the reviewed claim amount.

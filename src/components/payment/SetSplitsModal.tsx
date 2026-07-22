@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createPortal } from 'react-dom'
-import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
+import { useAccount, useWalletClient } from 'wagmi'
 import { encodeFunctionData, createPublicClient, http, fallback, isAddress, type Address, type PublicClient } from 'viem'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
-import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { useWalletBalances, useManagedWallet } from '../../hooks'
+import { useGuardedTx } from '../../hooks/useGuardedTx'
 import { GasBalanceStatus } from './GasBalanceStatus'
 import { useOmnichainSetSplits, type ChainState } from '../../hooks/relayr'
 import { JB_CONTROLLER_ABI } from '../../constants/abis/jbController'
@@ -11,7 +12,7 @@ import { SPLIT_GROUP_RESERVED } from '../../constants/abis/jbSplits'
 import { CHAINS as CHAIN_INFO, RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
 import { getProjectController } from '../../utils/paymentTerminal'
 import { assertCurrentRulesetId } from '../../utils/projectTrust'
-import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
+import { simulateTransaction } from '../../utils/transactionSafety'
 import { buildSplitGroup } from '../../utils/splitSafety'
 import { fetchProjectSplits, type JBSplitData } from '../../services/bendystraw'
 import TechnicalDetails from '../shared/TechnicalDetails'
@@ -80,15 +81,15 @@ export default function SetSplitsModal({
   const isDark = theme === 'dark'
   const { address } = useAccount()
   const { data: walletClient } = useWalletClient()
-  const { switchChainAsync } = useSwitchChain()
-  const { addTransaction, updateTransaction } = useTransactionStore()
+  const guarded = useGuardedTx()
+  const { addTransaction } = useTransactionStore()
   const { totalEth, perChain, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
 
   // Managed mode support
   const { mode, isAuthenticated } = useAuthStore()
   const isManagedMode = mode === 'managed' && isAuthenticated()
   const { address: managedAddress } = useManagedWallet()
-  const reviewedActiveAddress = isManagedMode ? managedAddress : address
+  const reviewedActiveAddress = guarded.activeAddress
   const { assertCurrentAccount } = useReviewedTransactionAccount(
     isOpen,
     reviewedActiveAddress,
@@ -118,7 +119,7 @@ export default function SetSplitsModal({
     },
   })
 
-  const hasGasBalance = isManagedMode || (balancesAvailable && chainSplitsData.every(chainData =>
+  const hasGasBalance = isManagedMode || guarded.isSafeMode || (balancesAvailable && chainSplitsData.every(chainData =>
     (perChain.find(balance => balance.chainId === chainData.chainId)?.eth || 0n) > 0n
   ))
   const isOmnichain = chainSplitsData.length > 1
@@ -255,7 +256,9 @@ export default function SetSplitsModal({
 
   // Set splits on a single chain (legacy mode)
   const setSplitsOnChain = useCallback(async (chainData: ChainSplitsData) => {
-    if (isManagedMode) {
+    if (guarded.isSafeMode) {
+      if (!guarded.activeAddress) throw new Error('Safe not connected')
+    } else if (isManagedMode) {
       if (!managedAddress) {
         throw new Error('Managed wallet not available')
       }
@@ -264,11 +267,11 @@ export default function SetSplitsModal({
         throw new Error('Wallet not connected')
       }
     }
-    const activeAddress = (isManagedMode ? managedAddress : address) as Address | undefined
+    const activeAddress = guarded.activeAddress as Address | undefined
     if (!activeAddress || !isAddress(activeAddress)) throw new Error('Active wallet address is invalid')
 
     try {
-      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+      if (!guarded.isSafeMode) assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
       await assertReviewedSplitsUnchanged(chainData)
       // Fetch controller address from JBDirectory
       const viemChain = VIEM_CHAINS[chainData.chainId as SupportedChainId]
@@ -324,43 +327,32 @@ export default function SetSplitsModal({
         status: 'pending',
       })
 
-      let hash: string
+      const callArgs = [BigInt(chainData.projectId), BigInt(chainData.rulesetId), splitGroups] as const
+      const hash = await guarded.run({
+        chainId: chainData.chainId,
+        to: controllerAddress,
+        data: callData,
+        activityId: txId,
+        review: {
+          title: 'Review project splits',
+          label: `Replace the reviewed splits for project #${chainData.projectId}`,
+          contractName: 'JBController',
+          abi: JB_CONTROLLER_ABI,
+          functionName: 'setSplitGroupsOf',
+          args: callArgs,
+        },
+        reverify: async () => {
+          const finalController = await resolveFreshController()
+          if (finalController.toLowerCase() !== controllerAddress.toLowerCase()) {
+            throw new Error(`The project controller changed on chain ${chainData.chainId}`)
+          }
+          await assertReviewedSplitsUnchanged(chainData)
+        },
+        onPhase: phase => updateChainState(chainData.chainId, {
+          status: phase === 'signing' ? 'signing' : 'submitted',
+        }),
+      })
 
-      if (isManagedMode) {
-        await assertReviewedSplitsUnchanged(chainData)
-        assertCurrentAccount()
-        updateChainState(chainData.chainId, { status: 'submitted' })
-        hash = await executeManagedTransaction(chainData.chainId, controllerAddress, callData, '0')
-      } else {
-        updateChainState(chainData.chainId, { status: 'signing' })
-        await switchChainAsync({ chainId: chainData.chainId })
-        if (await walletClient!.getChainId() !== chainData.chainId) {
-          throw new Error(`Wallet did not switch to chain ${chainData.chainId}`)
-        }
-        assertCurrentAccount(walletClient!.account?.address)
-        const finalController = await resolveFreshController()
-        if (finalController.toLowerCase() !== controllerAddress.toLowerCase()) {
-          throw new Error(`The project controller changed on chain ${chainData.chainId}`)
-        }
-        await assertReviewedSplitsUnchanged(chainData)
-        await simulateTransaction({
-          chainId: chainData.chainId,
-          account: activeAddress,
-          to: finalController,
-          data: callData,
-        })
-        assertCurrentAccount(walletClient!.account?.address)
-        hash = await walletClient!.sendTransaction({
-          to: finalController,
-          data: callData,
-          value: 0n,
-        })
-        updateChainState(chainData.chainId, { status: 'submitted', txHash: hash })
-      }
-
-      updateTransaction(txId, { hash, status: isManagedMode ? 'confirmed' : 'submitted' })
-      if (!isManagedMode) await waitForSuccessfulTransaction(chainData.chainId, hash as `0x${string}`)
-      if (!isManagedMode) updateTransaction(txId, { hash, status: 'confirmed' })
       updateChainState(chainData.chainId, { status: 'confirmed', txHash: hash })
 
       return hash
@@ -369,15 +361,15 @@ export default function SetSplitsModal({
       updateChainState(chainData.chainId, { status: 'failed', error: errorMessage })
       throw err
     }
-  }, [walletClient, address, buildSplitGroups, addTransaction, updateTransaction, updateChainState, switchChainAsync, isManagedMode, managedAddress, assertReviewedSplitsUnchanged, assertCurrentAccount])
+  }, [walletClient, address, buildSplitGroups, addTransaction, updateChainState, isManagedMode, managedAddress, assertReviewedSplitsUnchanged, assertCurrentAccount, guarded])
 
   // Start the set splits process
   const handleStart = useCallback(async () => {
-    const activeAddress = isManagedMode ? managedAddress : address
+    const activeAddress = guarded.activeAddress
     if (!activeAddress || chainSplitsData.length === 0) return
 
     try {
-      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+      if (!guarded.isSafeMode) assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
       await Promise.all(chainSplitsData.map(assertReviewedSplitsUnchanged))
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Could not verify the reviewed split configuration'
@@ -431,7 +423,7 @@ export default function SetSplitsModal({
       }
       setCurrentChainIndex(-1)
     }
-  }, [walletClient, address, chainSplitsData, setSplitsOnChain, isManagedMode, managedAddress, useOmnichain, isOmnichain, setSplits, payoutSplits, reservedSplits, assertReviewedSplitsUnchanged, updateChainState, onError, assertCurrentAccount])
+  }, [walletClient, chainSplitsData, setSplitsOnChain, isManagedMode, useOmnichain, isOmnichain, setSplits, payoutSplits, reservedSplits, assertReviewedSplitsUnchanged, updateChainState, onError, assertCurrentAccount, guarded])
 
   const handleClose = useCallback(() => {
     resetOmnichain()

@@ -139,6 +139,12 @@ export function RemoveLiquidityModal({ isOpen, onClose, project, chainIds, chain
         to: tx.to,
         data: tx.data,
         value: tx.value,
+        review: {
+          title: 'Review liquidity removal',
+          label: `Burn LP position #${position.tokenId.toString()} with the reviewed minimum returns`,
+          contractName: 'Uniswap V4 PositionManager',
+          ...tx.review,
+        },
         // Abort when the position shrank since review: the reviewed 95% floors
         // were derived from the reviewed liquidity, so a smaller position would
         // either revert at settlement or return less than what was shown.

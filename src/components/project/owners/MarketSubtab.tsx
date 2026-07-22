@@ -507,6 +507,12 @@ function SplitHookChainBlock({
         to: tx.to,
         data: tx.data,
         value: tx.value,
+        review: {
+          title: `Review ${label.toLowerCase()}`,
+          label,
+          contractName: 'Banny LP split hook',
+          ...tx.review,
+        },
         reverify: async () => {
           const fresh = await readSplitHookState(row.chainId, projectId, row.weight)
           if (!fresh) throw new Error(`Could not re-read the split hook on ${chainName}.`)

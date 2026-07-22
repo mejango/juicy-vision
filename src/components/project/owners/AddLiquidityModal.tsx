@@ -309,6 +309,12 @@ export function AddLiquidityModal({ isOpen, onClose, project, chainIds, chainPro
           to: permitTx.to,
           data: permitTx.data,
           approval: { token: side.currency, spender: PERMIT2_ADDRESS, amount: side.max },
+          review: {
+            title: 'Review Permit2 token authorization',
+            label: 'Authorize the position manager through Permit2 for this exact maximum',
+            contractName: 'Permit2',
+            ...permitTx.review,
+          },
           onPhase: phase => setStatus({ kind: 'running', step: 'Token approval (Permit2)', phase }),
         })
       }
@@ -321,6 +327,12 @@ export function AddLiquidityModal({ isOpen, onClose, project, chainIds, chainPro
         to: mintTx.to,
         data: mintTx.data,
         value: mintTx.value,
+        review: {
+          title: 'Review liquidity position',
+          label: 'Mint the reviewed Uniswap V4 liquidity position',
+          contractName: 'Uniswap V4 PositionManager',
+          ...mintTx.review,
+        },
         reverify: () => reverifyAddLiquidity(chainId, plan),
         onPhase: phase => setStatus({ kind: 'running', step: 'Add liquidity', phase }),
       })

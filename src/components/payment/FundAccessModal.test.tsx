@@ -2,7 +2,12 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { FundAccessAmountSnapshot, FundAccessContextSnapshot, PreparedFundAccessTransaction } from '../../services/fundAccess'
+import {
+  FUND_ACCESS_TERMINAL_ABI,
+  type FundAccessAmountSnapshot,
+  type FundAccessContextSnapshot,
+  type PreparedFundAccessTransaction,
+} from '../../services/fundAccess'
 import { parseTxLinkUrl } from '../../utils/txlink'
 import FundAccessModal from './FundAccessModal'
 
@@ -12,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   sendTransaction: vi.fn(),
   getChainId: vi.fn(),
   switchChain: vi.fn(),
+  simulate: vi.fn(),
   waitForReceipt: vi.fn(),
   addTransaction: vi.fn(),
   updateTransaction: vi.fn(),
@@ -30,14 +36,26 @@ vi.mock('wagmi', () => ({
   useSwitchChain: () => ({ switchChainAsync: mocks.switchChain }),
 }))
 
-vi.mock('../../stores', () => ({
-  useThemeStore: () => ({ theme: 'dark' }),
-  useTransactionStore: () => ({
-    addTransaction: mocks.addTransaction,
-    updateTransaction: mocks.updateTransaction,
-  }),
-  useAuthStore: () => ({ mode: 'self_custody', isAuthenticated: () => false }),
-}))
+vi.mock('../../stores', () => {
+  const useTransactionStore = Object.assign(
+    () => ({
+      addTransaction: mocks.addTransaction,
+      updateTransaction: mocks.updateTransaction,
+    }),
+    {
+      getState: () => ({
+        transactions: [],
+        addTransaction: mocks.addTransaction,
+        updateTransaction: mocks.updateTransaction,
+      }),
+    },
+  )
+  return {
+    useThemeStore: () => ({ theme: 'dark' }),
+    useTransactionStore,
+    useAuthStore: () => ({ mode: 'self_custody', isAuthenticated: () => false }),
+  }
+})
 
 vi.mock('../../hooks', () => ({
   executeManagedTransaction: vi.fn(),
@@ -48,6 +66,15 @@ vi.mock('../../hooks', () => ({
     available: true,
   }),
   formatEthBalance: (value: bigint) => value.toString(),
+}))
+
+vi.mock('../../hooks/useManagedWallet', () => ({
+  useManagedWallet: () => ({ address: null, isManagedMode: false }),
+  executeManagedTransaction: vi.fn(),
+}))
+
+vi.mock('../../hooks/useSafeApp', () => ({
+  useSafeApp: () => ({ isSafeApp: false, safeInfo: null, detecting: false }),
 }))
 
 vi.mock('../../hooks/useReviewedTransactionAccount', () => ({
@@ -65,6 +92,7 @@ vi.mock('../../services/bendystraw', () => ({
 }))
 
 vi.mock('../../utils/transactionSafety', () => ({
+  simulateTransaction: mocks.simulate,
   waitForSuccessfulTransaction: mocks.waitForReceipt,
 }))
 
@@ -109,6 +137,11 @@ function prepared(data: `0x${string}` = '0x1234'): PreparedFundAccessTransaction
     minimumOutput: 1n * 10n ** 18n,
     context,
     access,
+    review: {
+      abi: FUND_ACCESS_TERMINAL_ABI,
+      functionName: 'sendPayoutsOf',
+      args: [1n, TOKEN, 1n * 10n ** 18n, 61_166n, 1n * 10n ** 18n],
+    },
   }
 }
 
@@ -145,7 +178,7 @@ describe('FundAccessModal live transaction guard', () => {
 
   afterEach(() => vi.restoreAllMocks())
 
-  it('re-reads twice, simulates the final calldata, and closes only after a confirmed receipt', async () => {
+  it('re-reads after review and chain verification, then closes only after a confirmed receipt', async () => {
     let confirmReceipt: (() => void) | undefined
     mocks.waitForReceipt.mockImplementation(() => new Promise<void>(resolve => { confirmReceipt = resolve }))
     const onClose = vi.fn()
@@ -155,7 +188,7 @@ describe('FundAccessModal live transaction guard', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Distribute' }))
     await waitFor(() => expect(mocks.sendTransaction).toHaveBeenCalledTimes(1))
-    expect(mocks.prepare).toHaveBeenCalledTimes(2)
+    expect(mocks.prepare).toHaveBeenCalledTimes(3)
     expect(mocks.waitForReceipt).toHaveBeenCalledWith(1, '0xbeef')
     expect(onSubmitted).toHaveBeenCalledWith('0xbeef')
     expect(onConfirmed).not.toHaveBeenCalled()

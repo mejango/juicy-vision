@@ -1,12 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { formatUnits } from 'viem'
+import { erc20Abi, formatUnits } from 'viem'
+import { jbMultiTerminalAbi } from '@bananapus/nana-sdk-core'
 import { useThemeStore } from '../../stores'
 import {
   PAYMENT_REVIEW_EVENT,
+  type PaymentReview,
   type PaymentReviewRequest,
 } from '../../utils/paymentReview'
+import {
+  buildTransactionAuditPrompt,
+  transactionReviewJson,
+  type TransactionReview,
+} from '../../utils/transactionReview'
 import { buildTxLinkEntries } from '../../utils/txlink'
+import { useSafeApp } from '../../hooks/useSafeApp'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import CopyTxButton from './CopyTxButton'
 
@@ -14,10 +22,59 @@ function shortAddress(address: string): string {
   return `${address.slice(0, 6)}...${address.slice(-4)}`
 }
 
+function exactPaymentReview(review: PaymentReview, safeAddress?: `0x${string}`): TransactionReview {
+  const calls: TransactionReview['calls'][number][] = []
+  if (review.approval) {
+    calls.push({
+      chainId: review.chainId,
+      from: review.account,
+      to: review.approval.token,
+      value: 0n,
+      data: review.approval.callData,
+      abi: erc20Abi,
+      functionName: 'approve',
+      args: [review.approval.spender, BigInt(review.approval.amount)],
+      label: `Approve exactly ${review.approval.amount} raw token units`,
+      contractName: 'ERC-20 token',
+    })
+  }
+  calls.push({
+    chainId: review.chainId,
+    from: review.account,
+    to: review.terminal,
+    value: BigInt(review.valueRaw),
+    data: review.callData,
+    abi: jbMultiTerminalAbi,
+    functionName: review.action === 'addToBalance' ? 'addToBalanceOf' : 'pay',
+    label: review.action === 'addToBalance' ? 'Add funds to the project balance' : 'Pay the project',
+    contractName: review.route === 'routed payment' ? 'JBRouterTerminal' : 'JBMultiTerminal',
+  })
+  return {
+    calls,
+    kind: safeAddress ? 'authorization' : 'transaction',
+    title: review.action === 'addToBalance' ? 'Review balance contribution' : 'Review payment',
+    ...(safeAddress && {
+      authorization: {
+        type: 'Safe transaction proposal',
+        safeAddress,
+        chainId: review.chainId,
+        calls: calls.map(call => ({
+          to: call.to,
+          value: `0x${(call.value ?? 0n).toString(16)}`,
+          data: call.data,
+        })),
+      },
+    }),
+  }
+}
+
 export default function PaymentReviewModal() {
   const { theme } = useThemeStore()
+  const { safeInfo } = useSafeApp()
   const isDark = theme === 'dark'
   const [request, setRequest] = useState<PaymentReviewRequest | null>(null)
+  const [agreed, setAgreed] = useState(false)
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle')
   const activeRequest = useRef<PaymentReviewRequest | null>(null)
 
   useEffect(() => {
@@ -28,6 +85,8 @@ export default function PaymentReviewModal() {
         return
       }
       activeRequest.current = next
+      setAgreed(false)
+      setCopyState('idle')
       setRequest(next)
     }
     window.addEventListener(PAYMENT_REVIEW_EVENT, handleReview)
@@ -42,6 +101,7 @@ export default function PaymentReviewModal() {
     const current = activeRequest.current
     activeRequest.current = null
     setRequest(null)
+    setAgreed(false)
     current?.respond(approved)
   }
 
@@ -50,6 +110,7 @@ export default function PaymentReviewModal() {
   const addsToBalance = review.action === 'addToBalance'
   const expectedTokens = formatUnits(BigInt(review.expectedProjectTokens), 18)
   const minimumTokens = formatUnits(BigInt(review.minimumProjectTokens), 18)
+  const exactReview = exactPaymentReview(review, safeInfo?.safeAddress)
 
   return createPortal(
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="payment-review-title">
@@ -157,7 +218,37 @@ export default function PaymentReviewModal() {
             defaultExpanded
           />
 
-          <div className="flex justify-end">
+          <details className={`border ${isDark ? 'border-white/15 bg-black/20' : 'border-gray-200 bg-gray-50'}`}>
+            <summary className="cursor-pointer px-4 py-3 text-xs font-semibold">Raw transaction payload</summary>
+            <pre className={`max-h-80 overflow-auto border-t p-4 text-[11px] leading-relaxed ${
+              isDark ? 'border-white/10 bg-black/40 text-gray-200' : 'border-gray-200 bg-gray-950 text-gray-100'
+            }`}>
+              {transactionReviewJson(exactReview)}
+            </pre>
+          </details>
+
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              className={`border px-4 py-2 text-xs font-semibold ${
+                isDark ? 'border-juice-cyan/50 text-juice-cyan' : 'border-teal-600 text-teal-700'
+              }`}
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(buildTransactionAuditPrompt(exactReview))
+                  setCopyState('copied')
+                } catch {
+                  setCopyState('failed')
+                }
+                window.setTimeout(() => setCopyState('idle'), 2200)
+              }}
+            >
+              {copyState === 'copied'
+                ? 'Prompt copied — paste into your LLM'
+                : copyState === 'failed'
+                  ? 'Could not copy prompt'
+                  : '[copy tx audit prompt]'}
+            </button>
             <CopyTxButton
               isDark={isDark}
               getEntries={() => buildTxLinkEntries({
@@ -173,7 +264,17 @@ export default function PaymentReviewModal() {
           </div>
         </div>
 
-        <div className={`flex gap-3 border-t px-5 py-4 ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
+        <div className={`border-t px-5 py-4 ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
+          <label className={`mb-4 flex items-start gap-3 border p-3 text-xs leading-relaxed ${
+            isDark ? 'border-white/15 bg-white/5' : 'border-gray-200 bg-gray-50'
+          }`}>
+            <input className="mt-0.5" type="checkbox" checked={agreed} onChange={event => setAgreed(event.target.checked)} />
+            <span>
+              I reviewed the chain, destination, amount, beneficiary, calldata, and any token approval.
+              I agree to this exact payload.
+            </span>
+          </label>
+          <div className="flex gap-3">
           <button
             type="button"
             onClick={() => respond(false)}
@@ -185,11 +286,13 @@ export default function PaymentReviewModal() {
           </button>
           <button
             type="button"
+            disabled={!agreed}
             onClick={() => respond(true)}
-            className="flex-1 bg-green-500 py-3 font-bold text-black hover:bg-green-500/90"
+            className="flex-1 bg-green-500 py-3 font-bold text-black hover:bg-green-500/90 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Continue to wallet
+            {safeInfo ? 'Propose to Safe' : 'Continue to wallet'}
           </button>
+          </div>
         </div>
       </div>
     </div>,

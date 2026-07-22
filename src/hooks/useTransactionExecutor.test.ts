@@ -20,10 +20,19 @@ vi.mock('../stores', () => {
       })),
     },
   )
-  return {
-    useTransactionStore: vi.fn(() => ({
+  const useTransactionStore = Object.assign(
+    vi.fn(() => ({
       updateTransaction: mockUpdateTransaction,
     })),
+    {
+      getState: vi.fn(() => ({
+        transactions: [],
+        updateTransaction: mockUpdateTransaction,
+      })),
+    },
+  )
+  return {
+    useTransactionStore,
     useAuthStore,
   }
 })

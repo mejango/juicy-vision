@@ -290,6 +290,14 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds, chainProje
           to: prepare.address,
           data: encodeFunctionData({ abi: prepare.abi, functionName: prepare.functionName, args: prepare.args }),
           approval: { token: erc20, spender: sucker, amount },
+          review: {
+            title: 'Review cross-chain move preparation',
+            label: 'Reclaim project tokens into the source sucker and queue the bridge movement',
+            contractName: 'JBSucker',
+            abi: prepare.abi,
+            functionName: prepare.functionName,
+            args: prepare.args,
+          },
           reverify: async () => {
             // Re-read the reviewed state right before the send: the route must
             // still be valid and the live net quote must not have dropped
@@ -324,6 +332,14 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds, chainProje
           to: toRemote.address,
           data: encodeFunctionData({ abi: toRemote.abi, functionName: toRemote.functionName, args: toRemote.args }),
           value,
+          review: {
+            title: 'Review cross-chain bridge send',
+            label: 'Send the prepared movement to the remote chain',
+            contractName: 'JBSucker',
+            abi: toRemote.abi,
+            functionName: toRemote.functionName,
+            args: toRemote.args,
+          },
           onPhase: phase => setFlow({ kind: 'sending', phase }),
         })
         setFlow({ kind: 'done' })
