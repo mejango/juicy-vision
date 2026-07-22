@@ -4,7 +4,7 @@ import { useAccount, useChainId, useSignMessage } from 'wagmi'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore, useSettingsStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
-import { hasValidWalletSession, getWalletSession, clearWalletSession, signInWithWallet } from '../../services/siwe'
+import { hasValidWalletSession, getWalletSession, clearWalletSession, signInWithWalletClient } from '../../services/siwe'
 import { getPseudoAddress, getSessionId } from '../../services/session'
 import { getEmojiFromAddress, FRUIT_EMOJIS } from './ParticipantAvatars'
 import { useAnchoredPopoverStyle } from '../ui/useAnchoredPopoverStyle'
@@ -298,14 +298,7 @@ export function JuicyIdPopover({
     setIsAuthenticating(true)
     setAuthError(null)
     try {
-      await signInWithWallet(
-        connectedAddress,
-        chainId,
-        async (message: string) => {
-          const signature = await signMessageAsync({ message })
-          return signature
-        }
-      )
+      await signInWithWalletClient(connectedAddress, chainId, signMessageAsync)
       // If we have a pending claim, save the identity now
       if (pendingClaim && username && username.length >= 3) {
         await saveIdentity()
@@ -725,7 +718,7 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
 
   const content = (
     <div className={`flex items-center text-xs ${
-      theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+      theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
     }`}>
       {isSessionStale ? (
         // Stale session - show reset option
@@ -747,8 +740,8 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
             onClick={openWalletPanel}
             className={`flex items-center transition-colors ${
               theme === 'dark'
-                ? 'text-gray-500 hover:text-gray-300'
-                : 'text-gray-400 hover:text-gray-600'
+                ? 'text-gray-400 hover:text-gray-200'
+                : 'text-gray-600 hover:text-gray-800'
             }`}
           >
             {isSignedIn || passkeyWallet || isAuthenticated() ? (
@@ -775,7 +768,7 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
               }}
               className={`ml-1 transition-colors ${
                 theme === 'dark'
-                  ? 'text-juice-orange/70 hover:text-juice-orange'
+                  ? 'text-juice-orange/80 hover:text-juice-orange'
                   : 'text-juice-orange/80 hover:text-juice-orange'
               }`}
             >
@@ -787,8 +780,8 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
             onClick={openWalletPanel}
             className={`transition-colors ${
               theme === 'dark'
-                ? 'text-gray-500 hover:text-gray-300'
-                : 'text-gray-400 hover:text-gray-600'
+                ? 'text-gray-400 hover:text-gray-200'
+                : 'text-gray-600 hover:text-gray-800'
             }`}
           >
             {balancesLoading ? (
@@ -812,8 +805,8 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
             onClick={openWalletPanel}
             className={`flex items-center transition-colors ${
               theme === 'dark'
-                ? 'text-gray-500 hover:text-gray-300'
-                : 'text-gray-400 hover:text-gray-600'
+                ? 'text-gray-400 hover:text-gray-200'
+                : 'text-gray-600 hover:text-gray-800'
             }`}
           >
             <span className="w-1.5 h-1.5 rounded-full border border-current opacity-50 mr-1.5 shrink-0" />
@@ -829,7 +822,7 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
               }}
               className={`ml-1 transition-colors ${
                 theme === 'dark'
-                  ? 'text-juice-orange/70 hover:text-juice-orange'
+                  ? 'text-juice-orange/80 hover:text-juice-orange'
                   : 'text-juice-orange/80 hover:text-juice-orange'
               }`}
             >

@@ -1,4 +1,4 @@
-import { query, queryOne, execute } from '../db/index.ts';
+import { execute, query, queryOne } from '../db/index.ts';
 
 // =============================================================================
 // Types
@@ -103,7 +103,7 @@ function toCreatedProjectChain(row: DbCreatedProjectChain): CreatedProjectChain 
 // =============================================================================
 
 export interface CreateProjectParams {
-  userId?: string;
+  userId: string;
   projectName: string;
   projectUri?: string;
   projectType: ProjectType;
@@ -112,7 +112,9 @@ export interface CreateProjectParams {
   creationBundleId?: string;
 }
 
-export async function createProject(params: CreateProjectParams): Promise<CreatedProject & { chains: CreatedProjectChain[] }> {
+export async function createProject(
+  params: CreateProjectParams,
+): Promise<CreatedProject & { chains: CreatedProjectChain[] }> {
   const {
     userId,
     projectName,
@@ -135,7 +137,14 @@ export async function createProject(params: CreateProjectParams): Promise<Create
       creation_status
     ) VALUES ($1, $2, $3, $4, $5, $6, 'pending')
     RETURNING *`,
-    [userId || null, projectName, projectUri || null, projectType, splitOperator || null, creationBundleId || null]
+    [
+      userId,
+      projectName,
+      projectUri || null,
+      projectType,
+      splitOperator || null,
+      creationBundleId || null,
+    ],
   );
 
   if (!projectRow) {
@@ -153,7 +162,7 @@ export async function createProject(params: CreateProjectParams): Promise<Create
         sucker_status
       ) VALUES ($1, $2, 'pending', 'pending')
       RETURNING *`,
-      [projectRow.id, chainId]
+      [projectRow.id, chainId],
     );
 
     if (chainRow) {
@@ -172,7 +181,10 @@ export interface UpdateProjectParams {
   suckerGroupId?: string;
 }
 
-export async function updateProject(id: string, params: UpdateProjectParams): Promise<CreatedProject> {
+export async function updateProject(
+  id: string,
+  params: UpdateProjectParams,
+): Promise<CreatedProject> {
   const updates: string[] = [];
   const values: unknown[] = [];
   let paramIndex = 1;
@@ -201,7 +213,7 @@ export async function updateProject(id: string, params: UpdateProjectParams): Pr
      SET ${updates.join(', ')}
      WHERE id = $${paramIndex}
      RETURNING *`,
-    values
+    values,
   );
 
   if (!row) {
@@ -222,7 +234,7 @@ export interface UpdateProjectChainParams {
 export async function updateProjectChain(
   createdProjectId: string,
   chainId: number,
-  params: UpdateProjectChainParams
+  params: UpdateProjectChainParams,
 ): Promise<CreatedProjectChain> {
   const updates: string[] = [];
   const values: unknown[] = [];
@@ -265,7 +277,7 @@ export async function updateProjectChain(
      SET ${updates.join(', ')}
      WHERE created_project_id = $${paramIndex} AND chain_id = $${paramIndex + 1}
      RETURNING *`,
-    values
+    values,
   );
 
   if (!row) {
@@ -278,7 +290,7 @@ export async function updateProjectChain(
 export async function getProjectById(id: string): Promise<CreatedProject | null> {
   const row = await queryOne<DbCreatedProject>(
     `SELECT * FROM created_projects WHERE id = $1`,
-    [id]
+    [id],
   );
 
   return row ? toCreatedProject(row) : null;
@@ -289,7 +301,7 @@ export async function getProjectChains(createdProjectId: string): Promise<Create
     `SELECT * FROM created_project_chains
      WHERE created_project_id = $1
      ORDER BY chain_id`,
-    [createdProjectId]
+    [createdProjectId],
   );
 
   return rows.map(toCreatedProjectChain);
@@ -303,7 +315,7 @@ export interface GetProjectsByUserOptions {
 
 export async function getProjectsByUser(
   userId: string,
-  options: GetProjectsByUserOptions = {}
+  options: GetProjectsByUserOptions = {},
 ): Promise<(CreatedProject & { chains: CreatedProjectChain[] })[]> {
   const { limit = 50, offset = 0, projectType } = options;
 
@@ -323,7 +335,7 @@ export async function getProjectsByUser(
      ${whereClause}
      ORDER BY created_at DESC
      LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`,
-    values
+    values,
   );
 
   // Fetch chains for each project
@@ -334,7 +346,7 @@ export async function getProjectsByUser(
         ...toCreatedProject(row),
         chains,
       };
-    })
+    }),
   );
 
   return projects;
@@ -357,7 +369,7 @@ export interface RevnetStageConfig {
 
 export async function saveRevnetStages(
   createdProjectId: string,
-  stages: Omit<RevnetStageConfig, 'createdProjectId'>[]
+  stages: Omit<RevnetStageConfig, 'createdProjectId'>[],
 ): Promise<void> {
   for (const stage of stages) {
     await execute(
@@ -388,7 +400,7 @@ export async function saveRevnetStages(
         stage.issuanceDecayFrequency,
         stage.issuanceDecayPercent,
         stage.cashOutTaxRate,
-      ]
+      ],
     );
   }
 }
@@ -410,10 +422,10 @@ export async function getRevnetStages(createdProjectId: string): Promise<RevnetS
     `SELECT * FROM created_revnet_stages
      WHERE created_project_id = $1
      ORDER BY stage_index`,
-    [createdProjectId]
+    [createdProjectId],
   );
 
-  return rows.map(row => ({
+  return rows.map((row) => ({
     createdProjectId: row.created_project_id,
     stageNumber: row.stage_index,
     startsAtOrAfter: row.starts_at_or_after,

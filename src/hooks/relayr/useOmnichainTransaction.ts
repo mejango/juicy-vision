@@ -30,6 +30,16 @@ type BuiltControllerTransaction = {
   value: string
 }
 
+export function submitManagedControllerBundle(
+  transactions: BuiltControllerTransaction[],
+  activeAddress: string,
+  managedAddress: string,
+  submit?: typeof createManagedRelayrBundle,
+): Promise<{ bundleId: string }> {
+  if (submit) return submit(transactions, activeAddress, managedAddress)
+  return createManagedRelayrBundle(transactions, activeAddress, managedAddress)
+}
+
 export async function preflightControllerTransactions(params: {
   transactions: BuiltControllerTransaction[]
   chainIds: number[]
@@ -257,7 +267,7 @@ export function useOmnichainTransaction(
       console.log(`Smart account routing: ${managedAddress}`)
 
       assertTransactionAccountUnchanged(activeAddress, latestManagedAddress.current)
-      const result = await createManagedRelayrBundle(
+      const result = await submitManagedControllerBundle(
         transactions,
         activeAddress,
         managedAddress

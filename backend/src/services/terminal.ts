@@ -364,7 +364,9 @@ export async function createSession(
  * Get payment session by ID
  */
 export async function getSession(sessionId: string): Promise<PaymentSession | null> {
-  const row = await queryOne<SessionRow>(`SELECT * FROM payment_sessions WHERE id = $1`, [sessionId]);
+  const row = await queryOne<SessionRow>(`SELECT * FROM payment_sessions WHERE id = $1`, [
+    sessionId,
+  ]);
 
   return row ? mapSessionRow(row) : null;
 }
@@ -375,12 +377,14 @@ export async function getSession(sessionId: string): Promise<PaymentSession | nu
 export async function getSessionWithDetails(
   sessionId: string,
 ): Promise<PaymentSessionWithDetails | null> {
-  const row = await queryOne<SessionRow & {
-    merchant_id: string;
-    merchant_name: string;
-    project_id: number;
-    chain_id: number;
-  }>(
+  const row = await queryOne<
+    SessionRow & {
+      merchant_id: string;
+      merchant_name: string;
+      project_id: number;
+      chain_id: number;
+    }
+  >(
     `SELECT ps.*,
             td.merchant_id,
             u.email as merchant_name,
@@ -451,12 +455,14 @@ export async function getMerchantSessions(
   sql += ` ORDER BY ps.created_at DESC LIMIT $${values.length + 1}`;
   values.push(limit);
 
-  const rows = await query<SessionRow & {
-    merchant_id: string;
-    merchant_name: string;
-    project_id: number;
-    chain_id: number;
-  }>(sql, values);
+  const rows = await query<
+    SessionRow & {
+      merchant_id: string;
+      merchant_name: string;
+      project_id: number;
+      chain_id: number;
+    }
+  >(sql, values);
 
   return rows.map((row) => ({
     ...mapSessionRow(row),

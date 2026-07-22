@@ -1,39 +1,32 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
-import { nodePolyfills } from 'vite-plugin-node-polyfills'
 import { execSync } from 'child_process'
 
-// Get build identifier - try git, then Railway env, then timestamp
+const buildTime = () => {
+  const epoch = process.env.SOURCE_DATE_EPOCH
+  if (epoch && /^\d+$/.test(epoch)) return new Date(Number(epoch) * 1000).toISOString()
+  return new Date().toISOString()
+}
+
+// Prefer CI-provided immutable revision metadata, then use git for local builds.
 const getBuildId = () => {
-  // Try git first (works locally)
+  const supplied = process.env.BUILD_SHA || process.env.GITHUB_SHA || process.env.RAILWAY_GIT_COMMIT_SHA
+  if (supplied) return supplied.slice(0, 12)
   try {
-    return execSync('git rev-parse --short HEAD').toString().trim()
+    return execSync('git rev-parse --short=12 HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim()
   } catch {
-    // Railway provides commit SHA as env var
-    if (process.env.RAILWAY_GIT_COMMIT_SHA) {
-      return process.env.RAILWAY_GIT_COMMIT_SHA.slice(0, 7)
-    }
-    // Fallback to timestamp-based ID
-    return new Date().toISOString().slice(5, 16).replace(/[-T:]/g, '')
+    return 'source-unknown'
   }
 }
 
 export default defineConfig({
   define: {
     __BUILD_HASH__: JSON.stringify(getBuildId()),
-    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+    __BUILD_TIME__: JSON.stringify(buildTime()),
   },
   plugins: [
     react(),
-    nodePolyfills({
-      include: ['buffer', 'process', 'util', 'stream', 'crypto'],
-      globals: {
-        Buffer: true,
-        global: true,
-        process: true,
-      },
-    }),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icons/*.png', 'mascot.svg'],
@@ -88,9 +81,13 @@ export default defineConfig({
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-ui': ['react-markdown', 'react-syntax-highlighter', 'remark-gfm', 'rehype-raw'],
+          'vendor-ui': ['react-markdown', 'react-syntax-highlighter', 'remark-gfm'],
           'vendor-state': ['zustand', '@tanstack/react-query'],
           'vendor-web3': ['viem'],
+          // Keep Recharts' mutually dependent cartesian modules together.
+          // Splitting these across lazy page chunks can create a circular
+          // execution-order dependency in Rollup's output.
+          'vendor-charts': ['recharts'],
         }
       }
     }

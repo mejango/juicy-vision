@@ -1,4 +1,4 @@
-import { query, queryOne, execute } from '../db/index.ts';
+import { execute, query, queryOne } from '../db/index.ts';
 import type { ConfidenceLevel } from './claude.ts';
 
 // ============================================================================
@@ -52,7 +52,7 @@ export async function createEscalation(params: {
       params.aiResponse,
       params.confidenceLevel,
       params.confidenceReason ?? null,
-    ]
+    ],
   );
 
   if (!result) {
@@ -87,7 +87,7 @@ export async function getEscalationQueue(params?: {
   // Get total count
   const countResult = await queryOne<{ count: string }>(
     `SELECT COUNT(*) as count FROM ai_escalations e ${whereClause}`,
-    args
+    args,
   );
   const total = parseInt(countResult?.count ?? '0', 10);
 
@@ -102,7 +102,7 @@ export async function getEscalationQueue(params?: {
     ${whereClause}
     ORDER BY e.created_at DESC
     LIMIT $${argIndex++} OFFSET $${argIndex++}`,
-    [...args, limit, offset]
+    [...args, limit, offset],
   );
 
   return { escalations, total };
@@ -117,7 +117,7 @@ export async function getEscalation(id: string): Promise<{
 }> {
   const escalation = await queryOne<Escalation>(
     `SELECT * FROM ai_escalations WHERE id = $1`,
-    [id]
+    [id],
   );
 
   if (!escalation) {
@@ -138,7 +138,7 @@ export async function getEscalation(id: string): Promise<{
         (SELECT created_at + INTERVAL '5 minutes' FROM flagged)
     ORDER BY created_at ASC
     LIMIT 20`,
-    [escalation.message_id, escalation.chat_id]
+    [escalation.message_id, escalation.chat_id],
   );
 
   return { escalation, context };
@@ -170,7 +170,7 @@ export async function resolveEscalation(params: {
       params.adminCorrection ?? null,
       params.reviewNotes ?? null,
       params.id,
-    ]
+    ],
   );
 
   return result;
@@ -197,7 +197,7 @@ export async function getEscalationStats(): Promise<{
       COUNT(*) FILTER (WHERE status = 'corrected') as corrected,
       AVG(EXTRACT(EPOCH FROM (reviewed_at - created_at)) / 3600)
         FILTER (WHERE reviewed_at IS NOT NULL) as avg_review_hours
-    FROM ai_escalations`
+    FROM ai_escalations`,
   );
 
   return {
@@ -220,6 +220,6 @@ export async function updateMessageConfidence(params: {
     `UPDATE multi_chat_messages
     SET ai_confidence = $1, ai_confidence_reason = $2
     WHERE id = $3`,
-    [params.confidenceLevel, params.confidenceReason ?? null, params.messageId]
+    [params.confidenceLevel, params.confidenceReason ?? null, params.messageId],
   );
 }

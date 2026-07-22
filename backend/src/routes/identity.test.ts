@@ -87,13 +87,13 @@ function getAllUserAddresses(address: string): {
 
   if (primary) {
     const linked = Array.from(mockLinks.values()).filter(
-      (l) => l.primaryAddress.toLowerCase() === primary.toLowerCase()
+      (l) => l.primaryAddress.toLowerCase() === primary.toLowerCase(),
     );
     return { primaryAddress: primary, linkedAddresses: linked };
   }
 
   const linked = Array.from(mockLinks.values()).filter(
-    (l) => l.primaryAddress.toLowerCase() === address.toLowerCase()
+    (l) => l.primaryAddress.toLowerCase() === address.toLowerCase(),
   );
   return { primaryAddress: address, linkedAddresses: linked };
 }
@@ -181,7 +181,7 @@ function createTestApp() {
     if (!mockIdentities.has(primaryLower)) {
       return c.json(
         { success: false, error: 'Primary address must have a JuicyID before linking' },
-        400
+        400,
       );
     }
 
@@ -195,7 +195,7 @@ function createTestApp() {
           success: false,
           error: 'Linked address already has a JuicyID. Must delete it before linking.',
         },
-        400
+        400,
       );
     }
 
@@ -226,7 +226,7 @@ function createTestApp() {
     if (!link) {
       return c.json(
         { success: false, error: 'Unable to unlink. Address not found or unauthorized.' },
-        400
+        400,
       );
     }
 
@@ -237,7 +237,7 @@ function createTestApp() {
     ) {
       return c.json(
         { success: false, error: 'Unable to unlink. Address not found or unauthorized.' },
-        400
+        400,
       );
     }
 

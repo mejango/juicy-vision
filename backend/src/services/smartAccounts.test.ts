@@ -9,7 +9,7 @@
  * - Edge cases and security testing
  */
 
-import { assertEquals, assertExists, assertRejects } from 'std/assert/mod.ts';
+import { assertEquals, assertExists } from 'std/assert/mod.ts';
 import { z } from 'zod';
 
 // ============================================================================
@@ -31,8 +31,8 @@ const ENTRY_POINT = '0x0000000071727De22E5E9d8BAf0edAc6f37da032' as const;
 const TransferRequestSchema = z.object({
   userId: z.string().uuid(),
   chainId: z.number().int().refine(
-    val => SUPPORTED_CHAINS.includes(val as typeof SUPPORTED_CHAINS[number]),
-    'Unsupported chain'
+    (val) => SUPPORTED_CHAINS.includes(val as typeof SUPPORTED_CHAINS[number]),
+    'Unsupported chain',
   ),
   tokenAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/),
   tokenSymbol: z.string().min(1).max(20),
@@ -427,7 +427,7 @@ Deno.test('SmartAccounts - Balance Sufficiency', async (t) => {
 
   await t.step('handles very large amounts', () => {
     const largeBalance = 10000000000000000000000000000n; // 10 billion ETH in wei
-    const largeAmount = 1000000000000000000000000000n;   // 1 billion ETH in wei
+    const largeAmount = 1000000000000000000000000000n; // 1 billion ETH in wei
     assertEquals(checkSufficiency(largeBalance, largeAmount), true);
   });
 });
@@ -516,7 +516,7 @@ Deno.test('SmartAccounts - IDOR Protection', async (t) => {
   // Simulating ownership check
   const canCancelTransfer = (
     transferOwnerId: string,
-    requestingUserId: string
+    requestingUserId: string,
   ): boolean => {
     return transferOwnerId === requestingUserId;
   };
@@ -581,9 +581,9 @@ Deno.test('SmartAccounts - Export Blocker Detection', async (t) => {
 
   const canExport = (blockers: ExportBlockers): boolean => {
     return !blockers.hasPendingTransfers &&
-           !blockers.hasPendingWithdrawals &&
-           !blockers.hasActiveProjectRoles &&
-           !blockers.hasInsufficientGasForExport;
+      !blockers.hasPendingWithdrawals &&
+      !blockers.hasActiveProjectRoles &&
+      !blockers.hasInsufficientGasForExport;
   };
 
   await t.step('allows export with no blockers', () => {
@@ -647,7 +647,8 @@ Deno.test('SmartAccounts - Amount Conversion', async (t) => {
   });
 
   await t.step('handles very large amounts', () => {
-    const largeAmount = '115792089237316195423570985008687907853269984665640564039457584007913129639935';
+    const largeAmount =
+      '115792089237316195423570985008687907853269984665640564039457584007913129639935';
     const bigintAmount = BigInt(largeAmount);
     assertEquals(bigintAmount > 0n, true);
   });
@@ -725,11 +726,11 @@ Deno.test('SmartAccounts - Fuzz Test Amount Inputs', async (t) => {
         return false;
       }
     },
-    'Invalid amount'
+    'Invalid amount',
   );
 
   await t.step('rejects SQL injection in amount', () => {
-    assertEquals(AmountSchema.safeParse("1; DROP TABLE--").success, false);
+    assertEquals(AmountSchema.safeParse('1; DROP TABLE--').success, false);
   });
 
   await t.step('rejects negative amounts', () => {
@@ -761,20 +762,27 @@ Deno.test('SmartAccounts - Concurrent Transfer Prevention', async (t) => {
   // Simulate checking for existing pending transfers
   const hasPendingTransfer = (
     existingTransfers: Array<{ status: string; tokenAddress: string }>,
-    newTokenAddress: string
+    newTokenAddress: string,
   ): boolean => {
     return existingTransfers.some(
-      (t) => t.status === 'pending' && t.tokenAddress.toLowerCase() === newTokenAddress.toLowerCase()
+      (t) =>
+        t.status === 'pending' && t.tokenAddress.toLowerCase() === newTokenAddress.toLowerCase(),
     );
   };
 
   await t.step('detects existing pending transfer for same token', () => {
-    const existing = [{ status: 'pending', tokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' }];
+    const existing = [{
+      status: 'pending',
+      tokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    }];
     assertEquals(hasPendingTransfer(existing, '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'), true);
   });
 
   await t.step('allows transfer for different token', () => {
-    const existing = [{ status: 'pending', tokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' }];
+    const existing = [{
+      status: 'pending',
+      tokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    }];
     assertEquals(hasPendingTransfer(existing, '0xdAC17F958D2ee523a2206206994597C13D831ec7'), false);
   });
 
@@ -784,17 +792,26 @@ Deno.test('SmartAccounts - Concurrent Transfer Prevention', async (t) => {
   });
 
   await t.step('ignores completed transfers', () => {
-    const existing = [{ status: 'completed', tokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' }];
+    const existing = [{
+      status: 'completed',
+      tokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    }];
     assertEquals(hasPendingTransfer(existing, '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'), false);
   });
 
   await t.step('ignores cancelled transfers', () => {
-    const existing = [{ status: 'cancelled', tokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' }];
+    const existing = [{
+      status: 'cancelled',
+      tokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    }];
     assertEquals(hasPendingTransfer(existing, '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'), false);
   });
 
   await t.step('is case-insensitive for addresses', () => {
-    const existing = [{ status: 'pending', tokenAddress: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48' }];
+    const existing = [{
+      status: 'pending',
+      tokenAddress: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+    }];
     assertEquals(hasPendingTransfer(existing, '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'), true);
   });
 });

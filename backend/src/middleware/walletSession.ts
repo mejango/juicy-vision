@@ -6,7 +6,7 @@
  */
 
 import { Context, Next } from 'hono';
-import { query, queryOne } from '../db/index.ts';
+import { queryOne } from '../db/index.ts';
 import { getPseudoAddress } from '../utils/crypto.ts';
 import { getConfig } from '../utils/config.ts';
 import { getPrimaryChainId } from '@shared/chains.ts';
@@ -29,7 +29,7 @@ declare module 'hono' {
  */
 export async function extractWalletSession(
   authHeader: string | undefined,
-  sessionToken: string | undefined
+  sessionToken: string | undefined,
 ): Promise<WalletSession | null> {
   const token = sessionToken || authHeader?.replace('Bearer ', '');
   if (!token) return null;
@@ -41,7 +41,10 @@ export async function extractWalletSession(
   const jwtResult = await validateSession(token);
   if (jwtResult) {
     const config = getConfig();
-    const smartAccount = await getOrCreateSmartAccount(jwtResult.user.id, getPrimaryChainId(config.isTestnet));
+    const smartAccount = await getOrCreateSmartAccount(
+      jwtResult.user.id,
+      getPrimaryChainId(config.isTestnet),
+    );
     return {
       address: smartAccount.address,
       userId: jwtResult.user.id,
@@ -55,7 +58,7 @@ export async function extractWalletSession(
   }>(
     `SELECT wallet_address, expires_at FROM wallet_sessions
      WHERE session_token = $1 AND expires_at > NOW()`,
-    [token]
+    [token],
   );
 
   if (session) {
@@ -65,7 +68,7 @@ export async function extractWalletSession(
        JOIN multi_chat_members mcm ON mcm.member_user_id = u.id
        WHERE mcm.member_address = $1
        LIMIT 1`,
-      [session.wallet_address]
+      [session.wallet_address],
     );
 
     return {
@@ -107,7 +110,10 @@ export async function requireWalletOrAuth(c: Context, next: Next) {
     // User authenticated - get their smart account address
     const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
     const config = getConfig();
-    const smartAccount = await getOrCreateSmartAccount(user.id, getPrimaryChainId(config.isTestnet));
+    const smartAccount = await getOrCreateSmartAccount(
+      user.id,
+      getPrimaryChainId(config.isTestnet),
+    );
     c.set('walletSession', { address: smartAccount.address, userId: user.id } as WalletSession);
     return next();
   }
@@ -151,7 +157,10 @@ export async function optionalWalletSession(c: Context, next: Next) {
   if (user) {
     const { getOrCreateSmartAccount } = await import('../services/smartAccounts.ts');
     const config = getConfig();
-    const smartAccount = await getOrCreateSmartAccount(user.id, getPrimaryChainId(config.isTestnet));
+    const smartAccount = await getOrCreateSmartAccount(
+      user.id,
+      getPrimaryChainId(config.isTestnet),
+    );
     c.set('walletSession', { address: smartAccount.address, userId: user.id } as WalletSession);
     return next();
   }

@@ -23,7 +23,7 @@ import { buildSplitGroup } from '../../utils/splitSafety'
 import { fetchProjectSplits, type JBSplitData } from '../../services/bendystraw'
 
 // Split data as used in the form
-interface FormSplit {
+export interface FormSplit {
   percent: string // 0-100
   beneficiary: string
   projectId: string
@@ -60,6 +60,68 @@ interface UseOmnichainSetSplitsReturn {
   isComplete: boolean
   hasError: boolean
   reset: () => void
+}
+
+export function submitManagedSplitsBundle(
+  transactions: RelayrTransaction[],
+  activeAddress: string,
+  managedAddress: string,
+  submit?: typeof createManagedRelayrBundle,
+): Promise<{ bundleId: string }> {
+  if (submit) return submit(transactions, activeAddress, managedAddress)
+  return createManagedRelayrBundle(transactions, activeAddress, managedAddress)
+}
+
+/**
+ * Pure transaction boundary for the controller's V6 setSplitGroupsOf call.
+ * Keeping construction separate from RPC discovery lets tests pin the exact
+ * project, ruleset, group IDs, and contract-shaped split tuples handed to the
+ * reviewed/simulated Relayr path.
+ */
+export function buildSetSplitsTransaction(params: {
+  chainId: number
+  projectId: number
+  rulesetId: string
+  payoutGroupId: string | null
+  payoutSplits: FormSplit[]
+  reservedSplits: FormSplit[]
+  controller: Address
+}): {
+  chain: number
+  target: Address
+  data: `0x${string}`
+  value: '0'
+} {
+  if (!params.payoutGroupId) {
+    throw new Error(`Payout split group unavailable on chain ${params.chainId}`)
+  }
+  const splitGroups = [
+    {
+      groupId: BigInt(params.payoutGroupId),
+      splits: buildSplitGroup(params.payoutSplits, 'Payout splits', {
+        kind: 'payout',
+        sourceProjectId: params.projectId,
+      }),
+    },
+    {
+      groupId: SPLIT_GROUP_RESERVED,
+      splits: buildSplitGroup(params.reservedSplits, 'Reserved-token splits', {
+        kind: 'reserved',
+        sourceProjectId: params.projectId,
+      }),
+    },
+  ]
+
+  return {
+    chain: params.chainId,
+    target: params.controller,
+    data: encodeFunctionData({
+      abi: JB_CONTROLLER_ABI,
+      functionName: 'setSplitGroupsOf',
+      args: [BigInt(params.projectId), BigInt(params.rulesetId), splitGroups],
+    }),
+    value: '0',
+  }
 }
 
 export function useOmnichainSetSplits(
@@ -229,56 +291,23 @@ export function useOmnichainSetSplits(
 
       // Build transactions for each chain using the controller
       const transactions = await Promise.all(chainDataWithControllers.map(async chain => {
-        if (!chain.payoutGroupId) throw new Error(`Payout split group unavailable on chain ${chain.chainId}`)
-        const builtPayoutSplits = buildSplitGroup(payoutSplits, 'Payout splits', {
-          kind: 'payout',
-          sourceProjectId: chain.projectId,
-        })
-        const builtReservedSplits = buildSplitGroup(reservedSplits, 'Reserved-token splits', {
-          kind: 'reserved',
-          sourceProjectId: chain.projectId,
-        })
-        // Build split groups
-        const splitGroups: Array<{
-          groupId: bigint
-          splits: ReturnType<typeof buildSplitGroup>
-        }> = []
-
-        // Add payout splits group (keyed by token address)
-        splitGroups.push({
-          groupId: BigInt(chain.payoutGroupId),
-          splits: builtPayoutSplits,
-        })
-
-        // Add reserved splits group (always group ID 1)
-        splitGroups.push({
-          groupId: SPLIT_GROUP_RESERVED,
-          splits: builtReservedSplits,
-        })
-
-        // Encode the setSplitGroupsOf call targeting the controller
-        const calldata = encodeFunctionData({
-          abi: JB_CONTROLLER_ABI,
-          functionName: 'setSplitGroupsOf',
-          args: [
-            BigInt(chain.projectId),
-            BigInt(chain.rulesetId),
-            splitGroups,
-          ],
+        const transaction = buildSetSplitsTransaction({
+          chainId: chain.chainId,
+          projectId: chain.projectId,
+          rulesetId: chain.rulesetId,
+          payoutGroupId: chain.payoutGroupId,
+          payoutSplits,
+          reservedSplits,
+          controller: chain.controller,
         })
 
         await chain.publicClient.call({
           account: simulationAccount,
-          to: chain.controller,
-          data: calldata,
+          to: transaction.target,
+          data: transaction.data,
         })
 
-        return {
-          chain: chain.chainId,
-          target: chain.controller, // Use controller, not JBSplits
-          data: calldata,
-          value: '0',
-        }
+        return transaction
       }))
 
       // Close the gap between preview construction and handing the bundle to Relayr.
@@ -306,7 +335,7 @@ export function useOmnichainSetSplits(
       }))
 
       assertTransactionAccountUnchanged(activeAddress, latestManagedAddress.current)
-      const result = await createManagedRelayrBundle(
+      const result = await submitManagedSplitsBundle(
         relayrTransactions,
         activeAddress,
         managedAddress

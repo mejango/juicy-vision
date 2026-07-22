@@ -4,7 +4,7 @@ import { estimateTokens } from './summarization.ts';
 import { OMNICHAIN_CONTEXT, OMNICHAIN_TOOLS } from '../context/omnichain.ts';
 import { handleOmnichainTool } from './omnichain.ts';
 import { SYSTEM_PROMPT } from '@shared/prompts.ts';
-import { recordToolUsage, recordInvocation } from './aiMetrics.ts';
+import { recordInvocation, recordToolUsage } from './aiMetrics.ts';
 
 // ============================================================================
 // Rate Limiting (PostgreSQL-based - see rateLimit.ts)
@@ -62,7 +62,7 @@ const SIMPLE_INTENT_PATTERNS = [
 export function selectModel(
   messages: ChatMessage[],
   tools: ToolDefinition[] | undefined,
-  forceModel?: ClaudeModel
+  forceModel?: ClaudeModel,
 ): ClaudeModel {
   // Allow explicit model override
   if (forceModel && forceModel in MODEL_COSTS) {
@@ -70,7 +70,7 @@ export function selectModel(
   }
 
   // Get the last user message for intent detection
-  const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+  const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
   if (!lastUserMessage) {
     return DEFAULT_MODEL;
   }
@@ -207,7 +207,9 @@ export interface ClaudeRequest {
 // To edit the prompt, update /shared/prompts.ts
 
 // Import context management (lazy to avoid circular deps)
-let _buildEnhancedSystemPrompt: typeof import('./contextManager.ts').buildEnhancedSystemPrompt | null = null;
+let _buildEnhancedSystemPrompt:
+  | typeof import('./contextManager.ts').buildEnhancedSystemPrompt
+  | null = null;
 async function getBuildEnhancedSystemPrompt() {
   if (!_buildEnhancedSystemPrompt) {
     const contextManager = await import('./contextManager.ts');
@@ -244,12 +246,12 @@ function buildSystemPromptSync(customSystem?: string, includeOmnichain = true): 
  */
 export async function buildEnhancedPrompt(options: {
   customSystem?: string;
-  messages?: ChatMessage[];  // Pass messages for intent detection (saves tokens)
+  messages?: ChatMessage[]; // Pass messages for intent detection (saves tokens)
   chatId?: string;
   userId?: string;
   includeOmnichain?: boolean;
-  useSemanticDetection?: boolean;  // Enable semantic intent detection (Phase 2)
-  useSubModules?: boolean;  // Enable granular sub-module loading (Phase 1)
+  useSemanticDetection?: boolean; // Enable semantic intent detection (Phase 2)
+  useSubModules?: boolean; // Enable granular sub-module loading (Phase 1)
 }): Promise<{
   systemPrompt: string;
   context: import('./contextManager.ts').OptimizedContext | null;
@@ -269,7 +271,7 @@ export async function buildEnhancedPrompt(options: {
         // Get the last user message for semantic analysis
         const lastUserMessage = [...options.messages]
           .reverse()
-          .find(m => m.role === 'user');
+          .find((m) => m.role === 'user');
 
         if (lastUserMessage && typeof lastUserMessage.content === 'string') {
           semanticResult = await detectSemanticIntents(lastUserMessage.content);
@@ -359,7 +361,11 @@ function mapContentBlock(
       type: 'image' as const,
       source: {
         type: 'base64' as const,
-        media_type: block.source.media_type as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+        media_type: block.source.media_type as
+          | 'image/jpeg'
+          | 'image/png'
+          | 'image/gif'
+          | 'image/webp',
         data: block.source.data,
       },
     };
@@ -428,13 +434,13 @@ export function parseConfidence(content: string): {
 
 export async function sendMessage(
   userId: string,
-  request: ClaudeRequest
+  request: ClaudeRequest,
 ): Promise<ClaudeResponse> {
   // Check rate limit via PostgreSQL
   const rateLimit = await checkDbRateLimit('aiInvoke', userId);
   if (!rateLimit.allowed) {
     throw new Error(
-      `Rate limit exceeded. Resets at ${new Date(rateLimit.resetAt * 1000).toISOString()}`
+      `Rate limit exceeded. Resets at ${new Date(rateLimit.resetAt * 1000).toISOString()}`,
     );
   }
 
@@ -446,9 +452,7 @@ export async function sendMessage(
   const systemPrompt = buildSystemPromptSync(request.system, includeOmnichain);
 
   // Get all tools including omnichain tools
-  const allTools = includeOmnichain
-    ? getAllTools(request.tools)
-    : request.tools ?? [];
+  const allTools = includeOmnichain ? getAllTools(request.tools) : request.tools ?? [];
 
   // Select appropriate model based on query complexity
   const model = selectModel(request.messages, allTools);
@@ -516,22 +520,20 @@ export async function sendMessage(
 export async function* streamMessage(
   userId: string,
   request: ClaudeRequest,
-  userApiKey?: string // Optional user-provided API key (BYOK)
+  userApiKey?: string, // Optional user-provided API key (BYOK)
 ): AsyncGenerator<{ type: 'text' | 'tool_use' | 'usage'; data: unknown }> {
   // Skip server rate limiting if user provides their own key
   if (!userApiKey) {
     const rateLimit = await checkDbRateLimit('aiInvoke', userId);
     if (!rateLimit.allowed) {
       throw new Error(
-        `Rate limit exceeded. Resets at ${new Date(rateLimit.resetAt * 1000).toISOString()}`
+        `Rate limit exceeded. Resets at ${new Date(rateLimit.resetAt * 1000).toISOString()}`,
       );
     }
   }
 
   // Create client: per-request with user key, or singleton with server key
-  const client = userApiKey
-    ? new Anthropic({ apiKey: userApiKey })
-    : getAnthropicClient();
+  const client = userApiKey ? new Anthropic({ apiKey: userApiKey }) : getAnthropicClient();
   const includeOmnichain = request.includeOmnichainContext !== false;
 
   // Build system prompt with omnichain knowledge
@@ -539,9 +541,7 @@ export async function* streamMessage(
   const systemPrompt = buildSystemPromptSync(request.system, includeOmnichain);
 
   // Get all tools including omnichain tools
-  const allTools = includeOmnichain
-    ? getAllTools(request.tools)
-    : request.tools ?? [];
+  const allTools = includeOmnichain ? getAllTools(request.tools) : request.tools ?? [];
 
   // Select appropriate model based on query complexity
   const model = selectModel(request.messages, allTools);
@@ -640,7 +640,9 @@ export async function* streamMessage(
   }
 
   // Rate limit already checked at start; usage tracked via aiMetrics
-  console.log(`[Claude] Stream complete: ${eventCount} events, ${inputTokens} input tokens, ${outputTokens} output tokens, stopReason: ${stopReason}`);
+  console.log(
+    `[Claude] Stream complete: ${eventCount} events, ${inputTokens} input tokens, ${outputTokens} output tokens, stopReason: ${stopReason}`,
+  );
   yield {
     type: 'usage',
     data: { inputTokens, outputTokens, stopReason },
@@ -678,8 +680,10 @@ export async function* runToolLoop(
   userId: string,
   request: ClaudeRequest,
   userApiKey?: string,
-  maxIterations = 10 // Safety limit to prevent infinite loops
-): AsyncGenerator<{ type: 'text' | 'tool_use' | 'tool_result' | 'usage' | 'thinking'; data: unknown }> {
+  maxIterations = 10, // Safety limit to prevent infinite loops
+): AsyncGenerator<
+  { type: 'text' | 'tool_use' | 'tool_result' | 'usage' | 'thinking'; data: unknown }
+> {
   // Build the conversation messages (mutable copy)
   const messages: ChatMessage[] = [...request.messages];
 
@@ -708,8 +712,10 @@ export async function* runToolLoop(
         textContent += textChunk;
         // Add space between API turns if needed (only at start of new turn, not between streaming tokens)
         // This fixes "you.Let me try" where previous turn ended without space before this turn starts
-        if (isFirstTextChunkThisTurn && fullResponseContent &&
-            !fullResponseContent.match(/[\s\n]$/) && !textChunk.match(/^[\s\n]/)) {
+        if (
+          isFirstTextChunkThisTurn && fullResponseContent &&
+          !fullResponseContent.match(/[\s\n]$/) && !textChunk.match(/^[\s\n]/)
+        ) {
           fullResponseContent += ' ';
           yield { type: 'text', data: ' ' }; // Yield space to client
         }
@@ -723,7 +729,11 @@ export async function* runToolLoop(
         // Notify that Claude is using a tool
         yield { type: 'thinking', data: `Using tool: ${toolCall.name}` };
       } else if (event.type === 'usage') {
-        const usage = event.data as { inputTokens: number; outputTokens: number; stopReason: string };
+        const usage = event.data as {
+          inputTokens: number;
+          outputTokens: number;
+          stopReason: string;
+        };
         totalInputTokens += usage.inputTokens;
         totalOutputTokens += usage.outputTokens;
         stopReason = usage.stopReason;
@@ -736,7 +746,14 @@ export async function* runToolLoop(
     }
 
     // Build the assistant message with text and tool use blocks
-    const assistantContent: Array<{ type: 'text'; text: string } | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }> = [];
+    const assistantContent: Array<
+      { type: 'text'; text: string } | {
+        type: 'tool_use';
+        id: string;
+        name: string;
+        input: Record<string, unknown>;
+      }
+    > = [];
 
     if (textContent) {
       assistantContent.push({ type: 'text', text: textContent });
@@ -782,7 +799,10 @@ export async function* runToolLoop(
           durationMs: Date.now() - toolStart,
         });
 
-        yield { type: 'tool_result', data: { id: toolCall.id, name: toolCall.name, result: resultStr } };
+        yield {
+          type: 'tool_result',
+          data: { id: toolCall.id, name: toolCall.name, result: resultStr },
+        };
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Tool execution failed';
         toolResults.push({
@@ -800,14 +820,17 @@ export async function* runToolLoop(
           errorMessage: errorMsg,
         });
 
-        yield { type: 'tool_result', data: { id: toolCall.id, name: toolCall.name, error: errorMsg } };
+        yield {
+          type: 'tool_result',
+          data: { id: toolCall.id, name: toolCall.name, error: errorMsg },
+        };
       }
     }
 
     // Add tool results as user message
     messages.push({
       role: 'user',
-      content: toolResults.map(tr => ({
+      content: toolResults.map((tr) => ({
         type: 'tool_result',
         tool_use_id: tr.tool_use_id,
         content: tr.content,
@@ -848,8 +871,10 @@ export function streamMessageWithTools(
   userId: string,
   request: ClaudeRequest,
   userApiKey?: string,
-  maxIterations = 10
-): AsyncGenerator<{ type: 'text' | 'tool_use' | 'tool_result' | 'usage' | 'thinking'; data: unknown }> {
+  maxIterations = 10,
+): AsyncGenerator<
+  { type: 'text' | 'tool_use' | 'tool_result' | 'usage' | 'thinking'; data: unknown }
+> {
   return runToolLoop(streamMessage, userId, request, userApiKey, maxIterations);
 }
 

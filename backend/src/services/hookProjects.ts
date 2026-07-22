@@ -1,6 +1,6 @@
-import { query, queryOne, execute, transaction } from '../db/index.ts';
+import { execute, query, queryOne, transaction } from '../db/index.ts';
 import { createHash } from 'node:crypto';
-import { getHookTemplate, customizeTemplate, type HookType } from '../templates/hooks/index.ts';
+import { customizeTemplate, getHookTemplate, type HookType } from '../templates/hooks/index.ts';
 
 // ============================================================================
 // Types
@@ -105,7 +105,7 @@ export async function createProject(input: CreateProjectInput): Promise<HookProj
       `INSERT INTO hook_projects (user_address, name, project_type, description)
        VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [input.userAddress, input.name, input.projectType, input.description || null]
+      [input.userAddress, input.name, input.projectType, input.description || null],
     );
 
     const project = result.rows[0];
@@ -131,7 +131,7 @@ export async function createProject(input: CreateProjectInput): Promise<HookProj
         await client.queryObject(
           `INSERT INTO hook_project_files (project_id, path, content)
            VALUES ($1, $2, $3)`,
-          [project.id, file.path, file.content]
+          [project.id, file.path, file.content],
         );
       }
     }
@@ -147,23 +147,21 @@ function toPascalCase(str: string): string {
   return str
     .replace(/[^a-zA-Z0-9]+/g, ' ')
     .split(' ')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join('')
-    + 'Hook';
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join('') +
+    'Hook';
 }
 
 export async function getProject(
   projectId: string,
-  userAddress?: string
+  userAddress?: string,
 ): Promise<HookProject | null> {
-  const whereClause = userAddress
-    ? 'WHERE id = $1 AND user_address = $2'
-    : 'WHERE id = $1';
+  const whereClause = userAddress ? 'WHERE id = $1 AND user_address = $2' : 'WHERE id = $1';
   const params = userAddress ? [projectId, userAddress] : [projectId];
 
   const project = await queryOne<DbHookProject>(
     `SELECT * FROM hook_projects ${whereClause}`,
-    params
+    params,
   );
 
   return project ? transformProject(project) : null;
@@ -174,7 +172,7 @@ export async function listProjects(userAddress: string): Promise<HookProject[]> 
     `SELECT * FROM hook_projects
      WHERE user_address = $1
      ORDER BY created_at DESC`,
-    [userAddress]
+    [userAddress],
   );
 
   return projects.map(transformProject);
@@ -183,7 +181,7 @@ export async function listProjects(userAddress: string): Promise<HookProject[]> 
 export async function updateProject(
   projectId: string,
   userAddress: string,
-  input: UpdateProjectInput
+  input: UpdateProjectInput,
 ): Promise<HookProject | null> {
   const updates: string[] = [];
   const values: unknown[] = [];
@@ -210,7 +208,7 @@ export async function updateProject(
      SET ${updates.join(', ')}
      WHERE id = $${paramIndex++} AND user_address = $${paramIndex}
      RETURNING *`,
-    values
+    values,
   );
 
   return project ? transformProject(project) : null;
@@ -218,12 +216,12 @@ export async function updateProject(
 
 export async function deleteProject(
   projectId: string,
-  userAddress: string
+  userAddress: string,
 ): Promise<boolean> {
   const rowsAffected = await execute(
     `DELETE FROM hook_projects
      WHERE id = $1 AND user_address = $2`,
-    [projectId, userAddress]
+    [projectId, userAddress],
   );
 
   return rowsAffected > 0;
@@ -232,7 +230,7 @@ export async function deleteProject(
 export async function markAsDeployed(
   projectId: string,
   userAddress: string,
-  deployedAddresses: Record<number, string>
+  deployedAddresses: Record<number, string>,
 ): Promise<HookProject | null> {
   const project = await queryOne<DbHookProject>(
     `UPDATE hook_projects
@@ -240,7 +238,7 @@ export async function markAsDeployed(
          deployed_addresses = deployed_addresses || $1::jsonb
      WHERE id = $2 AND user_address = $3
      RETURNING *`,
-    [JSON.stringify(deployedAddresses), projectId, userAddress]
+    [JSON.stringify(deployedAddresses), projectId, userAddress],
   );
 
   return project ? transformProject(project) : null;
@@ -255,7 +253,7 @@ export async function getProjectFiles(projectId: string): Promise<HookProjectFil
     `SELECT * FROM hook_project_files
      WHERE project_id = $1
      ORDER BY path`,
-    [projectId]
+    [projectId],
   );
 
   return files.map(transformFile);
@@ -264,7 +262,7 @@ export async function getProjectFiles(projectId: string): Promise<HookProjectFil
 export async function upsertFile(
   projectId: string,
   path: string,
-  content: string
+  content: string,
 ): Promise<HookProjectFile> {
   const file = await queryOne<DbHookProjectFile>(
     `INSERT INTO hook_project_files (project_id, path, content)
@@ -272,7 +270,7 @@ export async function upsertFile(
      ON CONFLICT (project_id, path)
      DO UPDATE SET content = $3
      RETURNING *`,
-    [projectId, path, content]
+    [projectId, path, content],
   );
 
   if (!file) {
@@ -284,12 +282,12 @@ export async function upsertFile(
 
 export async function deleteFile(
   projectId: string,
-  path: string
+  path: string,
 ): Promise<boolean> {
   const rowsAffected = await execute(
     `DELETE FROM hook_project_files
      WHERE project_id = $1 AND path = $2`,
-    [projectId, path]
+    [projectId, path],
   );
 
   return rowsAffected > 0;
@@ -297,7 +295,7 @@ export async function deleteFile(
 
 export async function bulkUpdateFiles(
   projectId: string,
-  files: Array<{ path: string; content: string }>
+  files: Array<{ path: string; content: string }>,
 ): Promise<void> {
   await transaction(async (client) => {
     for (const file of files) {
@@ -306,7 +304,7 @@ export async function bulkUpdateFiles(
          VALUES ($1, $2, $3)
          ON CONFLICT (project_id, path)
          DO UPDATE SET content = $3`,
-        [projectId, file.path, file.content]
+        [projectId, file.path, file.content],
       );
     }
   });
@@ -322,7 +320,7 @@ export interface HookProjectWithFiles extends HookProject {
 
 export async function getProjectWithFiles(
   projectId: string,
-  userAddress?: string
+  userAddress?: string,
 ): Promise<HookProjectWithFiles | null> {
   const project = await getProject(projectId, userAddress);
   if (!project) {

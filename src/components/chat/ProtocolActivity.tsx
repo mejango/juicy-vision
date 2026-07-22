@@ -120,13 +120,13 @@ export default function ProtocolActivity({ onProjectClick }: ProtocolActivityPro
         </div>
       ) : error ? (
         <div className={`py-8 text-center text-sm ${
-          theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+          theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
         }`}>
           {error}
         </div>
       ) : events.length === 0 ? (
         <div className={`py-8 text-center text-sm ${
-          theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
+          theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
         }`}>
           No recent activity
         </div>

@@ -7,33 +7,32 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { optionalAuth, requireAuth } from '../middleware/auth.ts';
+import { optionalAuth } from '../middleware/auth.ts';
 import { requireWalletAuth, requireWalletOrAuth } from '../middleware/walletSession.ts';
 import { getOrCreateSmartAccount } from '../services/smartAccounts.ts';
 import { getConfig } from '../utils/config.ts';
 import { getPrimaryChainId } from '@shared/chains.ts';
 import {
+  deleteIdentity,
   getIdentityByAddress,
   getIdentityByAddressResolved,
-  setIdentity,
-  deleteIdentity,
+  getIdentityHistory,
+  isIdentityAvailable,
+  parseIdentityString,
   resolveIdentity,
   searchIdentities,
-  getIdentityHistory,
-  parseIdentityString,
-  isIdentityAvailable,
+  setIdentity,
   VALID_EMOJIS,
 } from '../services/identity.ts';
 import {
-  linkAddress,
-  unlinkAddress,
-  getLinkedAddresses,
-  getPrimaryAddress,
   canBeLinkTarget,
   canBePrimary,
   getAllUserAddresses,
   getLinkHistory,
+  getPrimaryAddress,
+  linkAddress,
   type LinkedAddress,
+  unlinkAddress,
 } from '../services/linkedAddresses.ts';
 
 export const identityRouter = new Hono();
@@ -103,7 +102,7 @@ const SetIdentitySchema = z.object({
     .max(20, 'Username must be at most 20 characters')
     .regex(
       /^[a-zA-Z][a-zA-Z0-9_]{2,19}$/,
-      'Username must start with a letter and contain only letters, numbers, and underscores'
+      'Username must start with a letter and contain only letters, numbers, and underscores',
     ),
 });
 
@@ -126,7 +125,7 @@ identityRouter.put(
       const message = error instanceof Error ? error.message : 'Failed to set identity';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // DELETE /identity/me - Delete current user's identity
@@ -160,30 +159,38 @@ const CheckAvailabilitySchema = z.object({
   username: z.string(),
 });
 
-identityRouter.get('/check', optionalAuth, zValidator('query', CheckAvailabilitySchema), async (c) => {
-  const { emoji, username } = c.req.valid('query');
+identityRouter.get(
+  '/check',
+  optionalAuth,
+  zValidator('query', CheckAvailabilitySchema),
+  async (c) => {
+    const { emoji, username } = c.req.valid('query');
 
-  // Get current user's address to exclude from check (so they can update their own identity)
-  let excludeAddress: string | undefined;
-  const user = c.get('user');
-  if (user) {
-    const config = getConfig();
-    const smartAccount = await getOrCreateSmartAccount(user.id, getPrimaryChainId(config.isTestnet));
-    excludeAddress = smartAccount.address;
-  }
+    // Get current user's address to exclude from check (so they can update their own identity)
+    let excludeAddress: string | undefined;
+    const user = c.get('user');
+    if (user) {
+      const config = getConfig();
+      const smartAccount = await getOrCreateSmartAccount(
+        user.id,
+        getPrimaryChainId(config.isTestnet),
+      );
+      excludeAddress = smartAccount.address;
+    }
 
-  const available = await isIdentityAvailable(emoji, username, excludeAddress);
+    const available = await isIdentityAvailable(emoji, username, excludeAddress);
 
-  return c.json({
-    success: true,
-    data: {
-      emoji,
-      username,
-      formatted: `${emoji} ${username}`,
-      available,
-    },
-  });
-});
+    return c.json({
+      success: true,
+      data: {
+        emoji,
+        username,
+        formatted: `${emoji} ${username}`,
+        available,
+      },
+    });
+  },
+);
 
 // GET /identity/resolve/:identity - Resolve identity to address
 // e.g., /identity/resolve/@jango🍉 or /identity/resolve/jango🍉
@@ -197,7 +204,7 @@ identityRouter.get('/resolve/:identity', async (c) => {
         success: false,
         error: 'Invalid identity format. Use @🍉 username or 🍉 username',
       },
-      400
+      400,
     );
   }
 
@@ -209,7 +216,7 @@ identityRouter.get('/resolve/:identity', async (c) => {
         success: false,
         error: `Identity ${parsed.emoji} ${parsed.username} not found`,
       },
-      404
+      404,
     );
   }
 
@@ -317,27 +324,32 @@ const LinkAddressSchema = z.object({
   linkType: z.enum(['manual', 'smart_account', 'passkey', 'wallet']).optional().default('manual'),
 });
 
-identityRouter.post('/link', requireWalletAuth, zValidator('json', LinkAddressSchema), async (c) => {
-  const walletSession = c.get('walletSession')!;
-  const body = c.req.valid('json');
+identityRouter.post(
+  '/link',
+  requireWalletAuth,
+  zValidator('json', LinkAddressSchema),
+  async (c) => {
+    const walletSession = c.get('walletSession')!;
+    const body = c.req.valid('json');
 
-  // Current user's address becomes the primary
-  const result = await linkAddress(
-    walletSession.address, // primary
-    body.linkedAddress, // linked
-    body.linkType,
-    walletSession.address // performed by
-  );
+    // Current user's address becomes the primary
+    const result = await linkAddress(
+      walletSession.address, // primary
+      body.linkedAddress, // linked
+      body.linkType,
+      walletSession.address, // performed by
+    );
 
-  if (!result.success) {
-    return c.json({ success: false, error: result.error }, 400);
-  }
+    if (!result.success) {
+      return c.json({ success: false, error: result.error }, 400);
+    }
 
-  return c.json({
-    success: true,
-    data: serializeLinkedAddress(result.link!),
-  });
-});
+    return c.json({
+      success: true,
+      data: serializeLinkedAddress(result.link!),
+    });
+  },
+);
 
 // DELETE /identity/link/:address - Unlink an address
 identityRouter.delete('/link/:address', requireWalletAuth, async (c) => {
@@ -349,7 +361,7 @@ identityRouter.delete('/link/:address', requireWalletAuth, async (c) => {
   if (!success) {
     return c.json(
       { success: false, error: 'Unable to unlink. Address not found or unauthorized.' },
-      400
+      400,
     );
   }
 

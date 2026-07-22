@@ -10,10 +10,10 @@
 // ============================================================================
 
 export interface TerminalWsClient {
-  socket: WebSocket
-  sessionId: string
-  role: 'terminal' | 'consumer'
-  connectedAt: Date
+  socket: WebSocket;
+  sessionId: string;
+  role: 'terminal' | 'consumer';
+  connectedAt: Date;
 }
 
 export interface TerminalWsMessage {
@@ -26,10 +26,10 @@ export interface TerminalWsMessage {
     | 'session_expired' // Session timed out
     | 'session_cancelled' // Session cancelled
     | 'error' // Error message
-    | 'pong' // Ping response
-  sessionId: string
-  data: unknown
-  timestamp: number
+    | 'pong'; // Ping response
+  sessionId: string;
+  data: unknown;
+  timestamp: number;
 }
 
 // ============================================================================
@@ -37,7 +37,7 @@ export interface TerminalWsMessage {
 // ============================================================================
 
 // Map of sessionId -> Set of connected clients
-const sessionConnections = new Map<string, Set<TerminalWsClient>>()
+const sessionConnections = new Map<string, Set<TerminalWsClient>>();
 
 // ============================================================================
 // Connection Management
@@ -48,11 +48,11 @@ const sessionConnections = new Map<string, Set<TerminalWsClient>>()
  */
 export function registerSessionConnection(client: TerminalWsClient): void {
   if (!sessionConnections.has(client.sessionId)) {
-    sessionConnections.set(client.sessionId, new Set())
+    sessionConnections.set(client.sessionId, new Set());
   }
-  sessionConnections.get(client.sessionId)!.add(client)
+  sessionConnections.get(client.sessionId)!.add(client);
 
-  console.log(`[TerminalWS] ${client.role} connected to session ${client.sessionId}`)
+  console.log(`[TerminalWS] ${client.role} connected to session ${client.sessionId}`);
 
   // If a consumer connects, notify the terminal
   if (client.role === 'consumer') {
@@ -61,7 +61,7 @@ export function registerSessionConnection(client: TerminalWsClient): void {
       sessionId: client.sessionId,
       data: { claimedAt: Date.now() },
       timestamp: Date.now(),
-    }, client.socket)
+    }, client.socket);
   }
 }
 
@@ -69,22 +69,22 @@ export function registerSessionConnection(client: TerminalWsClient): void {
  * Remove a WebSocket connection
  */
 export function removeSessionConnection(client: TerminalWsClient): void {
-  const clients = sessionConnections.get(client.sessionId)
+  const clients = sessionConnections.get(client.sessionId);
   if (clients) {
-    clients.delete(client)
+    clients.delete(client);
     if (clients.size === 0) {
-      sessionConnections.delete(client.sessionId)
+      sessionConnections.delete(client.sessionId);
     }
   }
 
-  console.log(`[TerminalWS] ${client.role} disconnected from session ${client.sessionId}`)
+  console.log(`[TerminalWS] ${client.role} disconnected from session ${client.sessionId}`);
 }
 
 /**
  * Get all connections for a session
  */
 export function getSessionConnections(sessionId: string): TerminalWsClient[] {
-  return Array.from(sessionConnections.get(sessionId) ?? [])
+  return Array.from(sessionConnections.get(sessionId) ?? []);
 }
 
 // ============================================================================
@@ -97,22 +97,22 @@ export function getSessionConnections(sessionId: string): TerminalWsClient[] {
 export function broadcastToSession(
   sessionId: string,
   message: TerminalWsMessage,
-  excludeSocket?: WebSocket
+  excludeSocket?: WebSocket,
 ): void {
-  const clients = sessionConnections.get(sessionId)
-  if (!clients) return
+  const clients = sessionConnections.get(sessionId);
+  if (!clients) return;
 
-  const payload = JSON.stringify(message)
+  const payload = JSON.stringify(message);
 
   for (const client of clients) {
-    if (excludeSocket && client.socket === excludeSocket) continue
+    if (excludeSocket && client.socket === excludeSocket) continue;
 
     try {
       if (client.socket.readyState === WebSocket.OPEN) {
-        client.socket.send(payload)
+        client.socket.send(payload);
       }
     } catch (error) {
-      console.error(`[TerminalWS] Failed to send to ${client.role}:`, error)
+      console.error(`[TerminalWS] Failed to send to ${client.role}:`, error);
     }
   }
 }
@@ -124,10 +124,10 @@ export function broadcastSessionStatus(
   sessionId: string,
   status: string,
   extra?: {
-    txHash?: string
-    tokensIssued?: string
-    error?: string
-  }
+    txHash?: string;
+    tokensIssued?: string;
+    error?: string;
+  },
 ): void {
   const typeMap: Record<string, TerminalWsMessage['type']> = {
     pending: 'status_update',
@@ -136,14 +136,14 @@ export function broadcastSessionStatus(
     failed: 'payment_failed',
     expired: 'session_expired',
     cancelled: 'session_cancelled',
-  }
+  };
 
   broadcastToSession(sessionId, {
     type: typeMap[status] || 'status_update',
     sessionId,
     data: { status, ...extra },
     timestamp: Date.now(),
-  })
+  });
 }
 
 /**
@@ -151,10 +151,10 @@ export function broadcastSessionStatus(
  */
 export function handleTerminalWsMessage(
   client: TerminalWsClient,
-  rawMessage: string
+  rawMessage: string,
 ): void {
   try {
-    const message = JSON.parse(rawMessage) as { type: string; data?: unknown }
+    const message = JSON.parse(rawMessage) as { type: string; data?: unknown };
 
     switch (message.type) {
       case 'ping':
@@ -165,14 +165,14 @@ export function handleTerminalWsMessage(
               sessionId: client.sessionId,
               data: {},
               timestamp: Date.now(),
-            })
-          )
+            }),
+          );
         }
-        break
+        break;
 
       default:
         // Ignore unknown messages
-        break
+        break;
     }
   } catch {
     // Ignore malformed messages
@@ -191,8 +191,8 @@ export function sendSessionError(client: TerminalWsClient, error: string): void 
           sessionId: client.sessionId,
           data: { message: error },
           timestamp: Date.now(),
-        } as TerminalWsMessage)
-      )
+        } as TerminalWsMessage),
+      );
     }
   } catch {
     // Ignore send errors
@@ -204,34 +204,34 @@ export function sendSessionError(client: TerminalWsClient, error: string): void 
 // ============================================================================
 
 export function getTerminalWsStats(): {
-  activeSessions: number
-  totalConnections: number
+  activeSessions: number;
+  totalConnections: number;
 } {
-  let totalConnections = 0
+  let totalConnections = 0;
   for (const clients of sessionConnections.values()) {
-    totalConnections += clients.size
+    totalConnections += clients.size;
   }
 
   return {
     activeSessions: sessionConnections.size,
     totalConnections,
-  }
+  };
 }
 
 export function cleanupStaleSessionConnections(): number {
-  let cleaned = 0
+  let cleaned = 0;
 
-  for (const [sessionId, clients] of sessionConnections.entries()) {
+  for (const clients of sessionConnections.values()) {
     for (const client of clients) {
       if (
         client.socket.readyState === WebSocket.CLOSED ||
         client.socket.readyState === WebSocket.CLOSING
       ) {
-        removeSessionConnection(client)
-        cleaned++
+        removeSessionConnection(client);
+        cleaned++;
       }
     }
   }
 
-  return cleaned
+  return cleaned;
 }

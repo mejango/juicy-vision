@@ -1,3 +1,6 @@
-FROM postgres:16-alpine
-# Initialize with full schema on first run
-COPY schema.sql /docker-entrypoint-initdb.d/001_schema.sql
+# Official multi-platform PostgreSQL image for local development, pinned to the
+# reviewed patch/Alpine version and immutable manifest digest.
+FROM postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+# The database image owns only the pinned PostgreSQL runtime. The exact backend
+# image remains the single schema authority and initializes/upgrades it with
+# `deno task migrate`, matching the production rollout path.

@@ -51,8 +51,7 @@ const TOKEN_BUDGET = {
 
 Deno.test('TOKEN_BUDGET - allocations sum correctly', async (t) => {
   await t.step('fixed allocations leave room for messages', () => {
-    const fixedTotal =
-      TOKEN_BUDGET.transactionState +
+    const fixedTotal = TOKEN_BUDGET.transactionState +
       TOKEN_BUDGET.userContext +
       TOKEN_BUDGET.participantContext +
       TOKEN_BUDGET.attachmentSummaries +
@@ -93,7 +92,9 @@ interface ContextMetadata {
   triggeredSummarization: boolean;
 }
 
-function calculateTotalTokens(metadata: Omit<ContextMetadata, 'totalTokens' | 'budgetExceeded' | 'triggeredSummarization'>): number {
+function calculateTotalTokens(
+  metadata: Omit<ContextMetadata, 'totalTokens' | 'budgetExceeded' | 'triggeredSummarization'>,
+): number {
   return (
     metadata.recentMessageTokens +
     metadata.transactionStateTokens +
@@ -146,7 +147,7 @@ Deno.test('ContextMetadata - total calculation', async (t) => {
 
 function enforceTokenBudget(
   items: Array<{ tokenCount: number }>,
-  budget: number
+  budget: number,
 ): Array<{ tokenCount: number }> {
   const result: Array<{ tokenCount: number }> = [];
   let used = 0;
@@ -359,7 +360,10 @@ function formatAddress(address: string): string {
 
 Deno.test('formatParticipantsForPrompt - output structure', async (t) => {
   await t.step('returns null for single participant', () => {
-    const participants = [{ address: '0x1234567890123456789012345678901234567890', role: 'founder' }];
+    const participants = [{
+      address: '0x1234567890123456789012345678901234567890',
+      role: 'founder',
+    }];
     const result = formatParticipantsForPrompt(participants);
     assertEquals(result, null);
   });
@@ -381,7 +385,11 @@ Deno.test('formatParticipantsForPrompt - output structure', async (t) => {
 
   await t.step('uses display name when available', () => {
     const participants = [
-      { address: '0x1234567890123456789012345678901234567890', displayName: 'Alice', role: 'founder' },
+      {
+        address: '0x1234567890123456789012345678901234567890',
+        displayName: 'Alice',
+        role: 'founder',
+      },
       { address: '0xabcdef1234567890123456789012345678901234', displayName: 'Bob', role: 'member' },
     ];
     const result = formatParticipantsForPrompt(participants);
@@ -425,7 +433,7 @@ interface ChatMessage {
 
 function selectMessagesWithBudget(
   messages: ChatMessage[],
-  budget: number
+  budget: number,
 ): { messages: ChatMessage[]; tokenCount: number } {
   const result: ChatMessage[] = [];
   let totalTokens = 0;
@@ -503,7 +511,7 @@ Deno.test('selectMessagesWithBudget - respects budget', async (t) => {
 
 function injectSummaryIntoMessages(
   messages: ChatMessage[],
-  summaryContent: string
+  summaryContent: string,
 ): ChatMessage[] {
   if (messages.length === 0) return messages;
 

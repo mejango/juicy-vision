@@ -109,7 +109,7 @@ Deno.test('Auth Route - Basic Handler Test', async (t) => {
   });
 
   app.post('/request-code', zValidator('json', RequestCodeSchema), async (c) => {
-    const { email } = c.req.valid('json');
+    c.req.valid('json');
     // Mock OTP generation
     const code = '123456';
     return c.json({

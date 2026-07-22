@@ -267,8 +267,7 @@ export async function invokeAiForChat(params: InvokeAiParams): Promise<ChatMessa
         ? 'Your API key has hit a rate limit. Please wait a moment and try again.'
         : "I'm getting a lot of requests right now. Please wait a moment and try again.";
     } else if (rawMsg.includes('overloaded') || rawMsg.includes('capacity')) {
-      userFriendlyMsg =
-        'The AI service is a bit overloaded. Please try again in a few seconds.';
+      userFriendlyMsg = 'The AI service is a bit overloaded. Please try again in a few seconds.';
     } else if (rawMsg.includes('invalid_api_key') || rawMsg.includes('authentication')) {
       userFriendlyMsg = isUsingOwnKey
         ? 'Your API key appears to be invalid. Please check your key in Settings.'

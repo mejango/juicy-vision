@@ -67,6 +67,13 @@ interface ChainTxState {
   error?: string
 }
 
+export function submitReviewedSplitUpdate(
+  guarded: Pick<ReturnType<typeof useGuardedTx>, 'run'>,
+  request: Parameters<ReturnType<typeof useGuardedTx>['run']>[0],
+): Promise<`0x${string}`> {
+  return guarded.run(request)
+}
+
 export default function SetSplitsModal({
   isOpen,
   onClose,
@@ -328,7 +335,7 @@ export default function SetSplitsModal({
       })
 
       const callArgs = [BigInt(chainData.projectId), BigInt(chainData.rulesetId), splitGroups] as const
-      const hash = await guarded.run({
+      const hash = await submitReviewedSplitUpdate(guarded, {
         chainId: chainData.chainId,
         to: controllerAddress,
         data: callData,

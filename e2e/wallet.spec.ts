@@ -18,12 +18,7 @@ test.describe('Wallet & Authentication', () => {
       await page.goto('/')
       const connectButton = page.locator('button').filter({ hasText: /connect|sign in/i }).first()
 
-      // Skip if no connect button (different UI state)
-      if (!(await connectButton.isVisible())) {
-        test.skip()
-        return
-      }
-
+      await expect(connectButton).toBeVisible()
       await connectButton.click()
       await page.waitForTimeout(500)
 
@@ -36,11 +31,7 @@ test.describe('Wallet & Authentication', () => {
       await page.goto('/')
       const connectButton = page.locator('button').filter({ hasText: /connect|sign in/i }).first()
 
-      if (!(await connectButton.isVisible())) {
-        test.skip()
-        return
-      }
-
+      await expect(connectButton).toBeVisible()
       await connectButton.click()
       await page.waitForTimeout(500)
 
@@ -53,11 +44,7 @@ test.describe('Wallet & Authentication', () => {
       await page.goto('/')
       const connectButton = page.locator('button').filter({ hasText: /connect|sign in/i }).first()
 
-      if (!(await connectButton.isVisible())) {
-        test.skip()
-        return
-      }
-
+      await expect(connectButton).toBeVisible()
       await connectButton.click()
       await page.waitForTimeout(500)
 

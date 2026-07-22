@@ -213,18 +213,53 @@ describe('transactionStore', () => {
       expect(pending).toEqual([])
     })
 
-    it('returns only pending and submitted transactions', () => {
+    it('returns every recoverable in-flight status and no terminal status', () => {
       const store = useTransactionStore.getState()
 
       store.addTransaction({ type: 'pay', chainId: 1, status: 'pending' })
       store.addTransaction({ type: 'pay', chainId: 1, status: 'submitted' })
+      store.addTransaction({ type: 'contractCall', chainId: 1, status: 'safe-proposed' })
+      store.addTransaction({ type: 'relayr', chainId: 1, status: 'relayr-pending' })
       store.addTransaction({ type: 'pay', chainId: 1, status: 'confirmed' })
       store.addTransaction({ type: 'pay', chainId: 1, status: 'failed' })
+      store.addTransaction({ type: 'pay', chainId: 1, status: 'cancelled' })
 
       const pending = useTransactionStore.getState().getPendingTransactions()
 
-      expect(pending.length).toBe(2)
-      expect(pending.every(tx => tx.status === 'pending' || tx.status === 'submitted')).toBe(true)
+      expect(pending.map(tx => tx.status).sort()).toEqual([
+        'pending',
+        'relayr-pending',
+        'safe-proposed',
+        'submitted',
+      ])
+    })
+
+    it('persists the identifiers needed to recover Safe, Relayr, and duplicate-call state', () => {
+      const store = useTransactionStore.getState()
+      store.addTransaction({
+        type: 'contractCall',
+        chainId: 1,
+        account: '0x1111111111111111111111111111111111111111',
+        status: 'safe-proposed',
+        safeTxHash: '0xsafe-proposal',
+        callKey: 'exact-call-key',
+      })
+      store.addTransaction({
+        type: 'relayr',
+        chainId: 10,
+        status: 'relayr-pending',
+        bundleUuid: 'bundle-123',
+      })
+
+      const persisted = JSON.parse(localStorage.getItem('juice-transactions') ?? '{}')
+      expect(persisted.state.transactions).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          status: 'safe-proposed',
+          safeTxHash: '0xsafe-proposal',
+          callKey: 'exact-call-key',
+        }),
+        expect.objectContaining({ status: 'relayr-pending', bundleUuid: 'bundle-123' }),
+      ]))
     })
 
     it('excludes confirmed transactions', () => {

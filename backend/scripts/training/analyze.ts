@@ -4,7 +4,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { TrainingDataExport, ConversationExport, CorrectionExport } from './export.ts';
+import type { ConversationExport, CorrectionExport, TrainingDataExport } from './export.ts';
 
 export interface AnalysisResult {
   analyzedAt: string;
@@ -60,7 +60,7 @@ export interface FewShotCandidate {
  */
 async function analyzeWithClaude(
   client: Anthropic,
-  data: TrainingDataExport
+  data: TrainingDataExport,
 ): Promise<{
   successPatterns: string[];
   failurePatterns: string[];
@@ -83,7 +83,8 @@ async function analyzeWithClaude(
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
-    system: `You are analyzing chat conversations from "Juicy", an AI assistant that helps users fund projects on the Juicebox protocol. Your job is to identify patterns that lead to success or failure.
+    system:
+      `You are analyzing chat conversations from "Juicy", an AI assistant that helps users fund projects on the Juicebox protocol. Your job is to identify patterns that lead to success or failure.
 
 Analyze the provided good and bad conversation samples. Focus on:
 1. What the AI does well in successful conversations
@@ -131,7 +132,7 @@ Provide your analysis as JSON:
  */
 async function analyzeCorrections(
   client: Anthropic,
-  corrections: CorrectionExport[]
+  corrections: CorrectionExport[],
 ): Promise<CorrectionTheme[]> {
   if (corrections.length === 0) return [];
 
@@ -140,13 +141,18 @@ async function analyzeCorrections(
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 2048,
-    system: `You are analyzing user corrections to an AI assistant. Group the corrections by theme and suggest rules to prevent similar mistakes.`,
+    system:
+      `You are analyzing user corrections to an AI assistant. Group the corrections by theme and suggest rules to prevent similar mistakes.`,
     messages: [
       {
         role: 'user',
         content: `Analyze these user corrections and group them by theme:
 
-${sample.map((c) => `Original: ${c.originalContent.slice(0, 500)}\nCorrection: ${c.userCorrection}`).join('\n\n---\n\n')}
+${
+          sample.map((c) =>
+            `Original: ${c.originalContent.slice(0, 500)}\nCorrection: ${c.userCorrection}`
+          ).join('\n\n---\n\n')
+        }
 
 Provide your analysis as JSON array:
 [
@@ -172,13 +178,18 @@ Provide your analysis as JSON array:
  */
 async function generatePromptSuggestions(
   client: Anthropic,
-  patterns: { successPatterns: string[]; failurePatterns: string[]; suggestedImprovements: string[] },
-  correctionThemes: CorrectionTheme[]
+  patterns: {
+    successPatterns: string[];
+    failurePatterns: string[];
+    suggestedImprovements: string[];
+  },
+  correctionThemes: CorrectionTheme[],
 ): Promise<PromptSuggestion[]> {
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 4096,
-    system: `You are helping improve the system prompt for "Juicy", an AI funding assistant. Based on analysis of conversations, generate specific additions to the system prompt.`,
+    system:
+      `You are helping improve the system prompt for "Juicy", an AI funding assistant. Based on analysis of conversations, generate specific additions to the system prompt.`,
     messages: [
       {
         role: 'user',
@@ -252,7 +263,9 @@ function selectFewShotCandidates(conversations: ConversationExport[]): FewShotCa
       if (lowerContent.includes('pay') || lowerContent.includes('contribute')) tags.push('payment');
       if (lowerContent.includes('project')) tags.push('project-discovery');
       if (lowerContent.includes('token') || lowerContent.includes('cash out')) tags.push('tokens');
-      if (lowerContent.includes('create') || lowerContent.includes('launch')) tags.push('project-creation');
+      if (lowerContent.includes('create') || lowerContent.includes('launch')) {
+        tags.push('project-creation');
+      }
       if (lowerContent.includes('juice-component')) tags.push('ui-components');
 
       candidates.push({
@@ -292,7 +305,7 @@ function selectFewShotCandidates(conversations: ConversationExport[]): FewShotCa
  */
 export async function analyzeTrainingData(
   data: TrainingDataExport,
-  anthropicApiKey: string
+  anthropicApiKey: string,
 ): Promise<AnalysisResult> {
   console.log('Analyzing training data...');
 

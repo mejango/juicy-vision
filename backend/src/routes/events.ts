@@ -1,20 +1,19 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { optionalAuth, requireAuth, requireAdmin } from '../middleware/auth.ts';
+import { optionalAuth, requireAdmin, requireAuth } from '../middleware/auth.ts';
 import {
   createChatSession,
-  updateChatSessionOutcome,
   endChatSession,
-  storeChatMessage,
-  updateMessageFeedback,
-  storeEvent,
-  storeEvents,
+  exportTrainingData,
   getPendingCorrections,
   reviewCorrection,
-  exportTrainingData,
+  storeChatMessage,
+  storeEvent,
+  storeEvents,
+  updateChatSessionOutcome,
+  updateMessageFeedback,
 } from '../services/events.ts';
-import type { PrivacyMode } from '../types/index.ts';
 
 const eventsRouter = new Hono();
 
@@ -40,11 +39,11 @@ eventsRouter.post(
       user?.id ?? null,
       body.privacyMode,
       body.mode,
-      body.entryPoint
+      body.entryPoint,
     );
 
     return c.json({ success: true, data: { sessionId } });
-  }
+  },
 );
 
 const UpdateOutcomeSchema = z.object({
@@ -65,7 +64,7 @@ eventsRouter.patch(
     await updateChatSessionOutcome(sessionId, body);
 
     return c.json({ success: true });
-  }
+  },
 );
 
 const EndSessionSchema = z.object({
@@ -83,7 +82,7 @@ eventsRouter.post(
     await endChatSession(sessionId, body.rating, body.feedback);
 
     return c.json({ success: true });
-  }
+  },
 );
 
 // ============================================================================
@@ -102,7 +101,7 @@ const StoreMessageSchema = z.object({
         output: z.record(z.unknown()).optional(),
         success: z.boolean().optional(),
         latencyMs: z.number().optional(),
-      })
+      }),
     )
     .optional(),
 });
@@ -117,11 +116,11 @@ eventsRouter.post(
       body.sessionId,
       body.role,
       body.content,
-      body.toolCalls
+      body.toolCalls,
     );
 
     return c.json({ success: true, data: { messageId } });
-  }
+  },
 );
 
 const FeedbackSchema = z.object({
@@ -141,7 +140,7 @@ eventsRouter.patch(
     await updateMessageFeedback(messageId, body);
 
     return c.json({ success: true });
-  }
+  },
 );
 
 // ============================================================================
@@ -173,11 +172,11 @@ eventsRouter.post(
       user?.id ?? null,
       body.eventType,
       body.eventData,
-      body.privacyMode
+      body.privacyMode,
     );
 
     return c.json({ success: true });
-  }
+  },
 );
 
 // Batch events (for efficiency)
@@ -193,11 +192,11 @@ eventsRouter.post(
       body.events.map((e) => ({
         ...e,
         userId: user?.id ?? null,
-      }))
+      })),
     );
 
     return c.json({ success: true, data: { count: body.events.length } });
-  }
+  },
 );
 
 // ============================================================================
@@ -230,7 +229,7 @@ eventsRouter.post(
     await reviewCorrection(correctionId, body.status, body.reviewNotes);
 
     return c.json({ success: true });
-  }
+  },
 );
 
 // ============================================================================

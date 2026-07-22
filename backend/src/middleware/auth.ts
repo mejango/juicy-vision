@@ -1,6 +1,6 @@
 import { Context, Next } from 'hono';
 import { validateSession } from '../services/auth.ts';
-import type { User, Session } from '../types/index.ts';
+import type { Session, User } from '../types/index.ts';
 
 // Extend Hono context with user info
 declare module 'hono' {

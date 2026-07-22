@@ -14,10 +14,10 @@ vi.mock('../services/passkey', () => ({
 
 // Mock fetch for API requests
 const mockFetch = vi.fn()
-global.fetch = mockFetch
 
 describe('authStore', () => {
   beforeEach(() => {
+    vi.stubGlobal('fetch', mockFetch)
     // Reset store state before each test
     useAuthStore.setState({
       mode: 'self_custody',

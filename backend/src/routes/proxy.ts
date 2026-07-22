@@ -36,7 +36,10 @@ proxyRouter.post('/bendystraw', async (c) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Bendystraw proxy error:', response.status, errorText);
-      return c.json({ error: 'Bendystraw request failed' }, response.status as 400 | 401 | 403 | 404 | 500 | 502 | 503);
+      return c.json(
+        { error: 'Bendystraw request failed' },
+        response.status as 400 | 401 | 403 | 404 | 500 | 502 | 503,
+      );
     }
 
     const data = await response.json();
@@ -54,8 +57,8 @@ proxyRouter.post('/bendystraw', async (c) => {
 
 // Subgraph IDs for Uniswap V3 on each chain
 const UNISWAP_SUBGRAPH_IDS: Record<number, string> = {
-  1: '5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV',     // Ethereum
-  10: 'Cghf4LfVqPiFw6fp6Y5X5Ubc8UpmUhSfJL82zwiBFLaj',    // Optimism
+  1: '5zvR82QoaXYFyDEKLZ9t6v9adgnptxYpKpSbxtgVENFV', // Ethereum
+  10: 'Cghf4LfVqPiFw6fp6Y5X5Ubc8UpmUhSfJL82zwiBFLaj', // Optimism
   8453: 'GqzP4Xaehti8KSfQmv3ZctFSjnSUYZ4En5NRsiTbvZpz', // Base
   42161: 'FbCGRftH4a3yZugY7TnbYgPJVEv2LvMT6oF1fxPe9aJM', // Arbitrum
 };
@@ -80,7 +83,8 @@ proxyRouter.post('/thegraph/uniswap', async (c) => {
       return c.json({ error: `Unsupported chain: ${chainId}` }, 400);
     }
 
-    const endpoint = `https://gateway.thegraph.com/api/${config.theGraphApiKey}/subgraphs/id/${subgraphId}`;
+    const endpoint =
+      `https://gateway.thegraph.com/api/${config.theGraphApiKey}/subgraphs/id/${subgraphId}`;
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -93,7 +97,10 @@ proxyRouter.post('/thegraph/uniswap', async (c) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('TheGraph proxy error:', response.status, errorText);
-      return c.json({ error: 'TheGraph request failed' }, response.status as 400 | 401 | 403 | 404 | 500 | 502 | 503);
+      return c.json(
+        { error: 'TheGraph request failed' },
+        response.status as 400 | 401 | 403 | 404 | 500 | 502 | 503,
+      );
     }
 
     const data = await response.json();
@@ -214,7 +221,10 @@ proxyRouter.post('/rpc/:chainId', async (c) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('RPC proxy error:', response.status, errorText);
-      return c.json({ error: 'RPC request failed' }, response.status as 400 | 401 | 403 | 404 | 500 | 502 | 503);
+      return c.json(
+        { error: 'RPC request failed' },
+        response.status as 400 | 401 | 403 | 404 | 500 | 502 | 503,
+      );
     }
 
     const data = await response.json();

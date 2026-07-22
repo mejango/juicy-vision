@@ -1,13 +1,13 @@
 import { assertEquals } from 'std/assert/mod.ts';
 import {
-  UserSchema,
-  SessionSchema,
-  WalletBalanceSchema,
-  TransferRequestSchema,
-  PendingTransferSchema,
   ChatMessageSchema,
   ChatSessionSchema,
+  PendingTransferSchema,
   PrivacyModes,
+  SessionSchema,
+  TransferRequestSchema,
+  UserSchema,
+  WalletBalanceSchema,
 } from './index.ts';
 
 Deno.test('UserSchema', async (t) => {

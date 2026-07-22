@@ -24,6 +24,7 @@ import {
 } from '../services/juice.ts';
 import { rateLimitByUser } from '../services/rateLimit.ts';
 import { getOrCreateSmartAccount } from '../services/smartAccounts.ts';
+import { costBodyLimit } from '../middleware/bodyLimit.ts';
 
 // Flat rate for Pay Credits: $1.05 per credit
 const PAY_CREDITS_RATE = 1.05;
@@ -105,6 +106,7 @@ juiceRouter.post(
   '/purchase',
   requireAuth,
   rateLimitByUser('juicePurchase'),
+  costBodyLimit,
   zValidator('json', PurchaseSchema),
   async (c) => {
     const user = c.get('user');
@@ -223,6 +225,7 @@ juiceRouter.post(
   '/spend',
   requireAuth,
   rateLimitByUser('juiceSpend'),
+  costBodyLimit,
   zValidator('json', SpendSchema),
   async (c) => {
     const user = c.get('user');
@@ -305,6 +308,7 @@ juiceRouter.post(
   '/cash-out',
   requireAuth,
   rateLimitByUser('juiceCashOut'),
+  costBodyLimit,
   zValidator('json', CashOutSchema),
   async (c) => {
     const user = c.get('user');

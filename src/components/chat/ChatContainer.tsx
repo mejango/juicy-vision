@@ -1613,6 +1613,7 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                           className={`p-1 transition-colors ${
                             theme === 'dark' ? 'text-gray-500 hover:text-gray-300' : 'text-gray-400 hover:text-gray-600'
                           }`}
+                          aria-label="More options"
                         >
                           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                             <circle cx="12" cy="5" r="2" />
@@ -1637,8 +1638,8 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
                           onClick={() => window.dispatchEvent(new CustomEvent('juice:trigger-file-upload'))}
                           className={`py-1.5 px-2.5 text-xs border border-dashed transition-colors cursor-pointer ${
                             theme === 'dark'
-                              ? 'border-white/15 text-gray-500 hover:border-white/25 hover:text-gray-400'
-                              : 'border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-500'
+                              ? 'border-white/15 text-gray-400 hover:border-white/25 hover:text-gray-300'
+                              : 'border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-700'
                           }`}
                         >
                           {item.label}

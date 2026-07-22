@@ -3,7 +3,7 @@
  * Handles biometric and hardware key authentication
  */
 
-import { query, execute, transaction } from '../db/index.ts';
+import { execute, query } from '../db/index.ts';
 import { randomBytes } from 'node:crypto';
 
 // ============================================================================
@@ -24,6 +24,22 @@ interface PasskeyCredential {
   displayName: string | null;
   createdAt: Date;
   lastUsedAt: Date | null;
+}
+
+interface DbPasskeyCredential {
+  id: string;
+  user_id: string;
+  credential_id: Uint8Array;
+  credential_id_b64: string;
+  public_key: Uint8Array;
+  counter: number;
+  device_type: string | null;
+  transports: string[] | null;
+  backup_eligible: boolean;
+  backup_state: boolean;
+  display_name: string | null;
+  created_at: Date;
+  last_used_at: Date | null;
 }
 
 interface PasskeyChallenge {
@@ -54,7 +70,7 @@ function base64UrlDecode(str: string): Uint8Array {
   const base64 = str.replace(/-/g, '+').replace(/_/g, '/');
   const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
   const binary = atob(padded);
-  return new Uint8Array([...binary].map(c => c.charCodeAt(0)));
+  return new Uint8Array([...binary].map((c) => c.charCodeAt(0)));
 }
 
 function generateChallenge(): Uint8Array {
@@ -88,7 +104,7 @@ export async function createRegistrationChallenge(userId: string): Promise<{
   // Get user info
   const users = await query<{ email: string }>(
     'SELECT email FROM users WHERE id = $1',
-    [userId]
+    [userId],
   );
 
   if (users.length === 0) {
@@ -105,7 +121,7 @@ export async function createRegistrationChallenge(userId: string): Promise<{
   await execute(
     `INSERT INTO passkey_challenges (challenge, challenge_b64, type, user_id)
      VALUES ($1, $2, 'registration', $3)`,
-    [challenge, challengeB64, userId]
+    [challenge, challengeB64, userId],
   );
 
   // Generate user handle (stored with credential)
@@ -123,7 +139,7 @@ export async function createRegistrationChallenge(userId: string): Promise<{
       displayName: userEmail.split('@')[0],
     },
     pubKeyCredParams: [
-      { type: 'public-key', alg: -7 },   // ES256 (P-256)
+      { type: 'public-key', alg: -7 }, // ES256 (P-256)
       { type: 'public-key', alg: -257 }, // RS256
     ],
     timeout: 300000, // 5 minutes
@@ -154,11 +170,13 @@ export async function createAuthenticationChallenge(email?: string): Promise<{
   await execute(
     `INSERT INTO passkey_challenges (challenge, challenge_b64, type, email)
      VALUES ($1, $2, 'authentication', $3)`,
-    [challenge, challengeB64, email || null]
+    [challenge, challengeB64, email || null],
   );
 
   // If email provided, get their credentials for allowCredentials
-  let allowCredentials: Array<{ type: 'public-key'; id: string; transports?: string[] }> | undefined;
+  let allowCredentials:
+    | Array<{ type: 'public-key'; id: string; transports?: string[] }>
+    | undefined;
 
   if (email) {
     const credentials = await query<{ credential_id_b64: string; transports: string[] | null }>(
@@ -166,11 +184,11 @@ export async function createAuthenticationChallenge(email?: string): Promise<{
        FROM passkey_credentials pc
        JOIN users u ON pc.user_id = u.id
        WHERE u.email = $1`,
-      [email]
+      [email],
     );
 
     if (credentials.length > 0) {
-      allowCredentials = credentials.map(c => ({
+      allowCredentials = credentials.map((c) => ({
         type: 'public-key' as const,
         id: c.credential_id_b64,
         // Prefer internal (platform) transport if not specified
@@ -196,7 +214,7 @@ export async function createAuthenticationChallenge(email?: string): Promise<{
  */
 async function consumeChallenge(
   challengeB64: string,
-  type: 'registration' | 'authentication'
+  type: 'registration' | 'authentication',
 ): Promise<PasskeyChallenge | null> {
   const results = await query<{
     id: string;
@@ -210,7 +228,7 @@ async function consumeChallenge(
     `DELETE FROM passkey_challenges
      WHERE challenge_b64 = $1 AND type = $2 AND expires_at > NOW()
      RETURNING *`,
-    [challengeB64, type]
+    [challengeB64, type],
   );
 
   if (results.length === 0) return null;
@@ -249,7 +267,7 @@ export interface RegistrationResponse {
 export async function verifyRegistration(
   userId: string,
   response: RegistrationResponse,
-  displayName?: string
+  displayName?: string,
 ): Promise<PasskeyCredential> {
   // Decode client data
   const clientDataJSON = base64UrlDecode(response.response.clientDataJSON);
@@ -298,19 +316,19 @@ export async function verifyRegistration(
       response.authenticatorAttachment || null,
       response.response.transports || null,
       displayName || null,
-    ]
+    ],
   );
 
   // Enable passkey for user
   await execute(
     'UPDATE users SET passkey_enabled = TRUE WHERE id = $1',
-    [userId]
+    [userId],
   );
 
   // Return credential
-  const credentials = await query<any>(
+  const credentials = await query<DbPasskeyCredential>(
     'SELECT * FROM passkey_credentials WHERE credential_id_b64 = $1',
-    [credentialIdB64]
+    [credentialIdB64],
   );
 
   return dbToCredential(credentials[0]);
@@ -337,7 +355,7 @@ export interface AuthenticationResponse {
  * Verify authentication and return user
  */
 export async function verifyAuthentication(
-  response: AuthenticationResponse
+  response: AuthenticationResponse,
 ): Promise<{ userId: string; credentialId: string }> {
   // Decode client data
   const clientDataJSON = base64UrlDecode(response.response.clientDataJSON);
@@ -368,7 +386,7 @@ export async function verifyAuthentication(
     counter: number;
   }>(
     'SELECT id, user_id, public_key, counter FROM passkey_credentials WHERE credential_id_b64 = $1',
-    [credentialIdB64]
+    [credentialIdB64],
   );
 
   if (credentials.length === 0) {
@@ -422,7 +440,7 @@ export async function verifyAuthentication(
     `UPDATE passkey_credentials
      SET counter = $1, last_used_at = NOW()
      WHERE credential_id_b64 = $2`,
-    [newCounter, credentialIdB64]
+    [newCounter, credentialIdB64],
   );
 
   return {
@@ -439,11 +457,11 @@ export async function verifyAuthentication(
  * Get all passkeys for a user
  */
 export async function getUserPasskeys(userId: string): Promise<PasskeyCredential[]> {
-  const results = await query<any>(
+  const results = await query<DbPasskeyCredential>(
     `SELECT * FROM passkey_credentials
      WHERE user_id = $1
      ORDER BY created_at DESC`,
-    [userId]
+    [userId],
   );
 
   return results.map(dbToCredential);
@@ -453,22 +471,22 @@ export async function getUserPasskeys(userId: string): Promise<PasskeyCredential
  * Delete a passkey
  */
 export async function deletePasskey(userId: string, credentialId: string): Promise<void> {
-  const result = await execute(
+  await execute(
     'DELETE FROM passkey_credentials WHERE id = $1 AND user_id = $2',
-    [credentialId, userId]
+    [credentialId, userId],
   );
 
   // Check if user has any remaining passkeys
   const remaining = await query<{ count: string }>(
     'SELECT COUNT(*) as count FROM passkey_credentials WHERE user_id = $1',
-    [userId]
+    [userId],
   );
 
   if (parseInt(remaining[0].count) === 0) {
     // Disable passkey flag
     await execute(
       'UPDATE users SET passkey_enabled = FALSE WHERE id = $1',
-      [userId]
+      [userId],
     );
   }
 }
@@ -479,13 +497,13 @@ export async function deletePasskey(userId: string, credentialId: string): Promi
 export async function renamePasskey(
   userId: string,
   credentialId: string,
-  displayName: string
+  displayName: string,
 ): Promise<void> {
   await execute(
     `UPDATE passkey_credentials
      SET display_name = $1
      WHERE id = $2 AND user_id = $3`,
-    [displayName, credentialId, userId]
+    [displayName, credentialId, userId],
   );
 }
 
@@ -493,7 +511,7 @@ export async function renamePasskey(
 // Helpers
 // ============================================================================
 
-function dbToCredential(row: any): PasskeyCredential {
+function dbToCredential(row: DbPasskeyCredential): PasskeyCredential {
   return {
     id: row.id,
     userId: row.user_id,
@@ -514,7 +532,7 @@ function dbToCredential(row: any): PasskeyCredential {
 // Cleanup expired challenges periodically
 export async function cleanupExpiredChallenges(): Promise<void> {
   await execute(
-    'DELETE FROM passkey_challenges WHERE expires_at < NOW()'
+    'DELETE FROM passkey_challenges WHERE expires_at < NOW()',
   );
 }
 
@@ -553,7 +571,7 @@ export async function createSignupChallenge(): Promise<{
   await execute(
     `INSERT INTO passkey_challenges (challenge, challenge_b64, type, email, expires_at)
      VALUES ($1, $2, 'registration', $3, NOW() + INTERVAL '5 minutes')`,
-    [challenge, challengeB64, `signup:${tempUserId}`]
+    [challenge, challengeB64, `signup:${tempUserId}`],
   );
 
   return {
@@ -565,7 +583,7 @@ export async function createSignupChallenge(): Promise<{
       displayName: 'Passkey User',
     },
     pubKeyCredParams: [
-      { type: 'public-key', alg: -7 },   // ES256
+      { type: 'public-key', alg: -7 }, // ES256
       { type: 'public-key', alg: -257 }, // RS256
     ],
     timeout: 300000,
@@ -584,7 +602,7 @@ export async function createSignupChallenge(): Promise<{
  */
 export async function verifySignupRegistration(
   response: RegistrationResponse,
-  displayName?: string
+  displayName?: string,
 ): Promise<{ userId: string; credential: PasskeyCredential }> {
   // Decode client data
   const clientDataJSON = base64UrlDecode(response.response.clientDataJSON);
@@ -603,7 +621,7 @@ export async function verifySignupRegistration(
     `DELETE FROM passkey_challenges
      WHERE challenge_b64 = $1 AND type = 'registration' AND expires_at > NOW()
      RETURNING *`,
-    [clientData.challenge]
+    [clientData.challenge],
   );
 
   if (results.length === 0) {
@@ -661,16 +679,18 @@ export async function verifySignupRegistration(
 
   // Get next custodial address index
   const maxIndexResult = await query<{ max: number | null }>(
-    'SELECT MAX(custodial_address_index) as max FROM users'
+    'SELECT MAX(custodial_address_index) as max FROM users',
   );
   const nextIndex = (maxIndexResult[0]?.max ?? -1) + 1;
 
   // Create user
-  const userResult = await query<{ id: string; email: string; privacy_mode: string; email_verified: boolean }>(
+  const userResult = await query<
+    { id: string; email: string; privacy_mode: string; email_verified: boolean }
+  >(
     `INSERT INTO users (email, custodial_address_index, passkey_enabled)
      VALUES ($1, $2, TRUE)
      RETURNING id, email, privacy_mode, email_verified`,
-    [userEmail, nextIndex]
+    [userEmail, nextIndex],
   );
 
   const user = userResult[0];
@@ -684,7 +704,7 @@ export async function verifySignupRegistration(
   }
 
   // Store credential
-  const credResult = await query<any>(
+  const credResult = await query<DbPasskeyCredential>(
     `INSERT INTO passkey_credentials
      (user_id, credential_id, credential_id_b64, public_key, counter, device_type, transports, backup_eligible, backup_state, display_name)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
@@ -700,13 +720,13 @@ export async function verifySignupRegistration(
       backupEligible,
       backupState,
       displayName || null,
-    ]
+    ],
   );
 
   // Update user to indicate passkey is enabled
   await execute(
     'UPDATE users SET passkey_enabled = TRUE WHERE id = $1',
-    [user.id]
+    [user.id],
   );
 
   return {

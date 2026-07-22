@@ -7,13 +7,13 @@ import {
   generateSiweMessage,
   requestNonce,
   verifySiweSignature,
+  signInWithWalletClient,
   type WalletSession,
 } from './siwe'
 import { storage, STORAGE_KEYS } from './storage'
 
 // Mock fetch
 const mockFetch = vi.fn()
-global.fetch = mockFetch
 
 // Mock session service
 vi.mock('./session', () => ({
@@ -22,6 +22,7 @@ vi.mock('./session', () => ({
 
 describe('siwe service', () => {
   beforeEach(() => {
+    vi.stubGlobal('fetch', mockFetch)
     localStorage.clear()
     vi.clearAllMocks()
     // Reset location for consistent test results
@@ -264,6 +265,46 @@ describe('siwe service', () => {
       await expect(
         verifySiweSignature('0x123', 'message', '0xbadsig')
       ).rejects.toThrow('Invalid signature')
+    })
+  })
+
+  describe('signInWithWalletClient', () => {
+    it('adapts the exact SIWE message to the wallet client and verifies its signature', async () => {
+      mockFetch
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ success: true, data: { nonce: 'nonce-1' } }),
+        })
+        .mockResolvedValueOnce({
+          json: () => Promise.resolve({ success: true, data: { token: 'token-1' } }),
+        })
+      const signMessageAsync = vi.fn().mockResolvedValue('0xsigned')
+      const address = '0x1234567890123456789012345678901234567890'
+
+      await expect(signInWithWalletClient(address, 1, signMessageAsync)).resolves.toMatchObject({
+        address,
+        token: 'token-1',
+      })
+
+      expect(signMessageAsync).toHaveBeenCalledOnce()
+      expect(signMessageAsync).toHaveBeenCalledWith({
+        message: expect.stringContaining(`Nonce: nonce-1`),
+      })
+      expect(JSON.parse(String(mockFetch.mock.calls[1][1]?.body))).toMatchObject({
+        address,
+        signature: '0xsigned',
+      })
+    })
+
+    it('does not verify when the wallet rejects the signature request', async () => {
+      mockFetch.mockResolvedValueOnce({
+        json: () => Promise.resolve({ success: true, data: { nonce: 'nonce-2' } }),
+      })
+      const signMessageAsync = vi.fn().mockRejectedValue(new Error('User rejected request'))
+
+      await expect(signInWithWalletClient('0x123', 1, signMessageAsync)).rejects.toThrow(
+        'User rejected request',
+      )
+      expect(mockFetch).toHaveBeenCalledOnce()
     })
   })
 })

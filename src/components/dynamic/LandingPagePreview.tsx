@@ -95,7 +95,7 @@ export default function LandingPagePreview({
   // Generate static HTML - memoized so it updates when data changes
   const staticHtml = useMemo(() => {
     return generateStaticHtml(project, metadata, balance, components, isDark)
-  }, [project, metadata, balance, components, layoutType, isDark])
+  }, [project, metadata, balance, components, isDark])
 
   // Update iframe when switching to HTML preview mode
   useEffect(() => {

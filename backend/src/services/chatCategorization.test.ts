@@ -375,24 +375,22 @@ Deno.test('Folder Hierarchy - nested structure', async (t) => {
 
   function getSubfolders(parentId: string | null, allFolders: typeof folders) {
     return allFolders.filter((f) =>
-      parentId === null
-        ? f.parentFolderId === undefined
-        : f.parentFolderId === parentId
+      parentId === null ? f.parentFolderId === undefined : f.parentFolderId === parentId
     );
   }
 
   await t.step('gets root folders', () => {
     const roots = getSubfolders(null, folders);
     assertEquals(roots.length, 2);
-    assertEquals(roots.map(f => f.name).includes('Work'), true);
-    assertEquals(roots.map(f => f.name).includes('Personal'), true);
+    assertEquals(roots.map((f) => f.name).includes('Work'), true);
+    assertEquals(roots.map((f) => f.name).includes('Personal'), true);
   });
 
   await t.step('gets children of Work folder', () => {
     const children = getSubfolders('root-1', folders);
     assertEquals(children.length, 2);
-    assertEquals(children.map(f => f.name).includes('Project A'), true);
-    assertEquals(children.map(f => f.name).includes('Project B'), true);
+    assertEquals(children.map((f) => f.name).includes('Project A'), true);
+    assertEquals(children.map((f) => f.name).includes('Project B'), true);
   });
 
   await t.step('gets grandchildren', () => {
@@ -422,9 +420,7 @@ Deno.test('Chat Folder Assignment - filtering', async (t) => {
 
   function getChatsInFolder(folderId: string | null, allChats: typeof chats) {
     return allChats.filter((c) =>
-      folderId === null
-        ? c.folderId === undefined
-        : c.folderId === folderId
+      folderId === null ? c.folderId === undefined : c.folderId === folderId
     );
   }
 
@@ -452,10 +448,36 @@ Deno.test('Chat Folder Assignment - filtering', async (t) => {
 
 Deno.test('Chat Folder Assignment - sorting with pins', async (t) => {
   const chats = [
-    { id: 'chat-1', name: 'Unpinned 1', folderId: 'folder-1', isPinned: false, updatedAt: new Date('2024-01-10') },
-    { id: 'chat-2', name: 'Pinned 1', folderId: 'folder-1', isPinned: true, pinOrder: 1, updatedAt: new Date('2024-01-05') },
-    { id: 'chat-3', name: 'Pinned 0', folderId: 'folder-1', isPinned: true, pinOrder: 0, updatedAt: new Date('2024-01-01') },
-    { id: 'chat-4', name: 'Unpinned 2', folderId: 'folder-1', isPinned: false, updatedAt: new Date('2024-01-15') },
+    {
+      id: 'chat-1',
+      name: 'Unpinned 1',
+      folderId: 'folder-1',
+      isPinned: false,
+      updatedAt: new Date('2024-01-10'),
+    },
+    {
+      id: 'chat-2',
+      name: 'Pinned 1',
+      folderId: 'folder-1',
+      isPinned: true,
+      pinOrder: 1,
+      updatedAt: new Date('2024-01-05'),
+    },
+    {
+      id: 'chat-3',
+      name: 'Pinned 0',
+      folderId: 'folder-1',
+      isPinned: true,
+      pinOrder: 0,
+      updatedAt: new Date('2024-01-01'),
+    },
+    {
+      id: 'chat-4',
+      name: 'Unpinned 2',
+      folderId: 'folder-1',
+      isPinned: false,
+      updatedAt: new Date('2024-01-15'),
+    },
   ];
 
   function sortChatsInFolder(folderChats: typeof chats) {
@@ -497,10 +519,10 @@ Deno.test('Reorder Pinned Items - updates pin orders', async (t) => {
   // Simulate reorder operation
   function reorderPinned(
     items: Array<{ id: string; pinOrder?: number }>,
-    newOrder: string[]
+    newOrder: string[],
   ): Array<{ id: string; pinOrder: number }> {
     return newOrder.map((id, index) => {
-      const item = items.find((i) => i.id === id);
+      items.find((i) => i.id === id);
       return { id, pinOrder: index };
     });
   }

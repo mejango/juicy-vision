@@ -71,7 +71,7 @@ export default function TrendingProjects({ onProjectClick }: TrendingProjectsPro
   }
 
   if (error) {
-    return <div className={`text-xs py-3 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Couldn’t load trending projects.</div>
+    return <div className={`text-xs py-3 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Couldn’t load trending projects.</div>
   }
   if (rows === null) {
     return (
@@ -83,7 +83,7 @@ export default function TrendingProjects({ onProjectClick }: TrendingProjectsPro
     )
   }
   if (rows.length === 0) {
-    return <div className={`text-xs py-3 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Nothing trending right now.</div>
+    return <div className={`text-xs py-3 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>Nothing trending right now.</div>
   }
 
   return (

@@ -45,6 +45,13 @@ interface DeployERC20ModalProps {
 
 type DeployStatus = 'preview' | 'signing' | 'pending' | 'confirmed' | 'failed'
 
+export function submitReviewedErc20Deployment(
+  guarded: Pick<ReturnType<typeof useGuardedTx>, 'run'>,
+  request: Parameters<ReturnType<typeof useGuardedTx>['run']>[0],
+): Promise<`0x${string}`> {
+  return guarded.run(request)
+}
+
 export default function DeployERC20Modal({
   isOpen,
   onClose,
@@ -261,7 +268,7 @@ export default function DeployERC20Modal({
       })
 
       const callArgs = [BigInt(projectId), tokenName, tokenSymbol, salt] as const
-      const hash = await guarded.run({
+      const hash = await submitReviewedErc20Deployment(guarded, {
         chainId,
         to: freshController,
         data: callData,

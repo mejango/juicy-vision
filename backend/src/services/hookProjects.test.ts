@@ -1,4 +1,4 @@
-import { assertEquals, assertExists, assert } from 'std/assert/mod.ts';
+import { assert, assertEquals, assertExists } from 'std/assert/mod.ts';
 import { computeFilesHash, type HookProjectType } from './hookProjects.ts';
 
 // ============================================================================
@@ -123,18 +123,18 @@ Deno.test('hookProjects - File Path Patterns', async (t) => {
   });
 
   await t.step('Solidity files end with .sol', () => {
-    const solFiles = validPaths.filter(p => p.endsWith('.sol'));
+    const solFiles = validPaths.filter((p) => p.endsWith('.sol'));
     assertEquals(solFiles.length, 4);
   });
 
   await t.step('Test files follow .t.sol convention', () => {
-    const testFiles = validPaths.filter(p => p.endsWith('.t.sol'));
+    const testFiles = validPaths.filter((p) => p.endsWith('.t.sol'));
     assertEquals(testFiles.length, 1);
     assertEquals(testFiles[0], 'test/MyHook.t.sol');
   });
 
   await t.step('Script files follow .s.sol convention', () => {
-    const scriptFiles = validPaths.filter(p => p.endsWith('.s.sol'));
+    const scriptFiles = validPaths.filter((p) => p.endsWith('.s.sol'));
     assertEquals(scriptFiles.length, 1);
     assertEquals(scriptFiles[0], 'script/Deploy.s.sol');
   });

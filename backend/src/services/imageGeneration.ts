@@ -60,6 +60,8 @@ const REPLICATE_API_URL = 'https://api.replicate.com/v1';
 
 // Using Flux Schnell - fast and high quality
 const FLUX_MODEL = 'black-forest-labs/flux-schnell';
+const IMAGE_FETCH_TIMEOUT_MS = 30_000;
+const MAX_GENERATED_IMAGE_BYTES = 25 * 1024 * 1024;
 
 interface ReplicatePrediction {
   id: string;
@@ -72,30 +74,51 @@ interface ReplicatePrediction {
   };
 }
 
+export async function fetchImageGenerationResource(
+  input: string | URL,
+  init: RequestInit = {},
+  timeoutMs = IMAGE_FETCH_TIMEOUT_MS,
+  fetchImplementation: typeof fetch = fetch,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetchImplementation(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('Image generation timed out');
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 /**
  * Start a prediction on Replicate
  */
 async function createPrediction(
   prompt: string,
-  apiToken: string
+  apiToken: string,
 ): Promise<ReplicatePrediction> {
-  const response = await fetch(`${REPLICATE_API_URL}/models/${FLUX_MODEL}/predictions`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiToken}`,
-      'Content-Type': 'application/json',
-      'Prefer': 'wait', // Wait for prediction to complete (up to 60s)
-    },
-    body: JSON.stringify({
-      input: {
-        prompt,
-        num_outputs: 1,
-        aspect_ratio: '1:1', // Square for NFTs
-        output_format: 'webp',
-        output_quality: 90,
+  const response = await fetchImageGenerationResource(
+    `${REPLICATE_API_URL}/models/${FLUX_MODEL}/predictions`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiToken}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'wait', // Wait for prediction to complete (up to 60s)
       },
-    }),
-  });
+      body: JSON.stringify({
+        input: {
+          prompt,
+          num_outputs: 1,
+          aspect_ratio: '1:1', // Square for NFTs
+          output_format: 'webp',
+          output_quality: 90,
+        },
+      }),
+    },
+  );
 
   if (!response.ok) {
     const error = await response.text();
@@ -111,13 +134,13 @@ async function createPrediction(
 async function waitForPrediction(
   predictionUrl: string,
   apiToken: string,
-  maxWaitMs: number = 120000 // 2 minutes max
+  maxWaitMs: number = 120000, // 2 minutes max
 ): Promise<ReplicatePrediction> {
   const startTime = Date.now();
   const pollIntervalMs = 1000;
 
   while (Date.now() - startTime < maxWaitMs) {
-    const response = await fetch(predictionUrl, {
+    const response = await fetchImageGenerationResource(predictionUrl, {
       headers: {
         'Authorization': `Bearer ${apiToken}`,
       },
@@ -152,13 +175,16 @@ async function waitForPrediction(
  * Download image from URL and return as bytes
  */
 async function downloadImage(url: string): Promise<Uint8Array> {
-  const response = await fetch(url);
+  const response = await fetchImageGenerationResource(url);
 
   if (!response.ok) {
     throw new Error(`Failed to download image: ${response.status}`);
   }
 
   const arrayBuffer = await response.arrayBuffer();
+  if (arrayBuffer.byteLength > MAX_GENERATED_IMAGE_BYTES) {
+    throw new Error('Generated image exceeds the 25 MB size limit');
+  }
   return new Uint8Array(arrayBuffer);
 }
 
@@ -183,7 +209,7 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
  */
 async function uploadToIpfs(
   imageBytes: Uint8Array,
-  fileName: string
+  fileName: string,
 ): Promise<string> {
   // Convert to base64 and use the existing IPFS service
   const base64Data = uint8ArrayToBase64(imageBytes);
@@ -216,7 +242,7 @@ export async function generateImage(prompt: string): Promise<GeneratedImage> {
   if (prediction.status !== 'succeeded') {
     prediction = await waitForPrediction(
       prediction.urls.get,
-      config.replicateApiToken
+      config.replicateApiToken,
     );
   }
 
@@ -247,7 +273,7 @@ export async function generateImage(prompt: string): Promise<GeneratedImage> {
  * Builds an optimized prompt automatically.
  */
 export async function generateImageFromContext(
-  context: ImageGenerationContext
+  context: ImageGenerationContext,
 ): Promise<GeneratedImage> {
   const prompt = buildImagePrompt(context);
   return generateImage(prompt);

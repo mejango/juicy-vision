@@ -1,4 +1,4 @@
-import { assertEquals, assert, assertExists } from 'std/assert/mod.ts';
+import { assert, assertEquals, assertExists } from 'std/assert/mod.ts';
 
 // ============================================================================
 // Severity Tests
@@ -197,11 +197,11 @@ Deno.test('securityAnalysis - Summary Calculation', async (t) => {
   ];
 
   const summary = {
-    critical: findings.filter(f => f.severity === 'critical').length,
-    high: findings.filter(f => f.severity === 'high').length,
-    medium: findings.filter(f => f.severity === 'medium').length,
-    low: findings.filter(f => f.severity === 'low').length,
-    info: findings.filter(f => f.severity === 'info').length,
+    critical: findings.filter((f) => f.severity === 'critical').length,
+    high: findings.filter((f) => f.severity === 'high').length,
+    medium: findings.filter((f) => f.severity === 'medium').length,
+    low: findings.filter((f) => f.severity === 'low').length,
+    info: findings.filter((f) => f.severity === 'info').length,
   };
 
   await t.step('counts critical findings', () => {
@@ -252,7 +252,7 @@ Deno.test('securityAnalysis - Deployment Checks', async (t) => {
       { path: 'src/MyHook.sol', content: 'contract MyHook {}' },
     ];
 
-    const hasTests = files.some(f => f.path.includes('/test/') && f.path.endsWith('.t.sol'));
+    const hasTests = files.some((f) => f.path.includes('/test/') && f.path.endsWith('.t.sol'));
     assertEquals(hasTests, false, 'Should warn about missing tests');
   });
 
@@ -263,7 +263,7 @@ Deno.test('securityAnalysis - Deployment Checks', async (t) => {
     ];
 
     // Check for test files (either containing /test/ or starting with test/)
-    const hasTests = files.some(f =>
+    const hasTests = files.some((f) =>
       (f.path.includes('/test/') || f.path.startsWith('test/')) && f.path.endsWith('.t.sol')
     );
     assertEquals(hasTests, true);

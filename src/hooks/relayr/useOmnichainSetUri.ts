@@ -54,6 +54,17 @@ export interface UseOmnichainSetUriReturn {
   reset: () => void
 }
 
+export function submitManagedSetUriBundle(
+  transactions: Array<{ chainId: number; target: string; data: string; value: string }>,
+  signerAddress: string,
+  managedAddress: string | undefined,
+  deploymentKey: string | undefined,
+  submit?: typeof createManagedRelayrBundle,
+): Promise<{ bundleId: string }> {
+  if (submit) return submit(transactions, signerAddress, managedAddress, deploymentKey)
+  return createManagedRelayrBundle(transactions, signerAddress, managedAddress, deploymentKey)
+}
+
 // 48 hours deadline for signatures
 const ERC2771_DEADLINE_DURATION_SECONDS = 48 * 60 * 60
 
@@ -413,7 +424,7 @@ export function useOmnichainSetUri(
         // Pass smart account address for ERC-2771 routing through ForwardableSimpleAccount
         // The forwarder calls SmartAccount.execute(), _msgSender() = reserves EOA = owner
         assertSignerUnchanged()
-        const result = await createManagedRelayrBundle(
+        const result = await submitManagedSetUriBundle(
           serverTransactions,
           signerAddress,
           managedAddress ?? undefined,  // Smart account address for routing

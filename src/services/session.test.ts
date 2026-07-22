@@ -163,39 +163,43 @@ describe('Session Service', () => {
     })
   })
 
-  /**
-   * getCurrentUserAddress tests
-   *
-   * These tests are skipped because getCurrentUserAddress uses require('./siwe')
-   * to avoid circular dependencies (siwe.ts imports session.ts). This dynamic
-   * require cannot be mocked in vitest's ESM environment.
-   *
-   * The function is simple and well-documented in ARCHITECTURE.md. Its behavior:
-   * 1. Priority 1: SIWE wallet address (self-custody) - from getWalletSession()
-   * 2. Priority 2: Smart account address (managed mode) - from localStorage
-   * 3. Priority 3: Cached pseudo-address (anonymous) - from module cache
-   * 4. Returns null if none available
-   *
-   * All returned addresses are lowercase for case-insensitive comparison.
-   *
-   * Testing approach: Integration tests in the browser validate this function
-   * works correctly across all auth modes.
-   */
-  describe.skip('getCurrentUserAddress', () => {
-    it('returns SIWE wallet address as priority 1 (lowercase)', () => {
-      // See comment above - requires integration testing
+  describe('selectCurrentUserAddress', () => {
+    const now = 1_000_000
+
+    it('uses a valid SIWE wallet first and normalizes its case', async () => {
+      const { selectCurrentUserAddress } = await import('./session')
+      expect(selectCurrentUserAddress({
+        walletSession: { address: '0xABCDEF', expiresAt: now + 3_600_001 },
+        smartAccountAddress: '0xSMART',
+        pseudoAddress: '0xPSEUDO',
+        now,
+      })).toBe('0xabcdef')
     })
 
-    it('returns smart account address as priority 2 when no SIWE (lowercase)', () => {
-      // See comment above - requires integration testing
+    it('falls back to the smart account when SIWE is expired', async () => {
+      const { selectCurrentUserAddress } = await import('./session')
+      expect(selectCurrentUserAddress({
+        walletSession: { address: '0xEXPIRED', expiresAt: now },
+        smartAccountAddress: '0xSMART',
+        pseudoAddress: '0xPSEUDO',
+        now,
+      })).toBe('0xsmart')
     })
 
-    it('returns pseudo-address as priority 3 when no SIWE or smart account (lowercase)', () => {
-      // See comment above - requires integration testing
-    })
-
-    it('returns null when no addresses are available', () => {
-      // See comment above - requires integration testing
+    it('falls back to the pseudo-address and then null', async () => {
+      const { selectCurrentUserAddress } = await import('./session')
+      expect(selectCurrentUserAddress({
+        walletSession: null,
+        smartAccountAddress: null,
+        pseudoAddress: '0xPSEUDO',
+        now,
+      })).toBe('0xpseudo')
+      expect(selectCurrentUserAddress({
+        walletSession: null,
+        smartAccountAddress: null,
+        pseudoAddress: null,
+        now,
+      })).toBeNull()
     })
   })
 })

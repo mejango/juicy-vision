@@ -3,25 +3,34 @@
   "version": "0.1.0",
   "exports": "./main.ts",
   "tasks": {
-    "dev": "deno run --watch --env-file=.env --allow-net --allow-env --allow-read main.ts",
-    "start": "deno run --env-file=.env --allow-net --allow-env --allow-read main.ts",
-    "test": "deno test --allow-net --allow-env --allow-read",
+    "dev": "deno run --frozen --watch --env-file=.env --allow-net --allow-env --allow-read main.ts",
+    "start": "deno run --frozen --env-file=.env --allow-net --allow-env --allow-read main.ts",
+    "migrate": "deno run --frozen --allow-net --allow-env --allow-read run_migrate.ts",
+    "test:migrate:legacy": "deno run --frozen --allow-net --allow-env --allow-read scripts/test-legacy-migration.ts",
+    "config:check": "deno run --frozen --allow-env --allow-read scripts/validate-config.ts",
+    "cache": "deno cache --frozen main.ts run_migrate.ts",
+    "check": "deno check --frozen main.ts run_migrate.ts scripts/validate-config.ts scripts/test-legacy-migration.ts",
+    "fmt:check": "deno fmt --check --ignore='**/*.md' .",
+    "lint": "deno lint",
+    "lint:critical": "deno task lint",
+    "test": "deno test --frozen --allow-net=127.0.0.1,localhost --allow-env --allow-read",
     "train": "deno run --allow-net --allow-env --allow-read --allow-write scripts/training/run.ts"
   },
   "imports": {
     "@shared/": "../shared/",
-    "hono": "npm:hono@4",
-    "hono/cors": "npm:hono@4/cors",
-    "hono/logger": "npm:hono@4/logger",
-    "hono/secure-headers": "npm:hono@4/secure-headers",
-    "hono/timing": "npm:hono@4/timing",
+    "hono": "npm:hono@4.11.4",
+    "hono/body-limit": "npm:hono@4.11.4/body-limit",
+    "hono/cors": "npm:hono@4.11.4/cors",
+    "hono/logger": "npm:hono@4.11.4/logger",
+    "hono/secure-headers": "npm:hono@4.11.4/secure-headers",
+    "hono/timing": "npm:hono@4.11.4/timing",
     "@hono/zod-validator": "npm:@hono/zod-validator@0.4.3",
-    "zod": "npm:zod@3",
-    "jose": "npm:jose@5",
-    "viem": "npm:viem@2",
-    "viem/chains": "npm:viem@2/chains",
-    "viem/accounts": "npm:viem@2/accounts",
-    "@anthropic-ai/sdk": "npm:@anthropic-ai/sdk@0.39",
+    "zod": "npm:zod@3.25.76",
+    "jose": "npm:jose@5.10.0",
+    "viem": "npm:viem@2.44.4",
+    "viem/chains": "npm:viem@2.44.4/chains",
+    "viem/accounts": "npm:viem@2.44.4/accounts",
+    "@anthropic-ai/sdk": "npm:@anthropic-ai/sdk@0.39.0",
     "postgres": "https://deno.land/x/postgres@v0.19.3/mod.ts",
     "std/": "https://deno.land/std@0.224.0/"
   },
@@ -31,7 +40,8 @@
   },
   "lint": {
     "rules": {
-      "tags": ["recommended"]
+      "tags": ["recommended"],
+      "exclude": ["require-await"]
     }
   },
   "fmt": {

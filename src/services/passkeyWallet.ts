@@ -36,6 +36,14 @@ export interface PasskeyWallet {
   createdAt: number
 }
 
+type PrfExtensionInput = AuthenticationExtensionsClientInputs & {
+  prf: { eval: { first: Uint8Array } }
+}
+
+type PrfExtensionOutput = AuthenticationExtensionsClientOutputs & {
+  prf?: { results?: { first?: ArrayBuffer } }
+}
+
 /**
  * Convert ArrayBuffer to hex string
  */
@@ -246,7 +254,7 @@ export async function createPasskeyWallet(): Promise<PasskeyWallet> {
             first: PRF_SALT,
           },
         },
-      } as any,
+      } as PrfExtensionInput,
     },
   }) as PublicKeyCredential | null
 
@@ -255,7 +263,7 @@ export async function createPasskeyWallet(): Promise<PasskeyWallet> {
   }
 
   // Check for PRF output in the response
-  const extensionResults = (credential as any).getClientExtensionResults?.()
+  const extensionResults = credential.getClientExtensionResults() as PrfExtensionOutput
   const prfResult = extensionResults?.prf?.results?.first
 
   if (!prfResult) {
@@ -294,7 +302,7 @@ export async function authenticatePasskeyWallet(credentialId?: string): Promise<
             first: PRF_SALT,
           },
         },
-      } as any,
+      } as PrfExtensionInput,
     },
   }) as PublicKeyCredential | null
 
@@ -303,7 +311,7 @@ export async function authenticatePasskeyWallet(credentialId?: string): Promise<
   }
 
   // Get PRF output
-  const extensionResults = (credential as any).getClientExtensionResults?.()
+  const extensionResults = credential.getClientExtensionResults() as PrfExtensionOutput
   const prfResult = extensionResults?.prf?.results?.first
 
   if (!prfResult) {

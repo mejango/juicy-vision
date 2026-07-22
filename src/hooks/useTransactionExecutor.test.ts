@@ -173,7 +173,6 @@ vi.mock('../api/transactions', () => ({
 
 // Mock global fetch for Juice API
 const mockFetch = vi.fn()
-global.fetch = mockFetch
 
 const autoApproveReview = (event: Event) => {
   const request = (event as CustomEvent<{ respond: (approved: boolean) => void }>).detail
@@ -182,6 +181,7 @@ const autoApproveReview = (event: Event) => {
 
 describe('useTransactionExecutor', () => {
   beforeEach(() => {
+    vi.stubGlobal('fetch', mockFetch)
     vi.clearAllMocks()
     window.addEventListener('juice:payment-review-request', autoApproveReview)
     mockPreviewedTokens = 1000n

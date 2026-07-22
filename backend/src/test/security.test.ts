@@ -12,7 +12,7 @@
  * - DoS vectors (large inputs)
  */
 
-import { assertEquals, assertExists, assertThrows, assertRejects } from 'std/assert/mod.ts';
+import { assertEquals } from 'std/assert/mod.ts';
 import { z } from 'zod';
 
 // ============================================================================
@@ -34,7 +34,7 @@ export const FUZZ_TEST_CASES = {
     "' OR 1=1--",
     "1'; EXEC xp_cmdshell('whoami'); --",
     "'; TRUNCATE TABLE chat_messages; --",
-    "1 UNION ALL SELECT NULL,NULL,password FROM users--",
+    '1 UNION ALL SELECT NULL,NULL,password FROM users--',
   ],
 
   // XSS payloads
@@ -253,12 +253,12 @@ Deno.test('Security - Path Traversal Prevention', async (t) => {
     (val) => {
       const lower = val.toLowerCase();
       return !val.includes('..') &&
-             !lower.includes('%2e') &&
-             !lower.includes('%2f') &&
-             !lower.includes('%00') &&  // Null byte
-             !lower.includes('%5c');    // Backslash
+        !lower.includes('%2e') &&
+        !lower.includes('%2f') &&
+        !lower.includes('%00') && // Null byte
+        !lower.includes('%5c'); // Backslash
     },
-    'Path traversal detected'
+    'Path traversal detected',
   );
 
   for (const payload of FUZZ_TEST_CASES.pathTraversal) {
@@ -278,7 +278,11 @@ Deno.test('Security - Email Validation', async (t) => {
 
   const validEmails = ['test@example.com', 'a@b.co', 'test+tag@example.com'];
   const invalidEmails = [
-    '', 'not-an-email', 'test@', '@example.com', 'test@.com',
+    '',
+    'not-an-email',
+    'test@',
+    '@example.com',
+    'test@.com',
     'test\x00@example.com', // Null byte
     'a'.repeat(256) + '@example.com', // Too long
   ];
@@ -312,7 +316,10 @@ Deno.test('Security - Ethereum Address Validation', async (t) => {
   ];
 
   const invalidAddresses = [
-    '', '0x', '0x123', 'not-an-address',
+    '',
+    '0x',
+    '0x123',
+    'not-an-address',
     '0x' + 'g'.repeat(40), // Invalid hex
     '0x' + '0'.repeat(39), // Too short
     '0x' + '0'.repeat(41), // Too long
@@ -349,7 +356,10 @@ Deno.test('Security - UUID Validation', async (t) => {
   ];
 
   const invalidUuids = [
-    '', 'not-a-uuid', '123', '123e4567-e89b-12d3-a456', // Truncated
+    '',
+    'not-a-uuid',
+    '123',
+    '123e4567-e89b-12d3-a456', // Truncated
     '123e4567-e89b-12d3-a456-426614174000-extra', // Extra
     '123e4567e89b12d3a456426614174000', // No dashes
     "'; DROP TABLE--", // SQL injection
@@ -519,11 +529,12 @@ Deno.test('Security - JWT Format Validation', async (t) => {
       // Each part should be at least 4 chars (minimal base64 encoding)
       return parts[0].length >= 4 && parts[1].length >= 4;
     },
-    'Invalid JWT format'
+    'Invalid JWT format',
   );
 
   await t.step('accepts valid JWT format', () => {
-    const validJwt = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U';
+    const validJwt =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U';
     assertEquals(JwtSchema.safeParse(validJwt).success, true);
   });
 
@@ -616,7 +627,6 @@ Deno.test('Security - Privacy Mode Validation', async (t) => {
 // ============================================================================
 
 Deno.test('Security - Chain ID Validation', async (t) => {
-  const VALID_CHAINS = [1, 10, 8453, 42161] as const;
   const ChainIdSchema = z.enum(['1', '10', '8453', '42161']).transform(Number);
 
   await t.step('accepts valid chain IDs', () => {
@@ -754,13 +764,13 @@ Deno.test('Security - Hex String Validation', async (t) => {
 Deno.test('Security - Full Request Validation', async (t) => {
   const CreateProjectRequestSchema = z.object({
     name: z.string().min(1).max(100).refine(
-      val => !val.includes('<script'),
-      'Name contains potentially dangerous content'
+      (val) => !val.includes('<script'),
+      'Name contains potentially dangerous content',
     ),
     description: z.string().max(1000).optional(),
     chainId: z.number().int().refine(
-      val => [1, 10, 8453, 42161].includes(val),
-      'Invalid chain ID'
+      (val) => [1, 10, 8453, 42161].includes(val),
+      'Invalid chain ID',
     ),
     metadata: z.object({
       logoUri: z.string().url().optional(),
@@ -846,17 +856,23 @@ Deno.test('Security - Passkey Wallet Registration Schema', async (t) => {
 
   await t.step('validates signature format', () => {
     // Invalid signature formats
-    assertEquals(RegisterWalletSchema.safeParse({
-      credentialId: 'test',
-      walletAddress: '0x1234567890123456789012345678901234567890',
-      signature: 'not-hex',
-    }).success, false);
+    assertEquals(
+      RegisterWalletSchema.safeParse({
+        credentialId: 'test',
+        walletAddress: '0x1234567890123456789012345678901234567890',
+        signature: 'not-hex',
+      }).success,
+      false,
+    );
 
-    assertEquals(RegisterWalletSchema.safeParse({
-      credentialId: 'test',
-      walletAddress: '0x1234567890123456789012345678901234567890',
-      signature: '',
-    }).success, false);
+    assertEquals(
+      RegisterWalletSchema.safeParse({
+        credentialId: 'test',
+        walletAddress: '0x1234567890123456789012345678901234567890',
+        signature: '',
+      }).success,
+      false,
+    );
   });
 
   await t.step('prevents arbitrary wallet registration without proof', () => {
@@ -929,7 +945,7 @@ Deno.test('Security - Smart Account User Ownership', async (t) => {
   // Simulating the verification logic
   function verifyAccountOwnership(
     accountUserId: string,
-    requestUserId: string
+    requestUserId: string,
   ): boolean {
     return accountUserId === requestUserId;
   }
@@ -976,9 +992,9 @@ Deno.test('Security - Passkey Counter Replay Prevention', async (t) => {
   });
 
   await t.step('rejects non-increasing counters (replay attack)', () => {
-    assertEquals(isCounterValid(5, 5), false);  // Equal
-    assertEquals(isCounterValid(5, 4), false);  // Less
-    assertEquals(isCounterValid(5, 0), false);  // Rollback to zero
+    assertEquals(isCounterValid(5, 5), false); // Equal
+    assertEquals(isCounterValid(5, 4), false); // Less
+    assertEquals(isCounterValid(5, 0), false); // Rollback to zero
     assertEquals(isCounterValid(100, 99), false);
   });
 

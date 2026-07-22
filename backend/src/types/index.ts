@@ -201,6 +201,8 @@ export interface EnvConfig {
   port: number;
   env: 'development' | 'production';
   isTestnet: boolean; // True when using Sepolia testnets
+  allowedOrigins: string[];
+  trustProxy: boolean;
 
   // Database
   databaseUrl: string;
@@ -246,7 +248,8 @@ export interface EnvConfig {
   ipfsApiSecret?: string; // Pinata API secret
 
   // Forge (Hook Development)
-  forgeDockerEnabled?: boolean; // Enable Docker-based forge execution
+  forgeDockerEnabled?: boolean; // Development-only, never enabled in the API container
+  forgeSandboxImage?: string; // Required digest-pinned worker image when enabled
   semgrepEnabled?: boolean; // Enable Semgrep security analysis
 
   // Replicate (Image Generation)

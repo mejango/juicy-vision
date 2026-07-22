@@ -4,7 +4,7 @@
  * Tests for chat invite creation, validation, and joining
  */
 
-import { assertEquals, assertExists, assertNotEquals } from 'std/assert/mod.ts';
+import { assertEquals, assertExists } from 'std/assert/mod.ts';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
@@ -272,6 +272,7 @@ Deno.test('Invite Routes - GET /invite/:code (public info)', async (t) => {
     description: 'A test chat for invites',
   };
 
+  // deno-lint-ignore no-explicit-any -- the fixture intentionally models partial invite shapes
   function isValid(invite: any): boolean {
     if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) return false;
     if (invite.maxUses !== null && invite.uses >= invite.maxUses) return false;
@@ -289,7 +290,7 @@ Deno.test('Invite Routes - GET /invite/:code (public info)', async (t) => {
     if (!isValid(invite)) {
       return c.json(
         { success: false, error: 'Invite has expired or reached max uses' },
-        410
+        410,
       );
     }
 
@@ -487,6 +488,7 @@ Deno.test('Invite Routes - POST /chat/:chatId/invites (create)', async (t) => {
     ],
   ]);
 
+  // deno-lint-ignore no-explicit-any -- route fixture records heterogeneous response fields
   const createdInvites: any[] = [];
 
   app.post(
@@ -510,8 +512,7 @@ Deno.test('Invite Routes - POST /chat/:chatId/invites (create)', async (t) => {
         return c.json({ success: false, error: 'Not a member of this chat' }, 403);
       }
 
-      const canCreate =
-        member.role === 'founder' ||
+      const canCreate = member.role === 'founder' ||
         member.role === 'admin' ||
         member.canInvite;
 
@@ -541,7 +542,7 @@ Deno.test('Invite Routes - POST /chat/:chatId/invites (create)', async (t) => {
           inviteUrl: `https://app.example.com/#/join/${invite.code}`,
         },
       }, 201);
-    }
+    },
   );
 
   await t.step('founder can create invite', async () => {
@@ -723,11 +724,12 @@ Deno.test('Chat Migration - POST /chat/migrate', async (t) => {
         z.object({
           role: z.enum(['user', 'assistant']),
           content: z.string(),
-        })
+        }),
       )
       .optional(),
   });
 
+  // deno-lint-ignore no-explicit-any -- migration fixture records heterogeneous chat fields
   const migratedChats: any[] = [];
 
   app.post('/migrate', zValidator('json', MigrateChatSchema), (c) => {
@@ -916,7 +918,7 @@ Deno.test('Chat Permissions - 4 Permission Levels', async (t) => {
 
   function checkPermission(
     member: ChatMember,
-    action: 'read' | 'write' | 'invite' | 'create-invite-with-invite-permission'
+    action: 'read' | 'write' | 'invite' | 'create-invite-with-invite-permission',
   ): boolean {
     switch (action) {
       case 'read':
@@ -927,7 +929,8 @@ Deno.test('Chat Permissions - 4 Permission Levels', async (t) => {
         return member.canInvite;
       case 'create-invite-with-invite-permission':
         // Can only create invites that grant invite permission if canPassOnRoles or founder/admin
-        return member.canInvite && (member.canPassOnRoles || member.role === 'founder' || member.role === 'admin');
+        return member.canInvite &&
+          (member.canPassOnRoles || member.role === 'founder' || member.role === 'admin');
       default:
         return false;
     }
@@ -965,21 +968,24 @@ Deno.test('Chat Permissions - 4 Permission Levels', async (t) => {
     assertEquals(checkPermission(member, 'create-invite-with-invite-permission'), false);
   });
 
-  await t.step('view-and-write-and-invite member: can invite but not grant invite permission', () => {
-    const member: ChatMember = {
-      address: '0xinviter',
-      role: 'member',
-      canSendMessages: true,
-      canInvite: true,
-      canPassOnRoles: false,
-    };
+  await t.step(
+    'view-and-write-and-invite member: can invite but not grant invite permission',
+    () => {
+      const member: ChatMember = {
+        address: '0xinviter',
+        role: 'member',
+        canSendMessages: true,
+        canInvite: true,
+        canPassOnRoles: false,
+      };
 
-    assertEquals(getPermissionLevel(member), 'view-and-write-and-invite');
-    assertEquals(checkPermission(member, 'read'), true);
-    assertEquals(checkPermission(member, 'write'), true);
-    assertEquals(checkPermission(member, 'invite'), true);
-    assertEquals(checkPermission(member, 'create-invite-with-invite-permission'), false);
-  });
+      assertEquals(getPermissionLevel(member), 'view-and-write-and-invite');
+      assertEquals(checkPermission(member, 'read'), true);
+      assertEquals(checkPermission(member, 'write'), true);
+      assertEquals(checkPermission(member, 'invite'), true);
+      assertEquals(checkPermission(member, 'create-invite-with-invite-permission'), false);
+    },
+  );
 
   await t.step('view-and-write-and-invite-and-caninvite member: full permissions', () => {
     const member: ChatMember = {
@@ -1095,7 +1101,7 @@ Deno.test('Invite Permission Flow - End to End', async (t) => {
 
   function createInvite(
     creatorAddress: string,
-    permissions: { canSendMessages: boolean; canInviteOthers: boolean; canPassOnRoles: boolean }
+    permissions: { canSendMessages: boolean; canInviteOthers: boolean; canPassOnRoles: boolean },
   ): Invite | { error: string } {
     const creator = members.get(creatorAddress);
     if (!creator) return { error: 'Not a member' };
@@ -1157,7 +1163,9 @@ Deno.test('Invite Permission Flow - End to End', async (t) => {
   });
 
   await t.step('4. Join via view-and-write invite', () => {
-    const writeInvite = Array.from(invites.values()).find((i) => i.canSendMessages && !i.canInviteOthers);
+    const writeInvite = Array.from(invites.values()).find((i) =>
+      i.canSendMessages && !i.canInviteOthers
+    );
     const result = joinViaInvite(writeInvite!.code, '0xwriter');
     assertEquals('error' in result, false);
     if (!('error' in result)) {
@@ -1176,7 +1184,9 @@ Deno.test('Invite Permission Flow - End to End', async (t) => {
   });
 
   await t.step('6. Join via invite and try to create invite with pass-on', () => {
-    const inviteInvite = Array.from(invites.values()).find((i) => i.canInviteOthers && !i.canPassOnRoles);
+    const inviteInvite = Array.from(invites.values()).find((i) =>
+      i.canInviteOthers && !i.canPassOnRoles
+    );
     const joinResult = joinViaInvite(inviteInvite!.code, '0xinviter');
     assertEquals('error' in joinResult, false);
 
@@ -1238,7 +1248,7 @@ Deno.test('Permission Enforcement - Write Permission Check', async (t) => {
 
   function checkPermission(
     address: string,
-    action: 'read' | 'write'
+    action: 'read' | 'write',
   ): boolean {
     const member = members.get(address);
     if (!member || !member.isActive) {
@@ -1256,7 +1266,10 @@ Deno.test('Permission Enforcement - Write Permission Check', async (t) => {
     }
   }
 
-  function sendMessage(senderAddress: string, content: string): { success: boolean; error?: string } {
+  function sendMessage(
+    senderAddress: string,
+    _content: string,
+  ): { success: boolean; error?: string } {
     if (!checkPermission(senderAddress, 'write')) {
       return { success: false, error: 'Not authorized to send messages' };
     }
@@ -1295,7 +1308,9 @@ Deno.test('Permission Enforcement - Write Permission Check', async (t) => {
 
 Deno.test('Full Invite Flow - End to End', async (t) => {
   // Simulated state
+  // deno-lint-ignore no-explicit-any -- end-to-end fixture evolves records across flow stages
   const chats = new Map<string, any>();
+  // deno-lint-ignore no-explicit-any -- end-to-end fixture evolves records across flow stages
   const invites = new Map<string, any>();
   const members = new Map<string, Set<string>>();
 

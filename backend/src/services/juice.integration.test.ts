@@ -12,8 +12,8 @@
  * These tests require a running database connection.
  */
 
-import { assertEquals, assertExists, assertRejects } from 'https://deno.land/std@0.224.0/assert/mod.ts';
-import { query, queryOne, execute, transaction } from '../db/index.ts';
+import { assertEquals, assertExists } from 'https://deno.land/std@0.224.0/assert/mod.ts';
+import { execute, query, queryOne, transaction } from '../db/index.ts';
 import { SKIP_DB_TESTS } from '../test/helpers.ts';
 
 // ============================================================================
@@ -28,14 +28,14 @@ async function ensureTestUsersExist(): Promise<void> {
   for (const userId of [TEST_USER_ID_1, TEST_USER_ID_2, TEST_USER_ID_3]) {
     const existing = await queryOne<{ id: string }>(
       'SELECT id FROM users WHERE id = $1',
-      [userId]
+      [userId],
     );
     if (!existing) {
       await execute(
         `INSERT INTO users (id, email, email_verified, privacy_mode)
          VALUES ($1, $2, true, 'open_book')
          ON CONFLICT (id) DO NOTHING`,
-        [userId, `test-${userId.slice(-4)}@juice.test`]
+        [userId, `test-${userId.slice(-4)}@juice.test`],
       );
     }
   }
@@ -45,19 +45,19 @@ async function cleanupTestData(): Promise<void> {
   // Clean up test data in reverse order of foreign key dependencies
   await execute(
     `DELETE FROM juice_cash_outs WHERE user_id = ANY($1)`,
-    [[TEST_USER_ID_1, TEST_USER_ID_2, TEST_USER_ID_3]]
+    [[TEST_USER_ID_1, TEST_USER_ID_2, TEST_USER_ID_3]],
   );
   await execute(
     `DELETE FROM juice_spends WHERE user_id = ANY($1)`,
-    [[TEST_USER_ID_1, TEST_USER_ID_2, TEST_USER_ID_3]]
+    [[TEST_USER_ID_1, TEST_USER_ID_2, TEST_USER_ID_3]],
   );
   await execute(
     `DELETE FROM juice_purchases WHERE user_id = ANY($1)`,
-    [[TEST_USER_ID_1, TEST_USER_ID_2, TEST_USER_ID_3]]
+    [[TEST_USER_ID_1, TEST_USER_ID_2, TEST_USER_ID_3]],
   );
   await execute(
     `DELETE FROM juice_balances WHERE user_id = ANY($1)`,
-    [[TEST_USER_ID_1, TEST_USER_ID_2, TEST_USER_ID_3]]
+    [[TEST_USER_ID_1, TEST_USER_ID_2, TEST_USER_ID_3]],
   );
 }
 
@@ -67,7 +67,7 @@ async function createBalance(userId: string, amount: number): Promise<void> {
      VALUES ($1, $2, $2)
      ON CONFLICT (user_id)
      DO UPDATE SET balance = $2, lifetime_purchased = $2`,
-    [userId, amount]
+    [userId, amount],
   );
 }
 
@@ -88,7 +88,7 @@ Deno.test({
     // Balance should not exist yet
     const before = await queryOne<{ user_id: string }>(
       `SELECT user_id FROM juice_balances WHERE user_id = $1`,
-      [TEST_USER_ID_1]
+      [TEST_USER_ID_1],
     );
     assertEquals(before, null, 'Balance should not exist initially');
 
@@ -97,7 +97,7 @@ Deno.test({
       `INSERT INTO juice_balances (user_id)
        VALUES ($1)
        ON CONFLICT (user_id) DO NOTHING`,
-      [TEST_USER_ID_1]
+      [TEST_USER_ID_1],
     );
 
     // Verify balance was created with correct defaults
@@ -110,7 +110,7 @@ Deno.test({
     }>(
       `SELECT user_id, balance, lifetime_purchased, lifetime_spent, lifetime_cashed_out
        FROM juice_balances WHERE user_id = $1`,
-      [TEST_USER_ID_1]
+      [TEST_USER_ID_1],
     );
 
     assertExists(balance);
@@ -147,7 +147,7 @@ Deno.test({
         status, settlement_delay_days, clears_at
       ) VALUES ($1, $2, $3, $4, 'clearing', $5, $6)
       RETURNING id, status`,
-      [TEST_USER_ID_1, 'pi_test_123', 100.00, 100.00, 7, clearsAt]
+      [TEST_USER_ID_1, 'pi_test_123', 100.00, 100.00, 7, clearsAt],
     );
 
     assertExists(purchase);
@@ -156,7 +156,7 @@ Deno.test({
     // Balance should still be 0 (purchase hasn't cleared yet)
     const balanceBefore = await queryOne<{ balance: string }>(
       `SELECT balance FROM juice_balances WHERE user_id = $1`,
-      [TEST_USER_ID_1]
+      [TEST_USER_ID_1],
     );
     assertEquals(parseFloat(balanceBefore!.balance), 0);
 
@@ -168,7 +168,7 @@ Deno.test({
          SET balance = balance + $1,
              lifetime_purchased = lifetime_purchased + $1
          WHERE user_id = $2`,
-        [100.00, TEST_USER_ID_1]
+        [100.00, TEST_USER_ID_1],
       );
 
       // Mark purchase as credited
@@ -176,14 +176,14 @@ Deno.test({
         `UPDATE juice_purchases
          SET status = 'credited', credited_at = NOW()
          WHERE id = $1`,
-        [purchase.id]
+        [purchase.id],
       );
     });
 
     // Verify balance was credited
     const balanceAfter = await queryOne<{ balance: string; lifetime_purchased: string }>(
       `SELECT balance, lifetime_purchased FROM juice_balances WHERE user_id = $1`,
-      [TEST_USER_ID_1]
+      [TEST_USER_ID_1],
     );
 
     assertEquals(parseFloat(balanceAfter!.balance), 100.00);
@@ -192,7 +192,7 @@ Deno.test({
     // Verify purchase is credited
     const creditedPurchase = await queryOne<{ status: string; credited_at: Date }>(
       `SELECT status, credited_at FROM juice_purchases WHERE id = $1`,
-      [purchase.id]
+      [purchase.id],
     );
 
     assertEquals(creditedPurchase?.status, 'credited');
@@ -223,7 +223,7 @@ Deno.test({
            lifetime_spent = lifetime_spent + $1
        WHERE user_id = $2
        AND balance >= $1`,
-      [100.00, TEST_USER_ID_1]
+      [100.00, TEST_USER_ID_1],
     );
 
     assertEquals(debitCount, 0, 'Debit should fail when balance < amount');
@@ -231,7 +231,7 @@ Deno.test({
     // Verify balance unchanged
     const balance = await queryOne<{ balance: string }>(
       `SELECT balance FROM juice_balances WHERE user_id = $1`,
-      [TEST_USER_ID_1]
+      [TEST_USER_ID_1],
     );
 
     assertEquals(parseFloat(balance!.balance), 50.00, 'Balance should remain unchanged');
@@ -261,7 +261,7 @@ Deno.test({
            lifetime_spent = lifetime_spent + $1
        WHERE user_id = $2
        AND balance >= $1`,
-      [50.00, TEST_USER_ID_1]
+      [50.00, TEST_USER_ID_1],
     );
 
     assertEquals(debitCount, 1, 'Debit should succeed');
@@ -269,7 +269,7 @@ Deno.test({
     // Verify balance updated
     const balance = await queryOne<{ balance: string; lifetime_spent: string }>(
       `SELECT balance, lifetime_spent FROM juice_balances WHERE user_id = $1`,
-      [TEST_USER_ID_1]
+      [TEST_USER_ID_1],
     );
 
     assertEquals(parseFloat(balance!.balance), 50.00);
@@ -298,7 +298,7 @@ Deno.test({
       `INSERT INTO juice_spends (user_id, project_id, chain_id, beneficiary_address, juice_amount, status)
        VALUES ($1, $2, $3, $4, $5, 'pending')
        RETURNING id`,
-      [TEST_USER_ID_1, 1, 42161, '0xbeneficiary', 50.00]
+      [TEST_USER_ID_1, 1, 42161, '0xbeneficiary', 50.00],
     );
 
     // Debit balance
@@ -307,20 +307,20 @@ Deno.test({
        SET balance = balance - $1,
            lifetime_spent = lifetime_spent + $1
        WHERE user_id = $2`,
-      [50.00, TEST_USER_ID_1]
+      [50.00, TEST_USER_ID_1],
     );
 
     // Verify balance is debited
     const afterDebit = await queryOne<{ balance: string }>(
       `SELECT balance FROM juice_balances WHERE user_id = $1`,
-      [TEST_USER_ID_1]
+      [TEST_USER_ID_1],
     );
     assertEquals(parseFloat(afterDebit!.balance), 50.00);
 
     // Simulate failure - mark spend as failed and refund
     await execute(
       `UPDATE juice_spends SET status = 'failed', error_message = 'Test failure' WHERE id = $1`,
-      [spend.id]
+      [spend.id],
     );
 
     await execute(
@@ -328,17 +328,21 @@ Deno.test({
        SET balance = balance + $1,
            lifetime_spent = lifetime_spent - $1
        WHERE user_id = $2`,
-      [50.00, TEST_USER_ID_1]
+      [50.00, TEST_USER_ID_1],
     );
 
     // Verify balance is restored
     const afterRefund = await queryOne<{ balance: string; lifetime_spent: string }>(
       `SELECT balance, lifetime_spent FROM juice_balances WHERE user_id = $1`,
-      [TEST_USER_ID_1]
+      [TEST_USER_ID_1],
     );
 
     assertEquals(parseFloat(afterRefund!.balance), 100.00, 'Balance should be restored');
-    assertEquals(parseFloat(afterRefund!.lifetime_spent), 0.00, 'Lifetime spent should be rolled back');
+    assertEquals(
+      parseFloat(afterRefund!.lifetime_spent),
+      0.00,
+      'Lifetime spent should be rolled back',
+    );
 
     await cleanupTestData();
   },
@@ -370,14 +374,14 @@ Deno.test({
        SET balance = balance - $1,
            lifetime_cashed_out = lifetime_cashed_out + $1
        WHERE user_id = $2`,
-      [50.00, TEST_USER_ID_1]
+      [50.00, TEST_USER_ID_1],
     );
 
     const [cashOut] = await query<{ id: string; available_at: Date }>(
       `INSERT INTO juice_cash_outs (user_id, destination_address, chain_id, juice_amount, available_at)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING id, available_at`,
-      [TEST_USER_ID_1, '0xdestination', 42161, 50.00, availableAt]
+      [TEST_USER_ID_1, '0xdestination', 42161, 50.00, availableAt],
     );
 
     assertExists(cashOut);
@@ -388,7 +392,7 @@ Deno.test({
        WHERE user_id = $1
        AND status = 'pending'
        AND available_at <= NOW()`,
-      [TEST_USER_ID_1]
+      [TEST_USER_ID_1],
     );
 
     assertEquals(readyCashOuts.length, 0, 'Cash out should not be ready before delay period');
@@ -398,7 +402,7 @@ Deno.test({
       `SELECT id FROM juice_cash_outs
        WHERE user_id = $1
        AND status = 'pending'`,
-      [TEST_USER_ID_1]
+      [TEST_USER_ID_1],
     );
 
     assertEquals(pendingCashOuts.length, 1, 'Should have 1 pending cash out');
@@ -427,7 +431,7 @@ Deno.test({
        SET balance = balance - $1,
            lifetime_cashed_out = lifetime_cashed_out + $1
        WHERE user_id = $2`,
-      [50.00, TEST_USER_ID_1]
+      [50.00, TEST_USER_ID_1],
     );
 
     // Create cash out
@@ -435,13 +439,13 @@ Deno.test({
       `INSERT INTO juice_cash_outs (user_id, destination_address, chain_id, juice_amount, status, available_at)
        VALUES ($1, $2, $3, $4, 'pending', NOW() + INTERVAL '24 hours')
        RETURNING id`,
-      [TEST_USER_ID_1, '0xdestination', 42161, 50.00]
+      [TEST_USER_ID_1, '0xdestination', 42161, 50.00],
     );
 
     // Verify balance is debited
     const afterDebit = await queryOne<{ balance: string }>(
       `SELECT balance FROM juice_balances WHERE user_id = $1`,
-      [TEST_USER_ID_1]
+      [TEST_USER_ID_1],
     );
     assertEquals(parseFloat(afterDebit!.balance), 50.00);
 
@@ -453,29 +457,33 @@ Deno.test({
          SET balance = balance + $1,
              lifetime_cashed_out = lifetime_cashed_out - $1
          WHERE user_id = $2`,
-        [50.00, TEST_USER_ID_1]
+        [50.00, TEST_USER_ID_1],
       );
 
       // Mark as cancelled
       await client.queryObject(
         `UPDATE juice_cash_outs SET status = 'cancelled' WHERE id = $1`,
-        [cashOut.id]
+        [cashOut.id],
       );
     });
 
     // Verify balance is restored
     const afterCancel = await queryOne<{ balance: string; lifetime_cashed_out: string }>(
       `SELECT balance, lifetime_cashed_out FROM juice_balances WHERE user_id = $1`,
-      [TEST_USER_ID_1]
+      [TEST_USER_ID_1],
     );
 
     assertEquals(parseFloat(afterCancel!.balance), 100.00, 'Balance should be restored');
-    assertEquals(parseFloat(afterCancel!.lifetime_cashed_out), 0.00, 'Lifetime cashed out should be rolled back');
+    assertEquals(
+      parseFloat(afterCancel!.lifetime_cashed_out),
+      0.00,
+      'Lifetime cashed out should be rolled back',
+    );
 
     // Verify cash out is cancelled
     const cancelledCashOut = await queryOne<{ status: string }>(
       `SELECT status FROM juice_cash_outs WHERE id = $1`,
-      [cashOut.id]
+      [cashOut.id],
     );
     assertEquals(cancelledCashOut?.status, 'cancelled');
 
@@ -501,13 +509,13 @@ Deno.test({
       `INSERT INTO juice_cash_outs (user_id, destination_address, chain_id, juice_amount, status, available_at)
        VALUES ($1, $2, $3, $4, 'processing', NOW())
        RETURNING id`,
-      [TEST_USER_ID_1, '0xdestination', 42161, 50.00]
+      [TEST_USER_ID_1, '0xdestination', 42161, 50.00],
     );
 
     // Attempt to cancel (should fail)
     const cancelResult = await execute(
       `UPDATE juice_cash_outs SET status = 'cancelled' WHERE id = $1 AND status = 'pending'`,
-      [cashOut.id]
+      [cashOut.id],
     );
 
     assertEquals(cancelResult, 0, 'Should not cancel processing cash out');
@@ -515,7 +523,7 @@ Deno.test({
     // Verify still processing
     const stillProcessing = await queryOne<{ status: string }>(
       `SELECT status FROM juice_cash_outs WHERE id = $1`,
-      [cashOut.id]
+      [cashOut.id],
     );
     assertEquals(stillProcessing?.status, 'processing');
 
@@ -542,20 +550,20 @@ Deno.test({
       `INSERT INTO juice_purchases (user_id, stripe_payment_intent_id, fiat_amount, juice_amount, status)
        VALUES ($1, $2, $3, $4, 'clearing')
        RETURNING id`,
-      [TEST_USER_ID_1, 'pi_disputed_123', 100.00, 100.00]
+      [TEST_USER_ID_1, 'pi_disputed_123', 100.00, 100.00],
     );
 
     // Mark as disputed (simulating Stripe webhook)
     await execute(
       `UPDATE juice_purchases SET status = 'disputed' WHERE id = $1`,
-      [purchase.id]
+      [purchase.id],
     );
 
     // Attempt to credit (should be blocked by status check)
     const creditResult = await execute(
       `UPDATE juice_purchases SET status = 'credited', credited_at = NOW()
        WHERE id = $1 AND status = 'clearing'`,
-      [purchase.id]
+      [purchase.id],
     );
 
     assertEquals(creditResult, 0, 'Disputed purchase should not be credited');
@@ -563,7 +571,7 @@ Deno.test({
     // Verify balance unchanged
     const balance = await queryOne<{ balance: string }>(
       `SELECT balance FROM juice_balances WHERE user_id = $1`,
-      [TEST_USER_ID_1]
+      [TEST_USER_ID_1],
     );
     assertEquals(parseFloat(balance!.balance), 0, 'Balance should remain 0');
 
@@ -592,7 +600,7 @@ Deno.test({
       `INSERT INTO juice_spends (user_id, project_id, chain_id, beneficiary_address, juice_amount, status, retry_count)
        VALUES ($1, $2, $3, $4, $5, 'pending', $6)
        RETURNING id`,
-      [TEST_USER_ID_1, 1, 42161, '0xbeneficiary', 50.00, MAX_RETRIES]
+      [TEST_USER_ID_1, 1, 42161, '0xbeneficiary', 50.00, MAX_RETRIES],
     );
 
     // Query for spends that can still be retried
@@ -600,13 +608,13 @@ Deno.test({
       `SELECT id FROM juice_spends
        WHERE status = 'pending'
        AND retry_count < $1`,
-      [MAX_RETRIES]
+      [MAX_RETRIES],
     );
 
     assertEquals(
-      retriableSpends.filter(s => s.id === spend.id).length,
+      retriableSpends.filter((s) => s.id === spend.id).length,
       0,
-      'Spend at max retries should not be in retriable list'
+      'Spend at max retries should not be in retriable list',
     );
 
     await cleanupTestData();
@@ -628,7 +636,7 @@ Deno.test({
     await execute(
       `INSERT INTO juice_balances (user_id, balance, lifetime_purchased, lifetime_spent, lifetime_cashed_out)
        VALUES ($1, $2, $3, $4, $5)`,
-      [TEST_USER_ID_1, 100.00, 200.00, 75.00, 25.00]
+      [TEST_USER_ID_1, 100.00, 200.00, 75.00, 25.00],
     );
 
     // Verify accounting: balance = 200 - 75 - 25 = 100
@@ -640,15 +648,18 @@ Deno.test({
     }>(
       `SELECT balance, lifetime_purchased, lifetime_spent, lifetime_cashed_out
        FROM juice_balances WHERE user_id = $1`,
-      [TEST_USER_ID_1]
+      [TEST_USER_ID_1],
     );
 
-    const calculated =
-      parseFloat(balance!.lifetime_purchased) -
+    const calculated = parseFloat(balance!.lifetime_purchased) -
       parseFloat(balance!.lifetime_spent) -
       parseFloat(balance!.lifetime_cashed_out);
 
-    assertEquals(parseFloat(balance!.balance), calculated, 'Balance should equal purchased - spent - cashed_out');
+    assertEquals(
+      parseFloat(balance!.balance),
+      calculated,
+      'Balance should equal purchased - spent - cashed_out',
+    );
 
     await cleanupTestData();
   },
@@ -671,25 +682,25 @@ Deno.test({
     await execute(
       `INSERT INTO juice_spends (user_id, project_id, chain_id, beneficiary_address, juice_amount, status)
        VALUES ($1, $2, $3, $4, $5, 'pending')`,
-      [TEST_USER_ID_1, 1, 1, '0xbeneficiary1', 50.00] // Mainnet project 1
+      [TEST_USER_ID_1, 1, 1, '0xbeneficiary1', 50.00], // Mainnet project 1
     );
 
     await execute(
       `INSERT INTO juice_spends (user_id, project_id, chain_id, beneficiary_address, juice_amount, status)
        VALUES ($1, $2, $3, $4, $5, 'pending')`,
-      [TEST_USER_ID_1, 2, 42161, '0xbeneficiary2', 30.00] // Arbitrum project 2
+      [TEST_USER_ID_1, 2, 42161, '0xbeneficiary2', 30.00], // Arbitrum project 2
     );
 
     await execute(
       `INSERT INTO juice_spends (user_id, project_id, chain_id, beneficiary_address, juice_amount, status)
        VALUES ($1, $2, $3, $4, $5, 'pending')`,
-      [TEST_USER_ID_1, 1, 10, '0xbeneficiary3', 20.00] // Optimism project 1
+      [TEST_USER_ID_1, 1, 10, '0xbeneficiary3', 20.00], // Optimism project 1
     );
 
     // Query spends by project
     const project1Spends = await query<{ juice_amount: string }>(
       `SELECT juice_amount FROM juice_spends WHERE user_id = $1 AND project_id = $2`,
-      [TEST_USER_ID_1, 1]
+      [TEST_USER_ID_1, 1],
     );
 
     assertEquals(project1Spends.length, 2);
@@ -699,7 +710,7 @@ Deno.test({
     // Query spends by chain
     const arbitrumSpends = await query<{ juice_amount: string }>(
       `SELECT juice_amount FROM juice_spends WHERE user_id = $1 AND chain_id = $2`,
-      [TEST_USER_ID_1, 42161]
+      [TEST_USER_ID_1, 42161],
     );
 
     assertEquals(arbitrumSpends.length, 1);
@@ -730,7 +741,7 @@ Deno.test({
         radar_risk_score, radar_risk_level, settlement_delay_days, clears_at, status
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'clearing')
       RETURNING id`,
-      [TEST_USER_ID_1, 'pi_risk_123', 100.00, 100.00, 55, 'elevated', 30, clearsAt]
+      [TEST_USER_ID_1, 'pi_risk_123', 100.00, 100.00, 55, 'elevated', 30, clearsAt],
     );
 
     // Verify risk data is stored
@@ -741,7 +752,7 @@ Deno.test({
     }>(
       `SELECT radar_risk_score, radar_risk_level, settlement_delay_days
        FROM juice_purchases WHERE id = $1`,
-      [purchase.id]
+      [purchase.id],
     );
 
     assertEquals(stored?.radar_risk_score, 55);
@@ -771,26 +782,26 @@ Deno.test({
     await execute(
       `INSERT INTO juice_spends (user_id, project_id, chain_id, beneficiary_address, juice_amount, status)
        VALUES ($1, $2, $3, $4, $5, 'pending')`,
-      [TEST_USER_ID_1, 1, 1, '0xbeneficiary', 25.00]
+      [TEST_USER_ID_1, 1, 1, '0xbeneficiary', 25.00],
     );
 
     await execute(
       `INSERT INTO juice_spends (user_id, project_id, chain_id, beneficiary_address, juice_amount, status)
        VALUES ($1, $2, $3, $4, $5, 'pending')`,
-      [TEST_USER_ID_2, 1, 1, '0xbeneficiary', 75.00]
+      [TEST_USER_ID_2, 1, 1, '0xbeneficiary', 75.00],
     );
 
     // User 1's balance query should only return User 1's data
     const user1Balance = await queryOne<{ balance: string }>(
       `SELECT balance FROM juice_balances WHERE user_id = $1`,
-      [TEST_USER_ID_1]
+      [TEST_USER_ID_1],
     );
     assertEquals(parseFloat(user1Balance!.balance), 100.00);
 
     // User 1's spend query should only return User 1's spends
     const user1Spends = await query<{ user_id: string; juice_amount: string }>(
       `SELECT user_id, juice_amount FROM juice_spends WHERE user_id = $1`,
-      [TEST_USER_ID_1]
+      [TEST_USER_ID_1],
     );
 
     assertEquals(user1Spends.length, 1);
@@ -819,7 +830,7 @@ Deno.test({
       `INSERT INTO juice_spends (user_id, project_id, chain_id, beneficiary_address, juice_amount, status)
        VALUES ($1, $2, $3, $4, $5, 'pending')
        RETURNING id, status`,
-      [TEST_USER_ID_1, 1, 1, '0xbeneficiary', 50.00]
+      [TEST_USER_ID_1, 1, 1, '0xbeneficiary', 50.00],
     );
 
     assertEquals(spend.status, 'pending');
@@ -829,7 +840,7 @@ Deno.test({
 
     const executing = await queryOne<{ status: string }>(
       `SELECT status FROM juice_spends WHERE id = $1`,
-      [spend.id]
+      [spend.id],
     );
     assertEquals(executing?.status, 'executing');
 
@@ -838,12 +849,12 @@ Deno.test({
       `UPDATE juice_spends
        SET status = 'completed', tx_hash = $1, tokens_received = $2
        WHERE id = $3`,
-      ['0xtxhash123', '1000000000000000000', spend.id]
+      ['0xtxhash123', '1000000000000000000', spend.id],
     );
 
     const completed = await queryOne<{ status: string; tx_hash: string; tokens_received: string }>(
       `SELECT status, tx_hash, tokens_received FROM juice_spends WHERE id = $1`,
-      [spend.id]
+      [spend.id],
     );
 
     assertEquals(completed?.status, 'completed');
@@ -872,7 +883,7 @@ Deno.test({
       `INSERT INTO juice_purchases (user_id, stripe_payment_intent_id, fiat_amount, juice_amount, status)
        VALUES ($1, $2, $3, $4, 'clearing')
        RETURNING id`,
-      [TEST_USER_ID_1, paymentIntentId, 100.00, 100.00]
+      [TEST_USER_ID_1, paymentIntentId, 100.00, 100.00],
     );
 
     assertExists(first);
@@ -883,7 +894,7 @@ Deno.test({
       await execute(
         `INSERT INTO juice_purchases (user_id, stripe_payment_intent_id, fiat_amount, juice_amount, status)
          VALUES ($1, $2, $3, $4, 'clearing')`,
-        [TEST_USER_ID_1, paymentIntentId, 100.00, 100.00]
+        [TEST_USER_ID_1, paymentIntentId, 100.00, 100.00],
       );
     } catch (error) {
       if (error instanceof Error && error.message.includes('duplicate key')) {

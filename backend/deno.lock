@@ -1,15 +1,15 @@
 {
   "version": "5",
   "specifiers": {
-    "npm:@anthropic-ai/sdk@0.39": "0.39.0",
+    "npm:@anthropic-ai/sdk@0.39.0": "0.39.0",
     "npm:@hono/zod-validator@0.4.3": "0.4.3_hono@4.11.4_zod@3.25.76",
-    "npm:hono@4": "4.11.4",
-    "npm:jose@5": "5.10.0",
+    "npm:hono@4.11.4": "4.11.4",
+    "npm:jose@5.10.0": "5.10.0",
     "npm:stripe@*": "20.2.0",
     "npm:stripe@20.2.0": "20.2.0",
     "npm:viem@*": "2.44.4_zod@3.25.76_ws@8.18.3",
-    "npm:viem@2": "2.44.4_zod@3.25.76_ws@8.18.3",
-    "npm:zod@3": "3.25.76"
+    "npm:viem@2.44.4": "2.44.4_zod@3.25.76_ws@8.18.3",
+    "npm:zod@3.25.76": "3.25.76"
   },
   "npm": {
     "@adraffy/ens-normalize@1.11.1": {
@@ -528,12 +528,12 @@
   },
   "workspace": {
     "dependencies": [
-      "npm:@anthropic-ai/sdk@0.39",
+      "npm:@anthropic-ai/sdk@0.39.0",
       "npm:@hono/zod-validator@0.4.3",
-      "npm:hono@4",
-      "npm:jose@5",
-      "npm:viem@2",
-      "npm:zod@3"
+      "npm:hono@4.11.4",
+      "npm:jose@5.10.0",
+      "npm:viem@2.44.4",
+      "npm:zod@3.25.76"
     ]
   }
 }

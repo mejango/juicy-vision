@@ -1,4 +1,4 @@
-import { assertEquals, assert, assertExists } from 'std/assert/mod.ts';
+import { assert, assertEquals, assertExists } from 'std/assert/mod.ts';
 
 /**
  * Integration tests for the Hook Development workflow.
@@ -116,13 +116,13 @@ Deno.test('hooks workflow - Step 1: Create Project', async (t) => {
   });
 
   await t.step('project has source file', () => {
-    const srcFile = projectData.files.find(f => f.path.startsWith('src/'));
+    const srcFile = projectData.files.find((f) => f.path.startsWith('src/'));
     assertExists(srcFile);
     assert(srcFile.content.includes('contract'));
   });
 
   await t.step('project has test file', () => {
-    const testFile = projectData.files.find(f => f.path.includes('test/'));
+    const testFile = projectData.files.find((f) => f.path.includes('test/'));
     assertExists(testFile);
     assert(testFile.path.endsWith('.t.sol'));
   });
@@ -136,11 +136,11 @@ Deno.test('hooks workflow - Step 2: Edit Files', async (t) => {
 
   await t.step('can update file content', () => {
     const newContent = TEST_PAY_HOOK.replace('1 ether', '2 ether');
-    const updatedFiles = files.map(f =>
+    const updatedFiles = files.map((f) =>
       f.path === 'src/CappedPayHook.sol' ? { ...f, content: newContent } : f
     );
 
-    const updated = updatedFiles.find(f => f.path === 'src/CappedPayHook.sol');
+    const updated = updatedFiles.find((f) => f.path === 'src/CappedPayHook.sol');
     assertExists(updated);
     assert(updated.content.includes('2 ether'));
   });
@@ -150,14 +150,14 @@ Deno.test('hooks workflow - Step 2: Edit Files', async (t) => {
     const updatedFiles = [...files, newFile];
 
     assertEquals(updatedFiles.length, 3);
-    assertExists(updatedFiles.find(f => f.path === 'script/Deploy.s.sol'));
+    assertExists(updatedFiles.find((f) => f.path === 'script/Deploy.s.sol'));
   });
 
   await t.step('can delete file', () => {
-    const updatedFiles = files.filter(f => f.path !== 'test/CappedPayHook.t.sol');
+    const updatedFiles = files.filter((f) => f.path !== 'test/CappedPayHook.t.sol');
 
     assertEquals(updatedFiles.length, 1);
-    assertEquals(updatedFiles.find(f => f.path.includes('test/')), undefined);
+    assertEquals(updatedFiles.find((f) => f.path.includes('test/')), undefined);
   });
 });
 
@@ -236,7 +236,7 @@ Deno.test('hooks workflow - Step 4: Test', async (t) => {
 
   await t.step('all tests pass', () => {
     assertEquals(testResult.success, true);
-    assert(testResult.testResults.every(t => t.passed));
+    assert(testResult.testResults.every((t) => t.passed));
   });
 
   await t.step('gas usage is tracked', () => {
@@ -260,7 +260,7 @@ Deno.test('hooks workflow - Step 4: Test', async (t) => {
     };
 
     assertEquals(failedResult.success, false);
-    assert(failedResult.testResults.some(t => !t.passed));
+    assert(failedResult.testResults.some((t) => !t.passed));
   });
 });
 
@@ -297,8 +297,7 @@ Deno.test('hooks workflow - Step 5: Security Analysis', async (t) => {
   });
 
   await t.step('summary counts match findings', () => {
-    const totalFromSummary =
-      analysisResult.summary.critical +
+    const totalFromSummary = analysisResult.summary.critical +
       analysisResult.summary.high +
       analysisResult.summary.medium +
       analysisResult.summary.low +
@@ -374,13 +373,13 @@ Deno.test('hooks workflow - Multi-Chain Deploy', async (t) => {
   });
 
   await t.step('each chain has unique address', () => {
-    const addresses = deployments.map(d => d.address);
+    const addresses = deployments.map((d) => d.address);
     const uniqueAddresses = new Set(addresses);
     assertEquals(uniqueAddresses.size, addresses.length);
   });
 
   await t.step('all deployments succeed', () => {
-    assert(deployments.every(d => d.status === 'deployed'));
+    assert(deployments.every((d) => d.status === 'deployed'));
   });
 
   await t.step('handles partial failure', () => {
@@ -390,8 +389,8 @@ Deno.test('hooks workflow - Multi-Chain Deploy', async (t) => {
       { chainId: 8453, status: 'deployed', address: '0x3333333333333333333333333333333333333333' },
     ];
 
-    const successful = partialDeployments.filter(d => d.status === 'deployed');
-    const failed = partialDeployments.filter(d => d.status === 'failed');
+    const successful = partialDeployments.filter((d) => d.status === 'deployed');
+    const failed = partialDeployments.filter((d) => d.status === 'failed');
 
     assertEquals(successful.length, 2);
     assertEquals(failed.length, 1);

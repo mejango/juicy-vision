@@ -4,7 +4,7 @@
  * Tests for the multi-person chat API endpoints
  */
 
-import { assertEquals, assertExists, assertNotEquals } from 'std/assert/mod.ts';
+import { assertEquals, assertExists } from 'std/assert/mod.ts';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { zValidator } from '@hono/zod-validator';
@@ -184,7 +184,8 @@ Deno.test('Chat Routes - POST /chat (create chat)', async (t) => {
     isPublic: z.boolean().optional(),
   });
 
-  let createdChats: any[] = [];
+  // deno-lint-ignore no-explicit-any -- route fixture records heterogeneous response fields
+  const createdChats: any[] = [];
 
   app.post('/chat', zValidator('json', CreateChatSchema), (c) => {
     const authHeader = c.req.header('Authorization');
@@ -410,6 +411,7 @@ Deno.test('Chat Routes - POST /chat/:chatId/messages', async (t) => {
     replyToId: z.string().uuid().optional(),
   });
 
+  // deno-lint-ignore no-explicit-any -- route fixture records heterogeneous message fields
   const messages: any[] = [];
 
   app.post(
@@ -442,7 +444,7 @@ Deno.test('Chat Routes - POST /chat/:chatId/messages', async (t) => {
       messages.push(newMessage);
 
       return c.json({ success: true, data: newMessage }, 201);
-    }
+    },
   );
 
   await t.step('sends message to chat', async () => {
@@ -595,7 +597,7 @@ Deno.test('Chat Routes - GET /chat/:chatId/ai/balance', async (t) => {
 Deno.test('Chat Routes - DELETE /chat/:chatId', async (t) => {
   const app = new Hono();
 
-  let deletedChats: string[] = [];
+  const deletedChats: string[] = [];
 
   app.delete('/chat/:chatId', (c) => {
     const chatId = c.req.param('chatId');
@@ -767,7 +769,10 @@ Deno.test('Chat Routes - PATCH /chat/:chatId/pin', async (t) => {
     pinOrder: z.number().optional(),
   });
 
-  let chatState: Record<string, { id: string; name: string; isPinned: boolean; pinOrder: number | null }> = {
+  const chatState: Record<
+    string,
+    { id: string; name: string; isPinned: boolean; pinOrder: number | null }
+  > = {
     'chat-123': { id: 'chat-123', name: 'Test Chat', isPinned: false, pinOrder: null },
   };
 
@@ -857,7 +862,7 @@ Deno.test('Chat Routes - PATCH /chat/:chatId/folder', async (t) => {
     folderId: z.string().uuid().nullable(),
   });
 
-  let chatState: Record<string, { id: string; name: string; folderId: string | null }> = {
+  const chatState: Record<string, { id: string; name: string; folderId: string | null }> = {
     'chat-123': { id: 'chat-123', name: 'Test Chat', folderId: null },
   };
 
@@ -931,7 +936,7 @@ Deno.test('Chat Routes - PATCH /chat/:chatId/name', async (t) => {
     name: z.string().min(1).max(255),
   });
 
-  let chatState = {
+  const chatState = {
     'chat-123': { id: 'chat-123', name: 'Original Name' },
   };
 
@@ -1128,7 +1133,8 @@ Deno.test('Chat Routes - POST /chat/folders', async (t) => {
     parentFolderId: z.string().uuid().optional(),
   });
 
-  let createdFolders: any[] = [];
+  // deno-lint-ignore no-explicit-any -- route fixture records heterogeneous folder fields
+  const createdFolders: any[] = [];
 
   app.post('/chat/folders', zValidator('json', CreateFolderSchema), (c) => {
     const authHeader = c.req.header('Authorization');
@@ -1277,7 +1283,17 @@ Deno.test('Chat Routes - PATCH /chat/folders/:folderId', async (t) => {
     pinOrder: z.number().optional(),
   });
 
-  let folderState: Record<string, { id: string; userAddress: string; name: string; parentFolderId: string | null; isPinned: boolean; pinOrder: number | null }> = {
+  const folderState: Record<
+    string,
+    {
+      id: string;
+      userAddress: string;
+      name: string;
+      parentFolderId: string | null;
+      isPinned: boolean;
+      pinOrder: number | null;
+    }
+  > = {
     'folder-123': {
       id: 'folder-123',
       userAddress: '0x123',
@@ -1306,7 +1322,9 @@ Deno.test('Chat Routes - PATCH /chat/folders/:folderId', async (t) => {
     folderState[folderId] = {
       ...folder,
       name: body.name ?? folder.name,
-      parentFolderId: body.parentFolderId !== undefined ? body.parentFolderId : folder.parentFolderId,
+      parentFolderId: body.parentFolderId !== undefined
+        ? body.parentFolderId
+        : folder.parentFolderId,
       isPinned: body.isPinned ?? folder.isPinned,
       pinOrder: body.pinOrder ?? folder.pinOrder,
     };
@@ -1362,7 +1380,7 @@ Deno.test('Chat Routes - PATCH /chat/folders/:folderId', async (t) => {
 Deno.test('Chat Routes - DELETE /chat/folders/:folderId', async (t) => {
   const app = new Hono();
 
-  let folders = new Set(['folder-123']);
+  const folders = new Set(['folder-123']);
 
   app.delete('/chat/folders/:folderId', (c) => {
     const folderId = c.req.param('folderId');
@@ -1417,7 +1435,10 @@ Deno.test('Chat Routes - PATCH /chat/folders/:folderId/pin', async (t) => {
     pinOrder: z.number().optional(),
   });
 
-  let folderState: Record<string, { id: string; name: string; isPinned: boolean; pinOrder: number | null }> = {
+  const folderState: Record<
+    string,
+    { id: string; name: string; isPinned: boolean; pinOrder: number | null }
+  > = {
     'folder-123': { id: 'folder-123', name: 'Work', isPinned: false, pinOrder: null },
   };
 
@@ -1483,7 +1504,7 @@ Deno.test('Chat Routes - POST /chat/folders/reorder-pinned', async (t) => {
     folderIds: z.array(z.string().uuid()),
   });
 
-  let reorderCalls: string[][] = [];
+  const reorderCalls: string[][] = [];
 
   app.post('/chat/folders/reorder-pinned', zValidator('json', ReorderPinnedFoldersSchema), (c) => {
     const authHeader = c.req.header('Authorization');
@@ -1549,7 +1570,7 @@ Deno.test('Chat Routes - POST /chat/reorder-pinned', async (t) => {
     chatIds: z.array(z.string().uuid()),
   });
 
-  let reorderCalls: string[][] = [];
+  const reorderCalls: string[][] = [];
 
   app.post('/chat/reorder-pinned', zValidator('json', ReorderPinnedSchema), (c) => {
     const authHeader = c.req.header('Authorization');

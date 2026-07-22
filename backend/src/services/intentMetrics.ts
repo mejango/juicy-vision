@@ -5,7 +5,7 @@
  * Logs every detection, aggregates statistics, and provides analytics.
  */
 
-import { query, queryOne, execute } from '../db/index.ts';
+import { execute, query, queryOne } from '../db/index.ts';
 import type { SemanticIntentResult } from './intentDetection.ts';
 
 // ============================================================================
@@ -38,7 +38,7 @@ export interface IntentMetricsUpdate {
  * Log an intent detection event
  */
 export async function logIntentDetection(
-  entry: IntentMetricsEntry
+  entry: IntentMetricsEntry,
 ): Promise<string> {
   try {
     const result = await queryOne<{ id: string }>(
@@ -59,7 +59,7 @@ export async function logIntentDetection(
         entry.totalPromptTokens ?? null,
         entry.tokensSaved ?? null,
         entry.detectionTimeMs ?? null,
-      ]
+      ],
     );
 
     return result?.id || '';
@@ -76,7 +76,7 @@ export async function logIntentDetection(
 export function createMetricsEntryFromResult(
   result: SemanticIntentResult,
   chatId: string,
-  messageId?: string
+  messageId?: string,
 ): IntentMetricsEntry {
   const detectedIntents: string[] = [];
 
@@ -113,7 +113,7 @@ export function createMetricsEntryFromResult(
  */
 export async function updateIntentMetrics(
   metricsId: string,
-  update: IntentMetricsUpdate
+  update: IntentMetricsUpdate,
 ): Promise<void> {
   if (!metricsId) return;
 
@@ -143,7 +143,7 @@ export async function updateIntentMetrics(
   try {
     await execute(
       `UPDATE intent_detection_metrics SET ${sets.join(', ')} WHERE id = $${paramIndex}`,
-      values
+      values,
     );
   } catch (error) {
     console.error('Failed to update intent metrics:', error);
@@ -164,7 +164,14 @@ export async function updateIntentMetrics(
  */
 export async function aggregateHourlyStats(): Promise<void> {
   const now = new Date();
-  const periodEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0);
+  const periodEnd = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate(),
+    now.getHours(),
+    0,
+    0,
+  );
   const periodStart = new Date(periodEnd.getTime() - 60 * 60 * 1000);
 
   try {
@@ -178,7 +185,7 @@ export async function aggregateHourlyStats(): Promise<void> {
        GROUP BY module
        ORDER BY count DESC
        LIMIT 10`,
-      [periodStart, periodEnd]
+      [periodStart, periodEnd],
     );
 
     await execute(
@@ -237,7 +244,7 @@ export async function aggregateHourlyStats(): Promise<void> {
          hook_developer_count = EXCLUDED.hook_developer_count,
          transaction_count = EXCLUDED.transaction_count,
          top_sub_modules = EXCLUDED.top_sub_modules`,
-      [periodStart, periodEnd, JSON.stringify(topModules)]
+      [periodStart, periodEnd, JSON.stringify(topModules)],
     );
 
     console.log(`Aggregated intent stats for ${periodStart.toISOString()}`);
@@ -289,7 +296,7 @@ export async function aggregateDailyStats(): Promise<void> {
        WHERE created_at >= $1 AND created_at < $2
        ON CONFLICT (period_start, period_type) DO UPDATE SET
          total_detections = EXCLUDED.total_detections`,
-      [periodStart, periodEnd]
+      [periodStart, periodEnd],
     );
 
     console.log(`Aggregated daily intent stats for ${periodStart.toISOString()}`);
@@ -317,7 +324,7 @@ export async function cleanupOldMetrics(): Promise<number> {
          RETURNING id
        )
        SELECT COUNT(*) as count FROM deleted`,
-      [cutoff]
+      [cutoff],
     );
 
     return result?.count || 0;

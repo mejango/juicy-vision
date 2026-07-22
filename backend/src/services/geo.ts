@@ -4,18 +4,41 @@
  * Detects user region from IP address and maps to suggested language
  */
 
-import { query, execute } from '../db/index.ts';
+import { execute, query } from '../db/index.ts';
 
 // Country code to language mapping
 const COUNTRY_TO_LANGUAGE: Record<string, string> = {
   // Portuguese
-  BR: 'pt', PT: 'pt', AO: 'pt', MZ: 'pt',
+  BR: 'pt',
+  PT: 'pt',
+  AO: 'pt',
+  MZ: 'pt',
   // Spanish
-  ES: 'es', MX: 'es', AR: 'es', CO: 'es', PE: 'es', VE: 'es', CL: 'es', EC: 'es',
-  GT: 'es', CU: 'es', BO: 'es', DO: 'es', HN: 'es', PY: 'es', SV: 'es', NI: 'es',
-  CR: 'es', PA: 'es', UY: 'es', PR: 'es',
+  ES: 'es',
+  MX: 'es',
+  AR: 'es',
+  CO: 'es',
+  PE: 'es',
+  VE: 'es',
+  CL: 'es',
+  EC: 'es',
+  GT: 'es',
+  CU: 'es',
+  BO: 'es',
+  DO: 'es',
+  HN: 'es',
+  PY: 'es',
+  SV: 'es',
+  NI: 'es',
+  CR: 'es',
+  PA: 'es',
+  UY: 'es',
+  PR: 'es',
   // Chinese
-  CN: 'zh', TW: 'zh', HK: 'zh', SG: 'zh',
+  CN: 'zh',
+  TW: 'zh',
+  HK: 'zh',
+  SG: 'zh',
   // Default to English for all others
 };
 
@@ -47,7 +70,9 @@ export async function detectGeoFromIP(ip: string): Promise<GeoInfo | null> {
     }
 
     // Use ip-api.com free tier (45 requests/minute, no API key needed)
-    const response = await fetch(`http://ip-api.com/json/${ip}?fields=status,country,countryCode,region,city`);
+    const response = await fetch(
+      `http://ip-api.com/json/${ip}?fields=status,country,countryCode,region,city`,
+    );
 
     if (!response.ok) {
       console.error('[Geo] ip-api request failed:', response.status);
@@ -84,7 +109,7 @@ export async function recordUserRegion(
   ip: string,
   geoInfo: GeoInfo,
   userId?: string,
-  languageUsed?: string
+  languageUsed?: string,
 ): Promise<void> {
   try {
     await execute(
@@ -101,7 +126,7 @@ export async function recordUserRegion(
         geoInfo.suggestedLanguage,
         languageUsed || geoInfo.suggestedLanguage,
         userId || null,
-      ]
+      ],
     );
   } catch (error) {
     // Non-critical - just log
@@ -123,16 +148,16 @@ export async function getRegionStats(): Promise<{
        FROM user_regions
        GROUP BY country_code, country
        ORDER BY count DESC
-       LIMIT 50`
+       LIMIT 50`,
     ),
     query<{ language: string; count: string }>(
       `SELECT language_used as language, COUNT(*) as count
        FROM user_regions
        GROUP BY language_used
-       ORDER BY count DESC`
+       ORDER BY count DESC`,
     ),
     query<{ count: string }>(
-      `SELECT COUNT(*) as count FROM user_regions`
+      `SELECT COUNT(*) as count FROM user_regions`,
     ),
   ]);
 

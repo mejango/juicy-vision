@@ -4,7 +4,7 @@
  * Tests state manipulation, merging, and prompt formatting.
  */
 
-import { assertEquals, assertExists } from 'https://deno.land/std@0.224.0/assert/mod.ts';
+import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 
 // ============================================================================
 // Types (mirrored from service)
@@ -258,7 +258,11 @@ function formatStateForPrompt(state: ChatTransactionState): string {
     if (state.projectName) sections.push(`- **Name:** ${state.projectName}`);
     if (state.projectType) sections.push(`- **Type:** ${state.projectType}`);
     if (state.fundingGoal) {
-      sections.push(`- **Goal:** ${state.fundingGoal}${state.fundingCurrency ? ` ${state.fundingCurrency}` : ''}`);
+      sections.push(
+        `- **Goal:** ${state.fundingGoal}${
+          state.fundingCurrency ? ` ${state.fundingCurrency}` : ''
+        }`,
+      );
     }
     if (state.targetChains?.length) {
       const chainNames = state.targetChains.map(chainIdToName).join(', ');
@@ -275,34 +279,42 @@ function formatStateForPrompt(state: ChatTransactionState): string {
     if (rc.reservedPercent !== undefined) sections.push(`- Reserved rate: ${rc.reservedPercent}%`);
     if (rc.cashOutTaxRate !== undefined) sections.push(`- Cash out tax: ${rc.cashOutTaxRate}%`);
     if (rc.duration !== undefined) {
-      sections.push(`- Cycle duration: ${rc.duration === 0 ? 'Unlimited' : `${rc.duration / 86400} days`}`);
+      sections.push(
+        `- Cycle duration: ${rc.duration === 0 ? 'Unlimited' : `${rc.duration / 86400} days`}`,
+      );
     }
-    if (rc.decayPercent !== undefined) sections.push(`- Issuance decay: ${rc.decayPercent}% per cycle`);
+    if (rc.decayPercent !== undefined) {
+      sections.push(`- Issuance decay: ${rc.decayPercent}% per cycle`);
+    }
     if (rc.payoutLimit) sections.push(`- Payout limit: ${rc.payoutLimit}`);
   }
 
   if (state.tiers?.length) {
     sections.push('\n## Contribution Tiers');
     state.tiers.forEach((tier, i) => {
-      sections.push(`${i + 1}. **${tier.name}** - ${tier.price}${tier.description ? `: ${tier.description}` : ''}`);
+      sections.push(
+        `${i + 1}. **${tier.name}** - ${tier.price}${
+          tier.description ? `: ${tier.description}` : ''
+        }`,
+      );
     });
   }
 
   if (state.payoutSplits?.length) {
     sections.push('\n## Payout Splits');
-    state.payoutSplits.forEach(split => {
+    state.payoutSplits.forEach((split) => {
       sections.push(`- ${formatAddress(split.address)}: ${split.percent}%`);
     });
   }
 
   if (state.pendingQuestions?.length) {
     sections.push('\n## Pending Questions');
-    state.pendingQuestions.forEach(q => sections.push(`- [ ] ${q}`));
+    state.pendingQuestions.forEach((q) => sections.push(`- [ ] ${q}`));
   }
 
   if (state.artifacts?.length) {
     sections.push('\n## Referenced Materials');
-    state.artifacts.forEach(a => {
+    state.artifacts.forEach((a) => {
       sections.push(`- **${a.name}** (${a.type})${a.summary ? `: ${a.summary}` : ''}`);
     });
   }
@@ -467,7 +479,7 @@ function containsDesignPatterns(text: string): boolean {
     /confirm|agree|decide|set to|configured/i,
   ];
 
-  return patterns.some(p => p.test(text));
+  return patterns.some((p) => p.test(text));
 }
 
 Deno.test('containsDesignPatterns - detects project decisions', async (t) => {
@@ -490,7 +502,10 @@ Deno.test('containsDesignPatterns - detects project decisions', async (t) => {
   });
 
   await t.step('detects Ethereum addresses', () => {
-    assertEquals(containsDesignPatterns('Send to 0x1234567890123456789012345678901234567890'), true);
+    assertEquals(
+      containsDesignPatterns('Send to 0x1234567890123456789012345678901234567890'),
+      true,
+    );
   });
 
   await t.step('detects chain references', () => {
@@ -500,9 +515,9 @@ Deno.test('containsDesignPatterns - detects project decisions', async (t) => {
   });
 
   await t.step('detects confirmation language', () => {
-    assertEquals(containsDesignPatterns("I confirm these settings"), true);
-    assertEquals(containsDesignPatterns("Agreed on the configuration"), true);
-    assertEquals(containsDesignPatterns("The rate is set to 5%"), true);
+    assertEquals(containsDesignPatterns('I confirm these settings'), true);
+    assertEquals(containsDesignPatterns('Agreed on the configuration'), true);
+    assertEquals(containsDesignPatterns('The rate is set to 5%'), true);
   });
 
   await t.step('returns false for unrelated text', () => {
@@ -518,7 +533,7 @@ Deno.test('containsDesignPatterns - detects project decisions', async (t) => {
 
 function addPendingQuestion(
   state: ChatTransactionState,
-  question: string
+  question: string,
 ): ChatTransactionState {
   const pending = state.pendingQuestions || [];
   if (!pending.includes(question)) {
@@ -529,9 +544,9 @@ function addPendingQuestion(
 
 function resolvePendingQuestion(
   state: ChatTransactionState,
-  question: string
+  question: string,
 ): ChatTransactionState {
-  const pending = (state.pendingQuestions || []).filter(q => q !== question);
+  const pending = (state.pendingQuestions || []).filter((q) => q !== question);
   return { ...state, pendingQuestions: pending };
 }
 

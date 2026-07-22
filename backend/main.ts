@@ -4,6 +4,11 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { timing } from 'hono/timing';
+import {
+  globalBodyLimit,
+  jsonBodyLimit,
+  requireBoundedMultipart,
+} from './src/middleware/bodyLimit.ts';
 // Static file serving disabled - frontend deployed separately
 
 import { authRouter } from './src/routes/auth.ts';
@@ -29,12 +34,7 @@ import projectConversationsRouter from './src/routes/projectConversations.ts';
 import { imagesRouter } from './src/routes/images.ts';
 import { terminalRouter } from './src/routes/terminal.ts';
 import { rulesetsRouter } from './src/routes/rulesets.ts';
-import {
-  getConfig,
-  validateConfigForAuth,
-  validateConfigForEncryption,
-  validateConfigForReserves,
-} from './src/utils/config.ts';
+import { getConfig, isAllowedOrigin, validateProductionConfig } from './src/utils/config.ts';
 import { cleanupRateLimits } from './src/services/claude.ts';
 import { cleanupExpiredSessions } from './src/services/auth.ts';
 import { executeReadySmartAccountTransfers } from './src/services/smartAccounts.ts';
@@ -46,11 +46,11 @@ import {
 } from './src/services/juice.ts';
 import { expireSessions as expireTerminalSessions } from './src/services/terminal.ts';
 import { cleanupExpiredCache as cleanupRulesetCache } from './src/services/rulesetCache.ts';
-import { runMigrations } from './src/db/migrate.ts';
+import { closePool, queryOne } from './src/db/index.ts';
 import { recoverOrphanedJobs } from './src/services/forge.ts';
 
-// Run migrations before starting the server
-await runMigrations();
+const bootConfig = getConfig();
+validateProductionConfig(bootConfig);
 
 // Recover any forge jobs that were running when we crashed
 // Uses 2-min grace period to avoid killing jobs from quick restarts
@@ -61,14 +61,6 @@ try {
   }
 } catch (error) {
   console.error('[Startup] Failed to recover orphaned jobs:', error);
-}
-
-// Validate critical config in production
-const bootConfig = getConfig();
-if (bootConfig.env === 'production') {
-  validateConfigForAuth(bootConfig);
-  validateConfigForEncryption(bootConfig);
-  validateConfigForReserves(bootConfig);
 }
 
 const app = new Hono();
@@ -82,19 +74,7 @@ app.use(
   '*',
   cors({
     origin: (origin) => {
-      // Allow localhost for development
-      if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
-        return origin;
-      }
-      // Allow IPFS gateways
-      if (origin.includes('ipfs.io') || origin.includes('dweb.link')) {
-        return origin;
-      }
-      // Allow your production domain
-      if (origin.includes('juicyvision') || origin.includes('juicy.vision')) {
-        return origin;
-      }
-      return null;
+      return isAllowedOrigin(bootConfig, origin) ? origin : null;
     },
     credentials: true,
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -107,6 +87,12 @@ app.use(
     ],
   }),
 );
+
+// Reject unframed multipart before any middleware can buffer it. JSON gets a
+// focused ceiling; every other request body remains under the global ceiling.
+app.use('*', requireBoundedMultipart);
+app.use('*', jsonBodyLimit);
+app.use('*', globalBodyLimit);
 
 // Security headers - allow cross-origin resources for WalletConnect
 app.use(
@@ -143,12 +129,31 @@ if (bootConfig.env === 'development') {
 // Health Check
 // ============================================================================
 
-app.get('/health', (c) => {
-  return c.json({
-    name: 'Juicy Vision API',
-    version: '0.1.0',
-    status: 'healthy',
-  });
+const livenessPayload = () => ({
+  name: 'Juicy Vision API',
+  version: '0.1.0',
+  revision: Deno.env.get('APP_REVISION') || 'development',
+  status: 'alive',
+});
+
+app.get('/livez', (c) => c.json(livenessPayload()));
+
+// Compatibility alias for platforms that conventionally probe /health.
+app.get('/health', (c) => c.json(livenessPayload()));
+
+app.get('/readyz', async (c) => {
+  try {
+    const result = await queryOne<{ ready: boolean }>(
+      `SELECT
+        to_regclass('public.users') IS NOT NULL
+        AND to_regclass('public._migrations') IS NOT NULL AS ready`,
+    );
+    if (!result?.ready) return c.json({ status: 'not_ready' }, 503);
+    return c.json({ status: 'ready' });
+  } catch (error) {
+    console.error('[Readiness] Database check failed:', error);
+    return c.json({ status: 'not_ready' }, 503);
+  }
 });
 
 // ============================================================================
@@ -243,7 +248,7 @@ app.notFound((c) => {
 // Background Jobs (Development fallback - use /cron endpoints in production)
 // ============================================================================
 
-const config = getConfig();
+const config = bootConfig;
 
 // In development, run background jobs via setInterval
 // In production on GCP, use Cloud Scheduler to call /cron endpoints
@@ -558,4 +563,21 @@ async function handleRequest(req: Request): Promise<Response> {
   return app.fetch(req);
 }
 
-Deno.serve({ port }, handleRequest);
+const abortController = new AbortController();
+const server = Deno.serve({ port, signal: abortController.signal }, handleRequest);
+
+let shuttingDown = false;
+async function shutdown(signal: Deno.Signal): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[Shutdown] Received ${signal}; draining requests`);
+  abortController.abort();
+  await server.finished.catch(() => undefined);
+  await closePool();
+}
+
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  Deno.addSignalListener(signal, () => {
+    void shutdown(signal);
+  });
+}

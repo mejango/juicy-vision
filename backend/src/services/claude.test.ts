@@ -9,7 +9,11 @@
  *   RUN_AI_TESTS=1 deno test --allow-all --env-file=.env --no-check src/services/claude.test.ts
  */
 
-import { assertEquals, assertExists, assertStringIncludes } from 'https://deno.land/std@0.224.0/assert/mod.ts';
+import {
+  assertEquals,
+  assertExists,
+  assertStringIncludes,
+} from 'https://deno.land/std@0.224.0/assert/mod.ts';
 
 // Skip AI tests by default - they cost money
 const RUN_AI_TESTS = Deno.env.get('RUN_AI_TESTS') === '1';
@@ -33,7 +37,10 @@ async function createTestChat(name: string): Promise<string> {
 }
 
 // Helper to invoke AI and get response
-async function invokeAI(chatId: string, prompt: string): Promise<{ success: boolean; content?: string; error?: string }> {
+async function invokeAI(
+  chatId: string,
+  prompt: string,
+): Promise<{ success: boolean; content?: string; error?: string }> {
   const res = await fetch(`${BASE_URL}/chat/${chatId}/ai/invoke`, {
     method: 'POST',
     headers: {
@@ -59,16 +66,19 @@ Deno.test({
   ignore: !RUN_AI_TESTS,
   async fn() {
     const chatId = await createTestChat('Test: Sucker Pairs');
-    const result = await invokeAI(chatId, 'What are the available bridge destinations for Juicebox project 1?');
+    const result = await invokeAI(
+      chatId,
+      'What are the available bridge destinations for Juicebox project 1?',
+    );
 
     assertExists(result.content);
     // Should return information about bridge destinations (chains, addresses)
     const content = result.content.toLowerCase();
     const hasBridgeInfo = content.includes('optimism') ||
-                          content.includes('base') ||
-                          content.includes('arbitrum') ||
-                          content.includes('chain') ||
-                          content.includes('bridge');
+      content.includes('base') ||
+      content.includes('arbitrum') ||
+      content.includes('chain') ||
+      content.includes('bridge');
     assertEquals(hasBridgeInfo, true, 'Should provide bridge destination information');
   },
   sanitizeOps: false,
@@ -82,16 +92,16 @@ Deno.test({
     const chatId = await createTestChat('Test: Cross Chain Balance');
     const result = await invokeAI(
       chatId,
-      'What is my token balance across all chains for sucker group sg_test? My address is 0x1234567890123456789012345678901234567890'
+      'What is my token balance across all chains for sucker group sg_test? My address is 0x1234567890123456789012345678901234567890',
     );
 
     assertExists(result.content);
     // Should respond with balance information or explanation about the query
     const content = result.content.toLowerCase();
     const hasBalanceInfo = content.includes('token') ||
-                           content.includes('balance') ||
-                           content.includes('chain') ||
-                           content.includes('0x1234');
+      content.includes('balance') ||
+      content.includes('chain') ||
+      content.includes('0x1234');
     assertEquals(hasBalanceInfo, true, 'Should provide balance-related response');
   },
   sanitizeOps: false,
@@ -105,17 +115,17 @@ Deno.test({
     const chatId = await createTestChat('Test: Bridge Transactions');
     const result = await invokeAI(
       chatId,
-      'Show me pending bridge transactions for sucker group sg_nana'
+      'Show me pending bridge transactions for sucker group sg_nana',
     );
 
     assertExists(result.content);
     // Should respond with transaction info or status about pending bridges
     const content = result.content.toLowerCase();
     const hasTransactionInfo = content.includes('transaction') ||
-                               content.includes('pending') ||
-                               content.includes('bridge') ||
-                               content.includes('transfer') ||
-                               content.includes('nana');
+      content.includes('pending') ||
+      content.includes('bridge') ||
+      content.includes('transfer') ||
+      content.includes('nana');
     assertEquals(hasTransactionInfo, true, 'Should provide transaction-related response');
   },
   sanitizeOps: false,
@@ -133,12 +143,16 @@ Deno.test({
     const chatId = await createTestChat('Test: No Tool Needed');
     const result = await invokeAI(
       chatId,
-      'What is a sucker in the Juicebox ecosystem? Explain the concept.'
+      'What is a sucker in the Juicebox ecosystem? Explain the concept.',
     );
 
     assertExists(result.content);
     // Should explain without calling tools
-    assertEquals(result.content.includes('Using tool:'), false, 'Should not use tools for concept questions');
+    assertEquals(
+      result.content.includes('Using tool:'),
+      false,
+      'Should not use tools for concept questions',
+    );
     // Should contain explanation
     assertStringIncludes(result.content.toLowerCase(), 'bridge');
   },
@@ -154,7 +168,11 @@ Deno.test({
     const result = await invokeAI(chatId, 'Hello! How are you?');
 
     assertExists(result.content);
-    assertEquals(result.content.includes('Using tool:'), false, 'Should not use tools for greetings');
+    assertEquals(
+      result.content.includes('Using tool:'),
+      false,
+      'Should not use tools for greetings',
+    );
   },
   sanitizeOps: false,
   sanitizeResources: false,
@@ -171,7 +189,7 @@ Deno.test({
     const chatId = await createTestChat('Test: Invalid Project');
     const result = await invokeAI(
       chatId,
-      'What are the sucker pairs for project 99999999?'
+      'What are the sucker pairs for project 99999999?',
     );
 
     assertExists(result.content);
@@ -189,7 +207,7 @@ Deno.test({
     const chatId = await createTestChat('Test: Malformed Address');
     const result = await invokeAI(
       chatId,
-      'Get my cross-chain balance. My address is not-a-valid-address'
+      'Get my cross-chain balance. My address is not-a-valid-address',
     );
 
     assertExists(result.content);
@@ -211,17 +229,17 @@ Deno.test({
     const chatId = await createTestChat('Test: Multi-Tool Workflow');
     const result = await invokeAI(
       chatId,
-      'I want to bridge tokens from project 1 to Optimism. First check if there are any bridge destinations available, and if so, estimate the bridge fee.'
+      'I want to bridge tokens from project 1 to Optimism. First check if there are any bridge destinations available, and if so, estimate the bridge fee.',
     );
 
     assertExists(result.content);
     // Should provide information about bridge destinations and/or fee estimation
     const content = result.content.toLowerCase();
     const hasBridgeInfo = content.includes('optimism') ||
-                          content.includes('bridge') ||
-                          content.includes('fee') ||
-                          content.includes('eth') ||
-                          content.includes('destination');
+      content.includes('bridge') ||
+      content.includes('fee') ||
+      content.includes('eth') ||
+      content.includes('destination');
     assertEquals(hasBridgeInfo, true, 'Should provide bridge and/or fee information');
   },
   sanitizeOps: false,
@@ -239,14 +257,13 @@ Deno.test({
     const chatId = await createTestChat('Test: Bridge Query');
     const result = await invokeAI(
       chatId,
-      'What bridges are available for project 1?'
+      'What bridges are available for project 1?',
     );
 
     assertExists(result.content);
     // Should provide useful information about bridges (whether they exist or not)
     const content = result.content.toLowerCase();
-    const hasMeaningfulResponse =
-      content.includes('bridge') ||
+    const hasMeaningfulResponse = content.includes('bridge') ||
       content.includes('optimism') ||
       content.includes('base') ||
       content.includes('arbitrum') ||
@@ -307,7 +324,7 @@ Deno.test({
 Deno.test({
   name: 'parseConfidence: preserves leading content when confidence at end',
   fn() {
-    const content = "I'd love to help you\n\n<confidence level=\"medium\" reason=\"greeting\"/>";
+    const content = 'I\'d love to help you\n\n<confidence level="medium" reason="greeting"/>';
     const result = parseConfidence(content);
 
     assertEquals(result.content, "I'd love to help you");
@@ -343,7 +360,8 @@ Deno.test({
     // Note: Using > in reason will break the [^>]* regex match,
     // causing the confidence tag to not be matched and removed.
     // This is a known limitation - reason should not contain >
-    const content = 'Response text<confidence level="low" reason="User asked about rates greater than 10 percent"/>';
+    const content =
+      'Response text<confidence level="low" reason="User asked about rates greater than 10 percent"/>';
     const result = parseConfidence(content);
 
     assertEquals(result.content, 'Response text');

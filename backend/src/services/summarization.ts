@@ -8,7 +8,7 @@
  * This is Layer 3 of the context management system.
  */
 
-import { query, queryOne, execute } from '../db/index.ts';
+import { execute, query, queryOne } from '../db/index.ts';
 
 // ============================================================================
 // Types
@@ -107,7 +107,8 @@ const SUMMARIZATION_CONFIG = {
 // Summarization Prompt
 // ============================================================================
 
-const SUMMARIZATION_PROMPT = `You are summarizing a conversation segment for context preservation in an ongoing chat.
+const SUMMARIZATION_PROMPT =
+  `You are summarizing a conversation segment for context preservation in an ongoing chat.
 
 CRITICAL: You MUST populate each section below. Empty sections indicate LOST information.
 If a section truly has nothing, write "(none in this segment)".
@@ -155,20 +156,21 @@ REMEMBER:
  */
 export async function generateSummary(
   messages: Array<{ role: string; content: string; createdAt?: Date }>,
-  existingSummary?: string
+  existingSummary?: string,
 ): Promise<{ summary: string; tokenCount: number }> {
   const { sendMessage } = await import('./claude.ts');
 
   // Build the message content to summarize
   const conversationText = messages
-    .map(m => `[${m.role.toUpperCase()}]: ${m.content.slice(0, 2000)}`)
+    .map((m) => `[${m.role.toUpperCase()}]: ${m.content.slice(0, 2000)}`)
     .join('\n\n');
 
   // If we have an existing summary, we're doing anchored merge
   let prompt = `Summarize this conversation segment:\n\n${conversationText}`;
 
   if (existingSummary) {
-    prompt = `You have an EXISTING summary of earlier messages. Now summarize NEW messages and MERGE them together.
+    prompt =
+      `You have an EXISTING summary of earlier messages. Now summarize NEW messages and MERGE them together.
 
 EXISTING SUMMARY:
 ${existingSummary}
@@ -229,7 +231,7 @@ export async function checkAndTriggerSummarization(chatId: string): Promise<bool
        ) as unsummarized_count
      FROM multi_chats mc
      WHERE mc.id = $1`,
-    [chatId]
+    [chatId],
   );
 
   if (!stats) return false;
@@ -239,10 +241,12 @@ export async function checkAndTriggerSummarization(chatId: string): Promise<bool
     return false;
   }
 
-  console.log(`Triggering summarization for chat ${chatId}: ${stats.unsummarized_count} unsummarized messages`);
+  console.log(
+    `Triggering summarization for chat ${chatId}: ${stats.unsummarized_count} unsummarized messages`,
+  );
 
   // Run summarization asynchronously
-  performSummarization(chatId).catch(err => {
+  performSummarization(chatId).catch((err) => {
     console.error(`Summarization failed for chat ${chatId}:`, err);
   });
 
@@ -259,7 +263,7 @@ async function performSummarization(chatId: string): Promise<void> {
      WHERE chat_id = $1
      ORDER BY created_at DESC
      LIMIT 1`,
-    [chatId]
+    [chatId],
   );
 
   // Get messages to summarize
@@ -277,9 +281,7 @@ async function performSummarization(chatId: string): Promise<void> {
        FROM multi_chat_messages
        WHERE chat_id = $1
        AND deleted_at IS NULL
-       ${latestSummary?.covers_to_created_at
-         ? `AND created_at > $2`
-         : ''}
+       ${latestSummary?.covers_to_created_at ? `AND created_at > $2` : ''}
      )
      SELECT id, role, content, created_at, token_count
      FROM ordered_messages
@@ -287,7 +289,7 @@ async function performSummarization(chatId: string): Promise<void> {
      ORDER BY created_at ASC`,
     latestSummary?.covers_to_created_at
       ? [chatId, latestSummary.covers_to_created_at, SUMMARIZATION_CONFIG.keepRecentCount]
-      : [chatId, SUMMARIZATION_CONFIG.keepRecentCount]
+      : [chatId, SUMMARIZATION_CONFIG.keepRecentCount],
   );
 
   if (messagesToSummarize.length === 0) {
@@ -301,12 +303,12 @@ async function performSummarization(chatId: string): Promise<void> {
 
   // Generate summary (merge with existing if present)
   const { summary, tokenCount } = await generateSummary(
-    messagesToSummarize.map(m => ({
+    messagesToSummarize.map((m) => ({
       role: m.role,
       content: m.content,
       createdAt: m.created_at,
     })),
-    latestSummary?.summary_md
+    latestSummary?.summary_md,
   );
 
   // Store the summary
@@ -330,18 +332,20 @@ async function performSummarization(chatId: string): Promise<void> {
       originalTokenCount,
       tokenCount,
       SUMMARIZATION_CONFIG.model,
-    ]
+    ],
   );
 
   // Update the chat's last summarized message pointer
   await execute(
     `UPDATE multi_chats SET last_summarized_message_id = $1 WHERE id = $2`,
-    [lastMessage.id, chatId]
+    [lastMessage.id, chatId],
   );
 
   console.log(
     `Summarized ${messagesToSummarize.length} messages for chat ${chatId}: ` +
-    `${originalTokenCount} -> ${tokenCount} tokens (${(originalTokenCount / tokenCount).toFixed(1)}x compression)`
+      `${originalTokenCount} -> ${tokenCount} tokens (${
+        (originalTokenCount / tokenCount).toFixed(1)
+      }x compression)`,
   );
 }
 
@@ -349,7 +353,8 @@ async function performSummarization(chatId: string): Promise<void> {
 // Attachment Summarization
 // ============================================================================
 
-const ATTACHMENT_SUMMARY_PROMPT = `You are analyzing an uploaded document/image. Extract and summarize the key information.
+const ATTACHMENT_SUMMARY_PROMPT =
+  `You are analyzing an uploaded document/image. Extract and summarize the key information.
 
 Return a structured summary:
 
@@ -382,14 +387,14 @@ export async function summarizeAttachment(
     mimeType: string;
     data: string; // base64
     filename?: string;
-  }
+  },
 ): Promise<AttachmentSummary> {
   const { sendMessage } = await import('./claude.ts');
 
   // Check if already summarized
   const existing = await queryOne<DbAttachmentSummary>(
     `SELECT * FROM attachment_summaries WHERE message_id = $1 AND attachment_index = $2`,
-    [messageId, attachmentIndex]
+    [messageId, attachmentIndex],
   );
 
   if (existing) {
@@ -399,13 +404,19 @@ export async function summarizeAttachment(
   // Build multimodal message
   const content = attachment.type === 'image'
     ? [
-        { type: 'image' as const, source: { type: 'base64' as const, media_type: attachment.mimeType, data: attachment.data } },
-        { type: 'text' as const, text: 'Analyze and summarize this image.' },
-      ]
+      {
+        type: 'image' as const,
+        source: { type: 'base64' as const, media_type: attachment.mimeType, data: attachment.data },
+      },
+      { type: 'text' as const, text: 'Analyze and summarize this image.' },
+    ]
     : [
-        { type: 'document' as const, source: { type: 'base64' as const, media_type: attachment.mimeType, data: attachment.data } },
-        { type: 'text' as const, text: 'Analyze and summarize this document.' },
-      ];
+      {
+        type: 'document' as const,
+        source: { type: 'base64' as const, media_type: attachment.mimeType, data: attachment.data },
+      },
+      { type: 'text' as const, text: 'Analyze and summarize this document.' },
+    ];
 
   try {
     const response = await sendMessage('system', {
@@ -439,7 +450,7 @@ export async function summarizeAttachment(
         JSON.stringify(extractedData),
         tokenCount,
         SUMMARIZATION_CONFIG.model,
-      ]
+      ],
     );
 
     if (!result) {
@@ -465,15 +476,18 @@ export function queueAttachmentSummary(
     mimeType: string;
     data: string;
     filename?: string;
-  }
+  },
 ): void {
   // Run in background, don't block
   summarizeAttachment(messageId, chatId, attachmentIndex, attachment)
     .then(() => {
       console.log(`Summarized attachment ${attachmentIndex} for message ${messageId}`);
     })
-    .catch(err => {
-      console.error(`Failed to summarize attachment ${attachmentIndex} for message ${messageId}:`, err);
+    .catch((err) => {
+      console.error(
+        `Failed to summarize attachment ${attachmentIndex} for message ${messageId}:`,
+        err,
+      );
     });
 }
 
@@ -490,7 +504,7 @@ export async function getLatestSummary(chatId: string): Promise<ChatSummary | nu
      WHERE chat_id = $1
      ORDER BY created_at DESC
      LIMIT 1`,
-    [chatId]
+    [chatId],
   );
 
   return result ? dbToChatSummary(result) : null;
@@ -504,7 +518,7 @@ export async function getAttachmentSummaries(chatId: string): Promise<Attachment
     `SELECT * FROM attachment_summaries
      WHERE chat_id = $1
      ORDER BY created_at DESC`,
-    [chatId]
+    [chatId],
   );
 
   return results.map(dbToAttachmentSummary);
@@ -590,7 +604,9 @@ function parseExtractedData(summaryMd: string): Record<string, unknown> {
   }
 
   // Extract dates
-  const datePatterns = dataSection.match(/\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4}\b/gi);
+  const datePatterns = dataSection.match(
+    /\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4}\b/gi,
+  );
   if (datePatterns?.length) {
     data.dates = [...new Set(datePatterns)];
   }

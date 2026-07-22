@@ -25,11 +25,17 @@ deno --version
 
 ### Node.js (for frontend)
 
-Node.js 18+ is required for the frontend:
+The frontend uses Node.js 22 and npm 10. Use the versions pinned by `.nvmrc`
+and the `packageManager` field in `package.json` so local installs match CI:
 ```bash
-# Check version
+# With nvm installed
+nvm use
+
+# Check versions
 node --version
-# v18.x.x or higher
+# v22.16.0
+npm --version
+# 10.9.2
 ```
 
 ## Quick Start
@@ -41,16 +47,20 @@ docker run -d --name juicyvision-db \
   -e POSTGRES_PASSWORD=juicy123 \
   -e POSTGRES_DB=juicyvision \
   -p 5432:5432 \
-  postgres:16-alpine
+  postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
 
 # 2. Configure backend environment
 cp backend/.env.example backend/.env
 # Edit backend/.env with your API keys
 
-# 3. Start backend (in backend/ directory)
-cd backend && deno task dev
+# 3. Initialize or upgrade the schema explicitly (in backend/ directory)
+cd backend
+DATABASE_URL=postgresql://juicy:juicy123@localhost:5432/juicyvision deno task migrate
 
-# 4. Start frontend (in project root)
+# 4. Start backend
+deno task dev
+
+# 5. Start frontend in another terminal (in project root)
 npm run dev
 ```
 
@@ -72,10 +82,18 @@ docker run -d --name juicyvision-db \
   -e POSTGRES_PASSWORD=juicy123 \
   -e POSTGRES_DB=juicyvision \
   -p 5432:5432 \
-  postgres:16-alpine
+  postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
 ```
 
-The backend will automatically run migrations when it starts.
+Initialize the fresh database explicitly before starting the backend:
+
+```bash
+cd backend
+DATABASE_URL=postgresql://juicy:juicy123@localhost:5432/juicyvision deno task migrate
+```
+
+`deno task dev` and `deno task start` never run migrations. Keeping migration
+as a one-shot command avoids startup races between API replicas.
 
 ### Restart Backend
 
@@ -115,11 +133,13 @@ docker run -d --name juicyvision-db \
   -e POSTGRES_PASSWORD=juicy123 \
   -e POSTGRES_DB=juicyvision \
   -p 5432:5432 \
-  postgres:16-alpine
+  postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
 
-# Restart backend to run migrations
+# Stop the backend, initialize the fresh schema, then restart it
 lsof -ti:3001 | xargs kill -9 2>/dev/null
-cd backend && deno task dev
+cd backend
+DATABASE_URL=postgresql://juicy:juicy123@localhost:5432/juicyvision deno task migrate
+deno task dev
 ```
 
 ## Environment Variables
@@ -196,7 +216,8 @@ Backend configuration is in `backend/.env`. Create it from the example and fill 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `FORGE_DOCKER_ENABLED` | `false` | Enable Foundry Docker for hook compilation |
+| `FORGE_DOCKER_ENABLED` | `false` | Quarantined local experiment only; production rejects it |
+| `FORGE_SANDBOX_IMAGE` | - | Required digest-pinned Foundry image for that local experiment |
 | `SEMGREP_ENABLED` | `false` | Enable Semgrep security scanning |
 
 ### Minimal Development Setup

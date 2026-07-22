@@ -27,7 +27,6 @@ vi.mock('../services/session', () => ({
 
 // Mock fetch globally
 const mockFetch = vi.fn()
-global.fetch = mockFetch
 
 describe('transactions API', () => {
   const mockTransaction: Transaction = {
@@ -50,6 +49,7 @@ describe('transactions API', () => {
   }
 
   beforeEach(() => {
+    vi.stubGlobal('fetch', mockFetch)
     vi.clearAllMocks()
     mockFetch.mockReset()
     mockToken = 'test-jwt-token' // Reset token to default

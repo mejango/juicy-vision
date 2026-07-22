@@ -18,7 +18,6 @@ const SESSION_ID = `ses_manual_test_${Date.now()}`;
 // ANSI colors
 const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
 const red = (s: string) => `\x1b[31m${s}\x1b[0m`;
-const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
 const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 
@@ -74,7 +73,10 @@ async function createChat(): Promise<string> {
   return data.data.id;
 }
 
-async function invokeAI(chatId: string, prompt: string): Promise<{ success: boolean; content?: string; error?: string }> {
+async function invokeAI(
+  chatId: string,
+  prompt: string,
+): Promise<{ success: boolean; content?: string; error?: string }> {
   const start = Date.now();
   const res = await fetch(`${BASE_URL}/chat/${chatId}/ai/invoke`, {
     method: 'POST',
@@ -180,7 +182,11 @@ async function main() {
 
   // Summary
   console.log('\n═══════════════════════════════════════════════════════════');
-  console.log(`Results: ${green(`${passed} passed`)}, ${failed > 0 ? red(`${failed} failed`) : dim('0 failed')}`);
+  console.log(
+    `Results: ${green(`${passed} passed`)}, ${
+      failed > 0 ? red(`${failed} failed`) : dim('0 failed')
+    }`,
+  );
   console.log('═══════════════════════════════════════════════════════════');
 
   // Check metrics
@@ -192,7 +198,9 @@ async function main() {
       console.log(`  Total invocations: ${metrics.data.totalInvocations}`);
       console.log(`  Avg response time: ${Math.round(metrics.data.avgResponseTimeMs)}ms`);
       console.log(`  Tool usage: ${JSON.stringify(metrics.data.toolUsageCounts)}`);
-      console.log(`  With tools: ${metrics.data.invocationsWithTools} / Without: ${metrics.data.invocationsWithoutTools}`);
+      console.log(
+        `  With tools: ${metrics.data.invocationsWithTools} / Without: ${metrics.data.invocationsWithoutTools}`,
+      );
     }
   } catch {
     console.log(dim('  (Could not fetch metrics)'));

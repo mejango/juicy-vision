@@ -73,6 +73,13 @@ interface SendReservedTokensModalProps {
 
 type DistributeStatus = 'preview' | 'signing' | 'pending' | 'confirmed' | 'failed'
 
+export function submitReviewedReservedTokenDistribution(
+  guarded: Pick<ReturnType<typeof useGuardedTx>, 'run'>,
+  request: Parameters<ReturnType<typeof useGuardedTx>['run']>[0],
+): Promise<`0x${string}`> {
+  return guarded.run(request)
+}
+
 export default function SendReservedTokensModal({
   isOpen,
   onClose,
@@ -342,7 +349,7 @@ export default function SendReservedTokensModal({
         status: 'pending',
       })
 
-      const hash = await guarded.run({
+      const hash = await submitReviewedReservedTokenDistribution(guarded, {
         chainId,
         to: freshController,
         data: callData,

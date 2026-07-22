@@ -2,39 +2,137 @@ name: Deploy Frontend
 
 on:
   push:
-    branches: [main]
-    paths-ignore: ['backend/**']
+    tags: ['v*']
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Upload the reviewed static artifact to Storacha
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-frontend-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    environment: production
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Check out pinned deploy-all-v6 deployment artifacts
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: Bananapus/deploy-all-v6
+          ref: 316e9d4d3f9e1c5b41a5df7c0ad6183abbeccc7f
+          path: .contract-source/deploy-all-v6
+          sparse-checkout: deployments
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Verify locked dependency tree
+        run: npm run deps:check
+
+      - name: Reject high or critical production dependency advisories
+        run: npm run audit:prod
+
+      - name: Lint frontend
+        run: npm run lint:ci
+
+      - name: Typecheck frontend
+        run: npm run typecheck
+
+      - name: Verify authorization and test-discipline source invariants
+        run: npm run check:source
+
+      - name: Verify protocol fixture parity
+        env:
+          PROTOCOL_DEPLOYMENTS_DIR: ${{ github.workspace }}/.contract-source/deploy-all-v6/deployments
+        run: npm run check:protocol
+
+      - name: Verify wallet write-site and coverage inventory
+        run: npm run check:writes
+
+      - name: Run unit tests with coverage floors
+        run: npm run test:ci
+
+      - name: Read reproducible source timestamp
+        id: source
+        shell: bash
+        run: echo "epoch=$(git show -s --format=%ct '${{ github.sha }}')" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        env:
+          VITE_API_URL: ${{ vars.PRODUCTION_API_URL }}
+          VITE_WALLETCONNECT_PROJECT_ID: ${{ vars.WALLETCONNECT_PROJECT_ID }}
+          BUILD_SHA: ${{ github.sha }}
+          SOURCE_DATE_EPOCH: ${{ steps.source.outputs.epoch }}
+          DEPLOY_ENV: production
+        run: npm run check:release-config && npm run build
+
+      - name: Enforce bundle budgets
+        run: npm run check:bundle
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify the production browser surface
+        run: npm run test:e2e
+
+      - name: Preserve the reviewed static release artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: juicy-vision-frontend-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Note build-only manual run
+        if: ${{ github.event_name == 'workflow_dispatch' && !inputs.publish }}
+        run: echo "::notice::Static artifact validated and retained; external publication was not requested."
+
+  publish:
+    name: Publish reviewed static artifact
+    needs: validate
+    if: ${{ github.event_name == 'push' || inputs.publish }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production
     env:
       STORACHA_SECRET_KEY: ${{ secrets.W3_PRINCIPAL }}
       STORACHA_PROOF: ${{ secrets.W3_PROOF }}
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
+      - name: Download reviewed artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          node-version: '22'
-          cache: 'npm'
-
-      - run: npm ci
-
-      - name: Build
-        env:
-          VITE_API_URL: ${{ vars.API_URL }}
-        run: npm run build
+          name: juicy-vision-frontend-${{ github.sha }}
+          path: dist
 
       - name: Deploy to IPFS
         if: ${{ env.STORACHA_SECRET_KEY != '' && env.STORACHA_PROOF != '' }}
-        uses: storacha/add-to-web3@v4
+        uses: storacha/add-to-web3@892505d8e70c79336721485e5500155c17a728e0 # v4
         with:
           path_to_add: dist
           secret_key: ${{ env.STORACHA_SECRET_KEY }}
           proof: ${{ env.STORACHA_PROOF }}
 
-      - name: Note optional IPFS deployment is not configured
+      - name: Reject an unconfigured publication
         if: ${{ env.STORACHA_SECRET_KEY == '' || env.STORACHA_PROOF == '' }}
-        run: echo "::notice::Skipping optional IPFS upload because W3_PRINCIPAL or W3_PROOF is not configured."
+        run: |
+          echo "::error::W3_PRINCIPAL and W3_PROOF are required to publish the reviewed artifact."
+          exit 1

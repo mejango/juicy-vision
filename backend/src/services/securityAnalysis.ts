@@ -1,4 +1,4 @@
-import { query, queryOne, execute } from '../db/index.ts';
+import { query, queryOne } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
 
 // ============================================================================
@@ -66,32 +66,41 @@ const JUICEBOX_RULES: Array<{
     id: 'jb-terminal-validation',
     severity: 'critical',
     title: 'Missing Terminal Validation',
-    pattern: /function\s+(afterPayRecordedWith|afterCashOutRecordedWith|beforeCashOutRecordedWith|beforePayRecordedWith)\s*\([^)]*\)\s*[^{]*\{(?:(?!require|revert|if\s*\(\s*msg\.sender\s*==)[\s\S])*?}/g,
-    message: 'Hook function does not validate that msg.sender is a trusted terminal. This could allow unauthorized calls.',
-    fix: 'Add validation: require(directory.isTerminalOf(projectId, IJBTerminal(msg.sender)), "Unauthorized terminal");',
+    pattern:
+      /function\s+(afterPayRecordedWith|afterCashOutRecordedWith|beforeCashOutRecordedWith|beforePayRecordedWith)\s*\([^)]*\)\s*[^{]*\{(?:(?!require|revert|if\s*\(\s*msg\.sender\s*==)[\s\S])*?}/g,
+    message:
+      'Hook function does not validate that msg.sender is a trusted terminal. This could allow unauthorized calls.',
+    fix:
+      'Add validation: require(directory.isTerminalOf(projectId, IJBTerminal(msg.sender)), "Unauthorized terminal");',
   },
   {
     id: 'jb-reentrancy-hook',
     severity: 'high',
     title: 'Potential Reentrancy in Hook',
     pattern: /(\.(call|transfer|send)\s*\{|\.call\s*\()/g,
-    message: 'External call in hook function may be vulnerable to reentrancy. Juicebox hooks are called during state transitions.',
-    fix: 'Use ReentrancyGuard or follow checks-effects-interactions pattern. Consider making state changes before external calls.',
+    message:
+      'External call in hook function may be vulnerable to reentrancy. Juicebox hooks are called during state transitions.',
+    fix:
+      'Use ReentrancyGuard or follow checks-effects-interactions pattern. Consider making state changes before external calls.',
   },
   {
     id: 'jb-unchecked-project-id',
     severity: 'high',
     title: 'Unchecked Project ID',
-    pattern: /function\s+(afterPayRecordedWith|afterCashOutRecordedWith)\s*\([^)]*JBAfter(Pay|CashOut)RecordedContext[^)]*\)\s*[^{]*\{(?:(?!projectId|_projectId)[\s\S])*?}/g,
-    message: 'Hook does not check projectId from the context. This may allow hooks to be triggered for unintended projects.',
+    pattern:
+      /function\s+(afterPayRecordedWith|afterCashOutRecordedWith)\s*\([^)]*JBAfter(Pay|CashOut)RecordedContext[^)]*\)\s*[^{]*\{(?:(?!projectId|_projectId)[\s\S])*?}/g,
+    message:
+      'Hook does not check projectId from the context. This may allow hooks to be triggered for unintended projects.',
     fix: 'Validate projectId: require(context.projectId == expectedProjectId, "Wrong project");',
   },
   {
     id: 'jb-missing-interface',
     severity: 'medium',
     title: 'Missing Hook Interface Implementation',
-    pattern: /contract\s+\w+\s*(?:is\s+[^{]+)?{(?:(?!IJBPayHook|IJBCashOutHook|IJBSplitHook)[\s\S])*?}/g,
-    message: 'Contract does not explicitly implement a Juicebox hook interface. This may cause compatibility issues.',
+    pattern:
+      /contract\s+\w+\s*(?:is\s+[^{]+)?{(?:(?!IJBPayHook|IJBCashOutHook|IJBSplitHook)[\s\S])*?}/g,
+    message:
+      'Contract does not explicitly implement a Juicebox hook interface. This may cause compatibility issues.',
     fix: 'Implement the appropriate interface: IJBPayHook, IJBCashOutHook, or IJBSplitHook',
   },
   {
@@ -99,16 +108,20 @@ const JUICEBOX_RULES: Array<{
     severity: 'medium',
     title: 'Hardcoded Address',
     pattern: /0x[a-fA-F0-9]{40}/g,
-    message: 'Hardcoded address detected. Consider using constructor parameters or immutable variables for chain-agnostic deployment.',
+    message:
+      'Hardcoded address detected. Consider using constructor parameters or immutable variables for chain-agnostic deployment.',
     fix: 'Use constructor parameters: constructor(address _terminal) { terminal = _terminal; }',
   },
   {
     id: 'jb-missing-supportsInterface',
     severity: 'low',
     title: 'Missing supportsInterface',
-    pattern: /contract\s+\w+\s*is\s+[^{]*IJB(Pay|CashOut|Split)Hook[^{]*{(?:(?!supportsInterface)[\s\S])*?}/g,
-    message: 'Hook contract does not implement supportsInterface. Terminals may not recognize this as a valid hook.',
-    fix: 'Implement ERC-165: function supportsInterface(bytes4 interfaceId) public view returns (bool)',
+    pattern:
+      /contract\s+\w+\s*is\s+[^{]*IJB(Pay|CashOut|Split)Hook[^{]*{(?:(?!supportsInterface)[\s\S])*?}/g,
+    message:
+      'Hook contract does not implement supportsInterface. Terminals may not recognize this as a valid hook.',
+    fix:
+      'Implement ERC-165: function supportsInterface(bytes4 interfaceId) public view returns (bool)',
   },
   {
     id: 'jb-unsafe-math',
@@ -204,7 +217,7 @@ function transformAnalysis(db: DbSecurityAnalysis): SecurityAnalysisResult {
 
 export async function analyzeProject(
   projectId: string,
-  files: Array<{ path: string; content: string }>
+  files: Array<{ path: string; content: string }>,
 ): Promise<SecurityAnalysisResult> {
   const findings: SecurityFinding[] = [];
   let findingId = 0;
@@ -267,7 +280,7 @@ export async function analyzeProject(
     `INSERT INTO security_analyses (project_id, tool, findings, summary)
      VALUES ($1, 'custom', $2, $3)
      RETURNING *`,
-    [projectId, JSON.stringify(findings), JSON.stringify(summary)]
+    [projectId, JSON.stringify(findings), JSON.stringify(summary)],
   );
 
   if (!result) {
@@ -303,7 +316,7 @@ function calculateSummary(findings: SecurityFinding[]): AnalysisSummary {
 
 export async function runSemgrep(
   projectId: string,
-  files: Array<{ path: string; content: string }>
+  files: Array<{ path: string; content: string }>,
 ): Promise<SecurityAnalysisResult | null> {
   const config = getConfig();
 
@@ -328,8 +341,10 @@ export async function runSemgrep(
       // Run Semgrep with Solidity rules
       const process = new Deno.Command('semgrep', {
         args: [
-          '--config', 'p/solidity',
-          '--config', 'p/smart-contracts',
+          '--config',
+          'p/solidity',
+          '--config',
+          'p/smart-contracts',
           '--json',
           tmpDir,
         ],
@@ -362,7 +377,7 @@ export async function runSemgrep(
           endLine: r.end.line,
           column: r.start.col,
           code: r.extra_lines,
-        })
+        }),
       ) || [];
 
       const summary = calculateSummary(findings);
@@ -372,7 +387,7 @@ export async function runSemgrep(
         `INSERT INTO security_analyses (project_id, tool, findings, summary)
          VALUES ($1, 'semgrep', $2, $3)
          RETURNING *`,
-        [projectId, JSON.stringify(findings), JSON.stringify(summary)]
+        [projectId, JSON.stringify(findings), JSON.stringify(summary)],
       );
 
       if (!result) {
@@ -408,14 +423,14 @@ function mapSemgrepSeverity(severity: string): Severity {
 // ============================================================================
 
 export async function getLatestAnalysis(
-  projectId: string
+  projectId: string,
 ): Promise<SecurityAnalysisResult | null> {
   const result = await queryOne<DbSecurityAnalysis>(
     `SELECT * FROM security_analyses
      WHERE project_id = $1
      ORDER BY created_at DESC
      LIMIT 1`,
-    [projectId]
+    [projectId],
   );
 
   return result ? transformAnalysis(result) : null;
@@ -423,14 +438,14 @@ export async function getLatestAnalysis(
 
 export async function getAnalysisHistory(
   projectId: string,
-  limit: number = 10
+  limit: number = 10,
 ): Promise<SecurityAnalysisResult[]> {
   const results = await query<DbSecurityAnalysis>(
     `SELECT * FROM security_analyses
      WHERE project_id = $1
      ORDER BY created_at DESC
      LIMIT $2`,
-    [projectId, limit]
+    [projectId, limit],
   );
 
   return results.map(transformAnalysis);
@@ -449,7 +464,7 @@ export interface DeploymentSecurityCheck {
 
 export async function checkDeploymentSecurity(
   projectId: string,
-  files: Array<{ path: string; content: string }>
+  files: Array<{ path: string; content: string }>,
 ): Promise<DeploymentSecurityCheck> {
   // Run fresh analysis
   const analysis = await analyzeProject(projectId, files);
@@ -474,7 +489,7 @@ export async function checkDeploymentSecurity(
   }
 
   const hasLicense = files.some(
-    (f) => f.content.includes('SPDX-License-Identifier')
+    (f) => f.content.includes('SPDX-License-Identifier'),
   );
   if (!hasLicense) {
     warnings.push('SPDX license identifier not found in some files.');

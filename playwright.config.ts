@@ -1,23 +1,41 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const isCI = Boolean(process.env.CI)
+const appPort = Number(process.env.PLAYWRIGHT_APP_PORT ?? 3014)
+const appOrigin = `http://127.0.0.1:${appPort}`
+
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: true,
-  forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
-  reporter: 'html',
+  forbidOnly: isCI,
+  failOnFlakyTests: isCI,
+  retries: isCI ? 2 : 0,
+  workers: isCI ? 1 : undefined,
+  reporter: isCI
+    ? [['line'], ['html', { open: 'never' }]]
+    : [['html', { open: 'never' }]],
   use: {
-    baseURL: 'http://localhost:3000',
+    // Browser gates exercise the production bundle, not Vite's development
+    // transforms. This catches chunking, asset-path, and production-only bugs.
+    baseURL: appOrigin,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
   },
   projects: [
     {
-      name: 'chromium',
+      name: 'smoke',
       // Maintained transaction-safety smoke suite used by CI.
       testMatch: ['payment-review.spec.ts', 'transactions.spec.ts'],
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], serviceWorkers: 'block' },
+    },
+    {
+      name: 'critical',
+      // Small, deterministic invariants that are strict enough to block PRs.
+      // The larger historical flow suites remain available in their named
+      // projects while they are progressively made non-conditional.
+      testMatch: ['critical/**/*.spec.ts'],
+      use: { ...devices['Desktop Chrome'], serviceWorkers: 'block' },
     },
     {
       // Older broad UI assertions remain runnable while their selectors and
@@ -83,9 +101,13 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
+    command: isCI
+      ? `npm run preview -- --host 127.0.0.1 --port ${appPort}`
+      : `npm run build && npm run preview -- --host 127.0.0.1 --port ${appPort}`,
+    url: appOrigin,
+    // Never let a green run come from an unrelated process already listening
+    // on the expected port. A collision should fail loudly instead.
+    reuseExistingServer: false,
     timeout: 120 * 1000,
   },
 })

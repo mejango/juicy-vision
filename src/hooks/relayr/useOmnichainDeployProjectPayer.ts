@@ -67,6 +67,22 @@ export interface UseOmnichainDeployProjectPayerReturn {
   reset: () => void
 }
 
+export async function submitManagedProjectPayerBundle(
+  calls: ProjectPayerDeployCall[],
+  activeAddress: string,
+  managedAddress: string,
+  submit?: typeof createManagedRelayrBundle,
+): Promise<{ bundleId: string }> {
+  const transactions = calls.map(call => ({
+    chainId: call.chainId,
+    target: call.to,
+    data: call.data,
+    value: '0',
+  }))
+  if (submit) return submit(transactions, activeAddress, managedAddress)
+  return createManagedRelayrBundle(transactions, activeAddress, managedAddress)
+}
+
 /**
  * Deploy JBProjectPayer forwarding contracts across chains as ONE Relayr bundle
  * for a managed account — the payer analogue of useOmnichainDeployERC20. Each
@@ -169,8 +185,8 @@ export function useOmnichainDeployProjectPayer(
       assertTransactionAccountUnchanged(activeAddress, latestManagedAddress.current)
       bundle._setCreating()
 
-      const result = await createManagedRelayrBundle(
-        calls.map(call => ({ chainId: call.chainId, target: call.to, data: call.data, value: '0' })),
+      const result = await submitManagedProjectPayerBundle(
+        calls,
         activeAddress,
         managedAddress,
       )

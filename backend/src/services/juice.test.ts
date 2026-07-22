@@ -33,13 +33,15 @@ Deno.test('Juice Service - Balance Structure', async (t) => {
   });
 
   await t.step('balance equals purchased minus spent minus cashed out', () => {
-    const calculatedBalance = mockBalance.lifetimePurchased - mockBalance.lifetimeSpent - mockBalance.lifetimeCashedOut;
+    const calculatedBalance = mockBalance.lifetimePurchased - mockBalance.lifetimeSpent -
+      mockBalance.lifetimeCashedOut;
     assertEquals(calculatedBalance, mockBalance.balance);
   });
 
   await t.step('expiration is far in the future (1000 years)', () => {
     const now = new Date();
-    const yearsUntilExpiry = (mockBalance.expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24 * 365);
+    const yearsUntilExpiry = (mockBalance.expiresAt.getTime() - now.getTime()) /
+      (1000 * 60 * 60 * 24 * 365);
     assertEquals(yearsUntilExpiry > 900, true); // At least 900 years
   });
 
@@ -349,7 +351,6 @@ Deno.test('Juice Service - Cash Out Cancellation', async (t) => {
 
   await t.step('cancellation refunds full amount', () => {
     const balanceBefore = 50.00;
-    const cashOutAmount = 30.00;
     // After initiating cash out, balance would be 20
     // After cancellation, balance is restored
     const balanceAfterCancel = balanceBefore;
@@ -493,10 +494,10 @@ Deno.test('Juice Service - Retry Configuration', async (t) => {
 Deno.test('Juice Service - Address Validation', async (t) => {
   const validAddress = '0x1234567890123456789012345678901234567890';
   const invalidAddresses = [
-    '0x123',                    // Too short
+    '0x123', // Too short
     '1234567890123456789012345678901234567890', // Missing 0x
     '0xGGGG567890123456789012345678901234567890', // Invalid hex
-    '',                         // Empty
+    '', // Empty
   ];
 
   await t.step('valid Ethereum address passes', () => {

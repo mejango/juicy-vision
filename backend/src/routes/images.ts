@@ -4,19 +4,19 @@
  * Endpoints for AI image generation and IPFS upload.
  */
 
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { generateImage, generateImageFromContext } from '../services/imageGeneration.ts';
-import { optionalAuth } from '../middleware/auth.ts';
-
-export const imagesRouter = new Hono();
+import { requireAuth } from '../middleware/auth.ts';
+import { rateLimitByUser } from '../services/rateLimit.ts';
+import { costBodyLimit } from '../middleware/bodyLimit.ts';
 
 // =============================================================================
 // Validation Schemas
 // =============================================================================
 
-const GenerateImageSchema = z.object({
+export const GenerateImageSchema = z.object({
   prompt: z.string().min(1).max(2000).optional(),
   context: z.object({
     name: z.string().min(1).max(255),
@@ -26,7 +26,7 @@ const GenerateImageSchema = z.object({
   }).optional(),
 }).refine(
   (data) => data.prompt || data.context,
-  { message: 'Either prompt or context is required' }
+  { message: 'Either prompt or context is required' },
 );
 
 // =============================================================================
@@ -46,43 +46,64 @@ const GenerateImageSchema = z.object({
  * - ipfsUri: IPFS URI (ipfs://Qm...)
  * - httpUrl: HTTP gateway URL for preview
  */
-imagesRouter.post(
-  '/generate',
-  optionalAuth,
-  zValidator('json', GenerateImageSchema),
-  async (c) => {
-    const data = c.req.valid('json');
+interface ImagesRouterDependencies {
+  authenticate: MiddlewareHandler;
+  rateLimit: MiddlewareHandler;
+  generateFromPrompt: typeof generateImage;
+  generateFromContext: typeof generateImageFromContext;
+}
 
-    try {
-      let result;
+export function createImagesRouter(
+  dependencies: ImagesRouterDependencies = {
+    authenticate: requireAuth,
+    rateLimit: rateLimitByUser('imageGenerate'),
+    generateFromPrompt: generateImage,
+    generateFromContext: generateImageFromContext,
+  },
+): Hono {
+  const router = new Hono();
 
-      if (data.prompt) {
-        // Direct prompt provided
-        result = await generateImage(data.prompt);
-      } else if (data.context) {
-        // Build prompt from context
-        result = await generateImageFromContext(data.context);
-      } else {
-        return c.json({ success: false, error: 'Either prompt or context is required' }, 400);
+  router.post(
+    '/generate',
+    dependencies.authenticate,
+    dependencies.rateLimit,
+    costBodyLimit,
+    zValidator('json', GenerateImageSchema),
+    async (c) => {
+      const data = c.req.valid('json');
+
+      try {
+        let result;
+
+        if (data.prompt) {
+          result = await dependencies.generateFromPrompt(data.prompt);
+        } else if (data.context) {
+          result = await dependencies.generateFromContext(data.context);
+        } else {
+          return c.json({ success: false, error: 'Either prompt or context is required' }, 400);
+        }
+
+        return c.json({ success: true, data: result });
+      } catch (error) {
+        console.error('[Images] Generation failed:', error);
+        const message = error instanceof Error ? error.message : 'Image generation failed';
+
+        if (message.includes('not configured')) {
+          return c.json({ success: false, error: 'Image generation service not configured' }, 503);
+        }
+        if (message.includes('timed out')) {
+          return c.json(
+            { success: false, error: 'Image generation timed out, please try again' },
+            504,
+          );
+        }
+
+        return c.json({ success: false, error: message }, 500);
       }
+    },
+  );
 
-      return c.json({
-        success: true,
-        data: result,
-      });
-    } catch (error) {
-      console.error('[Images] Generation failed:', error);
-      const message = error instanceof Error ? error.message : 'Image generation failed';
+  return router;
+}
 
-      // Return specific error codes for known issues
-      if (message.includes('not configured')) {
-        return c.json({ success: false, error: 'Image generation service not configured' }, 503);
-      }
-      if (message.includes('timed out')) {
-        return c.json({ success: false, error: 'Image generation timed out, please try again' }, 504);
-      }
-
-      return c.json({ success: false, error: message }, 500);
-    }
-  }
-);
+export const imagesRouter = createImagesRouter();

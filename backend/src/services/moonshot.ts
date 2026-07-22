@@ -9,7 +9,7 @@ import { getConfig } from '../utils/config.ts';
 import { OMNICHAIN_CONTEXT, OMNICHAIN_TOOLS } from '../context/omnichain.ts';
 import { SYSTEM_PROMPT } from '@shared/prompts.ts';
 import { runToolLoop } from './claude.ts';
-import type { ChatMessage, ToolDefinition, ClaudeRequest, ClaudeResponse } from './claude.ts';
+import type { ChatMessage, ClaudeRequest, ClaudeResponse, ToolDefinition } from './claude.ts';
 
 // Moonshot API base URL (global endpoint - .cn is China only)
 const MOONSHOT_API_URL = 'https://api.moonshot.ai/v1';
@@ -34,7 +34,9 @@ function getRateLimitKey(userId: string): string {
   return `moonshot:rate:${userId}`;
 }
 
-function checkRateLimit(userId: string): { allowed: boolean; remaining: { requests: number; tokens: number } } {
+function checkRateLimit(
+  userId: string,
+): { allowed: boolean; remaining: { requests: number; tokens: number } } {
   const key = getRateLimitKey(userId);
   const now = Date.now();
 
@@ -99,7 +101,7 @@ interface MoonshotTool {
 }
 
 function convertToolsToMoonshot(tools: ToolDefinition[]): MoonshotTool[] {
-  return tools.map(t => ({
+  return tools.map((t) => ({
     type: 'function',
     function: {
       name: t.name,
@@ -113,7 +115,10 @@ function convertToolsToMoonshot(tools: ToolDefinition[]): MoonshotTool[] {
   }));
 }
 
-function convertMessagesToMoonshot(messages: ChatMessage[], systemPrompt: string): MoonshotMessage[] {
+function convertMessagesToMoonshot(
+  messages: ChatMessage[],
+  systemPrompt: string,
+): MoonshotMessage[] {
   const result: MoonshotMessage[] = [
     { role: 'system', content: systemPrompt },
   ];
@@ -129,12 +134,18 @@ function convertMessagesToMoonshot(messages: ChatMessage[], systemPrompt: string
       // (Moonshot doesn't support images in the same way)
       const textParts = msg.content
         .filter((block): block is { type: 'text'; text: string } => block.type === 'text')
-        .map(block => block.text);
+        .map((block) => block.text);
 
       // Handle tool results
       const toolResults = msg.content.filter(
-        (block): block is { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean } =>
-          block.type === 'tool_result'
+        (
+          block,
+        ): block is {
+          type: 'tool_result';
+          tool_use_id: string;
+          content: string;
+          is_error?: boolean;
+        } => block.type === 'tool_result',
       );
 
       if (toolResults.length > 0) {
@@ -155,15 +166,21 @@ function convertMessagesToMoonshot(messages: ChatMessage[], systemPrompt: string
 
       // Handle tool use blocks in assistant messages
       const toolUses = msg.content.filter(
-        (block): block is { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> } =>
-          block.type === 'tool_use'
+        (
+          block,
+        ): block is {
+          type: 'tool_use';
+          id: string;
+          name: string;
+          input: Record<string, unknown>;
+        } => block.type === 'tool_use',
       );
 
       if (toolUses.length > 0 && msg.role === 'assistant') {
         // Moonshot expects tool_calls in assistant message
         const lastAssistant = result[result.length - 1];
         if (lastAssistant && lastAssistant.role === 'assistant') {
-          lastAssistant.tool_calls = toolUses.map(tu => ({
+          lastAssistant.tool_calls = toolUses.map((tu) => ({
             id: tu.id,
             type: 'function',
             function: {
@@ -212,12 +229,12 @@ function getAllTools(customTools?: ToolDefinition[]): ToolDefinition[] {
 
 export async function sendMessage(
   userId: string,
-  request: ClaudeRequest
+  request: ClaudeRequest,
 ): Promise<ClaudeResponse> {
   const rateLimit = checkRateLimit(userId);
   if (!rateLimit.allowed) {
     throw new Error(
-      `Rate limit exceeded. Remaining: ${rateLimit.remaining.requests} requests, ${rateLimit.remaining.tokens} tokens`
+      `Rate limit exceeded. Remaining: ${rateLimit.remaining.requests} requests, ${rateLimit.remaining.tokens} tokens`,
     );
   }
 
@@ -228,9 +245,7 @@ export async function sendMessage(
 
   const includeOmnichain = request.includeOmnichainContext !== false;
   const systemPrompt = buildSystemPrompt(request.system, includeOmnichain);
-  const allTools = includeOmnichain
-    ? getAllTools(request.tools)
-    : request.tools ?? [];
+  const allTools = includeOmnichain ? getAllTools(request.tools) : request.tools ?? [];
 
   const messages = convertMessagesToMoonshot(request.messages, systemPrompt);
 
@@ -267,7 +282,7 @@ export async function sendMessage(
   const choice = data.choices?.[0];
   const message = choice?.message;
 
-  const totalTokens = (data.usage?.total_tokens ?? 0);
+  const totalTokens = data.usage?.total_tokens ?? 0;
   recordUsage(userId, totalTokens);
 
   // Extract tool calls if any
@@ -301,13 +316,13 @@ export async function sendMessage(
 export async function* streamMessage(
   userId: string,
   request: ClaudeRequest,
-  userApiKey?: string
+  userApiKey?: string,
 ): AsyncGenerator<{ type: 'text' | 'tool_use' | 'usage'; data: unknown }> {
   if (!userApiKey) {
     const rateLimit = checkRateLimit(userId);
     if (!rateLimit.allowed) {
       throw new Error(
-        `Rate limit exceeded. Remaining: ${rateLimit.remaining.requests} requests, ${rateLimit.remaining.tokens} tokens`
+        `Rate limit exceeded. Remaining: ${rateLimit.remaining.requests} requests, ${rateLimit.remaining.tokens} tokens`,
       );
     }
   }
@@ -320,9 +335,7 @@ export async function* streamMessage(
 
   const includeOmnichain = request.includeOmnichainContext !== false;
   const systemPrompt = buildSystemPrompt(request.system, includeOmnichain);
-  const allTools = includeOmnichain
-    ? getAllTools(request.tools)
-    : request.tools ?? [];
+  const allTools = includeOmnichain ? getAllTools(request.tools) : request.tools ?? [];
 
   const messages = convertMessagesToMoonshot(request.messages, systemPrompt);
 
@@ -342,14 +355,17 @@ export async function* streamMessage(
     body.temperature = request.temperature;
   }
 
-  console.log('[Moonshot] Request:', JSON.stringify({
-    model: body.model,
-    messageCount: messages.length,
-    toolCount: (body.tools as unknown[])?.length ?? 0,
-    maxTokens: body.max_tokens,
-    firstMessage: messages[0]?.content?.slice(0, 200),
-    lastUserMessage: messages.filter(m => m.role === 'user').pop()?.content?.slice(0, 200),
-  }));
+  console.log(
+    '[Moonshot] Request:',
+    JSON.stringify({
+      model: body.model,
+      messageCount: messages.length,
+      toolCount: (body.tools as unknown[])?.length ?? 0,
+      maxTokens: body.max_tokens,
+      firstMessage: messages[0]?.content?.slice(0, 200),
+      lastUserMessage: messages.filter((m) => m.role === 'user').pop()?.content?.slice(0, 200),
+    }),
+  );
 
   console.log('[Moonshot] Calling API...');
   const response = await fetch(`${MOONSHOT_API_URL}/chat/completions`, {
@@ -390,7 +406,12 @@ export async function* streamMessage(
   while (true) {
     const { done, value } = await reader.read();
     if (done) {
-      console.log('[Moonshot] Stream done. Total chunks:', chunkCount, 'Total text length:', totalTextReceived.length);
+      console.log(
+        '[Moonshot] Stream done. Total chunks:',
+        chunkCount,
+        'Total text length:',
+        totalTextReceived.length,
+      );
       break;
     }
 
@@ -465,7 +486,12 @@ export async function* streamMessage(
     recordUsage(userId, inputTokens + outputTokens);
   }
 
-  console.log('[Moonshot] streamMessage complete. Tokens:', { inputTokens, outputTokens }, 'ToolCalls:', toolCalls.size);
+  console.log(
+    '[Moonshot] streamMessage complete. Tokens:',
+    { inputTokens, outputTokens },
+    'ToolCalls:',
+    toolCalls.size,
+  );
 
   yield {
     type: 'usage',
@@ -481,10 +507,17 @@ export function streamMessageWithTools(
   userId: string,
   request: ClaudeRequest,
   userApiKey?: string,
-  maxIterations = 10
-): AsyncGenerator<{ type: 'text' | 'tool_use' | 'tool_result' | 'usage' | 'thinking'; data: unknown }> {
+  maxIterations = 10,
+): AsyncGenerator<
+  { type: 'text' | 'tool_use' | 'tool_result' | 'usage' | 'thinking'; data: unknown }
+> {
   console.log('[Moonshot] streamMessageWithTools called for user:', userId);
-  console.log('[Moonshot] Message count:', request.messages.length, 'Max iterations:', maxIterations);
+  console.log(
+    '[Moonshot] Message count:',
+    request.messages.length,
+    'Max iterations:',
+    maxIterations,
+  );
   return runToolLoop(streamMessage, userId, request, userApiKey, maxIterations);
 }
 

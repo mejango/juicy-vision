@@ -6,8 +6,12 @@ import { test, expect } from '@playwright/test'
  */
 
 const API_BASE = process.env.VITE_API_URL || 'http://localhost:3001'
+const LIVE_API_E2E = process.env.LIVE_API_E2E === 'true'
+const LIVE_API_PRECONDITION =
+  'LIVE_API_E2E requires a reachable API and explicitly seeded authenticated fixtures'
 
 test.describe('Tier Management API', () => {
+  test.skip(!LIVE_API_E2E, 'Set LIVE_API_E2E=true with a seeded test API to run this live suite')
   let authToken: string
   let testProjectId: string
 
@@ -35,7 +39,7 @@ test.describe('Tier Management API', () => {
   test.describe('POST /projects/{id}/tiers - Add Tier', () => {
     test('adds a new tier to project', async ({ request }) => {
       if (!testProjectId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -60,13 +64,13 @@ test.describe('Tier Management API', () => {
         expect(data.data.tier.price).toBe('0.01')
         expect(data.data.tier.supply).toBe(100)
       } else if (response.status() === 0) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
       }
     })
 
     test('validates required tier fields', async ({ request }) => {
       if (!testProjectId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -90,7 +94,7 @@ test.describe('Tier Management API', () => {
 
     test('validates price is positive', async ({ request }) => {
       if (!testProjectId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -113,7 +117,7 @@ test.describe('Tier Management API', () => {
 
     test('validates supply is positive integer', async ({ request }) => {
       if (!testProjectId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -138,7 +142,7 @@ test.describe('Tier Management API', () => {
   test.describe('GET /projects/{id}/tiers - List Tiers', () => {
     test('retrieves all tiers for project', async ({ request }) => {
       if (!testProjectId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -169,7 +173,7 @@ test.describe('Tier Management API', () => {
       })
 
       if (!createResponse.ok()) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -177,7 +181,7 @@ test.describe('Tier Management API', () => {
       const projectId = createData.data?.project?.id
 
       if (!projectId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -197,7 +201,7 @@ test.describe('Tier Management API', () => {
   test.describe('PATCH /projects/{id}/tiers/{tierId} - Update Tier', () => {
     test('updates tier name', async ({ request }) => {
       if (!testProjectId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -215,7 +219,7 @@ test.describe('Tier Management API', () => {
       })
 
       if (!createResponse.ok()) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -223,7 +227,7 @@ test.describe('Tier Management API', () => {
       const tierId = createData.data?.tier?.id
 
       if (!tierId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -250,7 +254,7 @@ test.describe('Tier Management API', () => {
 
     test('updates tier discount', async ({ request }) => {
       if (!testProjectId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -268,7 +272,7 @@ test.describe('Tier Management API', () => {
       })
 
       if (!createResponse.ok()) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -276,7 +280,7 @@ test.describe('Tier Management API', () => {
       const tierId = createData.data?.tier?.id
 
       if (!tierId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -302,7 +306,7 @@ test.describe('Tier Management API', () => {
 
     test('validates discount range (0-100)', async ({ request }) => {
       if (!testProjectId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -320,7 +324,7 @@ test.describe('Tier Management API', () => {
       })
 
       if (!createResponse.ok()) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -328,7 +332,7 @@ test.describe('Tier Management API', () => {
       const tierId = createData.data?.tier?.id
 
       if (!tierId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -355,7 +359,7 @@ test.describe('Tier Management API', () => {
   test.describe('DELETE /projects/{id}/tiers/{tierId} - Delete Tier', () => {
     test('deletes a tier', async ({ request }) => {
       if (!testProjectId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -373,7 +377,7 @@ test.describe('Tier Management API', () => {
       })
 
       if (!createResponse.ok()) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -381,7 +385,7 @@ test.describe('Tier Management API', () => {
       const tierId = createData.data?.tier?.id
 
       if (!tierId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -408,7 +412,7 @@ test.describe('Tier Management API', () => {
 
     test('returns 404 for non-existent tier', async ({ request }) => {
       if (!testProjectId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -433,7 +437,7 @@ test.describe('Tier Management API', () => {
       // for on-chain storage in the JB721 contract
 
       if (!testProjectId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -468,7 +472,7 @@ test.describe('Tier Management API', () => {
 
     test('validates IPFS metadata URIs', async ({ request }) => {
       if (!testProjectId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 

@@ -5,17 +5,21 @@
  * chain tracking, and sucker management.
  */
 
-import { assertEquals, assertExists, assertRejects } from 'https://deno.land/std@0.224.0/assert/mod.ts';
+import {
+  assertEquals,
+  assertExists,
+  assertRejects,
+} from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import {
   createProject,
+  type CreateProjectParams,
+  getProjectById,
+  getProjectChains,
+  getProjectsByUser,
+  getRevnetStages,
+  saveRevnetStages,
   updateProject,
   updateProjectChain,
-  getProjectById,
-  getProjectsByUser,
-  getProjectChains,
-  saveRevnetStages,
-  getRevnetStages,
-  type CreateProjectParams,
 } from './projectCreation.ts';
 import { execute, queryOne } from '../db/index.ts';
 import { SKIP_DB_TESTS } from '../test/helpers.ts';
@@ -23,23 +27,39 @@ import { SKIP_DB_TESTS } from '../test/helpers.ts';
 // Test user ID - must be a valid UUID format
 const TEST_USER_ID = '00000000-0000-0000-0000-000000000001';
 
-// Track created project IDs for cleanup
-const createdProjectIds: string[] = [];
-
 // Ensure test user exists before running tests
 async function ensureTestUserExists(): Promise<void> {
   const existing = await queryOne<{ id: string }>(
     'SELECT id FROM users WHERE id = $1',
-    [TEST_USER_ID]
+    [TEST_USER_ID],
   );
   if (!existing) {
     await execute(
       `INSERT INTO users (id, email, email_verified, privacy_mode)
        VALUES ($1, $2, true, 'open_book')
        ON CONFLICT (id) DO NOTHING`,
-      [TEST_USER_ID, 'test-user@projectcreation.test']
+      [TEST_USER_ID, 'test-user@projectcreation.test'],
     );
   }
+}
+
+async function cleanupTestProjects(): Promise<void> {
+  await execute('DELETE FROM created_projects WHERE user_id = $1', [TEST_USER_ID]);
+}
+
+function isolatedDatabaseTest(definition: Deno.TestDefinition): void {
+  Deno.test({
+    ...definition,
+    async fn(context) {
+      await ensureTestUserExists();
+      await cleanupTestProjects();
+      try {
+        await definition.fn(context);
+      } finally {
+        await cleanupTestProjects();
+      }
+    },
+  });
 }
 
 // ============================================================================
@@ -47,7 +67,7 @@ async function ensureTestUserExists(): Promise<void> {
 // ============================================================================
 
 async function createTestProject(
-  overrides: Partial<CreateProjectParams> = {}
+  overrides: Partial<CreateProjectParams> = {},
 ): Promise<ReturnType<typeof createProject>> {
   // Ensure test user exists before creating projects with userId
   await ensureTestUserExists();
@@ -60,7 +80,6 @@ async function createTestProject(
     chainIds: [1, 10, 8453],
     ...overrides,
   });
-  createdProjectIds.push(project.id);
   return project;
 }
 
@@ -68,7 +87,7 @@ async function createTestProject(
 // Create Project Tests
 // ============================================================================
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'createProject: creates project with all chain records',
   async fn() {
@@ -84,14 +103,14 @@ Deno.test({
     assertEquals(project.chains.length, 4);
 
     // Check all chains are present
-    const chainIds = project.chains.map(c => c.chainId);
+    const chainIds = project.chains.map((c) => c.chainId);
     assertEquals(chainIds.includes(1), true);
     assertEquals(chainIds.includes(10), true);
     assertEquals(chainIds.includes(8453), true);
     assertEquals(chainIds.includes(42161), true);
 
     // All chains should be pending
-    project.chains.forEach(chain => {
+    project.chains.forEach((chain) => {
       assertEquals(chain.status, 'pending');
       assertEquals(chain.suckerStatus, 'pending');
     });
@@ -100,7 +119,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'createProject: creates revnet with split operator',
   async fn() {
@@ -119,7 +138,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'createProject: handles single chain',
   async fn() {
@@ -135,19 +154,18 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
-  name: 'createProject: creates without user ID',
+  name: 'createProject: records the authenticated owner',
   async fn() {
     const project = await createProject({
-      projectName: 'Anonymous Project',
+      userId: TEST_USER_ID,
+      projectName: 'Owned Project',
       projectType: 'project',
       chainIds: [1],
     });
-    createdProjectIds.push(project.id);
-
     assertExists(project.id);
-    assertEquals(project.userId, null);
+    assertEquals(project.userId, TEST_USER_ID);
   },
   sanitizeOps: false,
   sanitizeResources: false,
@@ -157,7 +175,7 @@ Deno.test({
 // Update Project Tests
 // ============================================================================
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'updateProject: updates creation status',
   async fn() {
@@ -173,7 +191,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'updateProject: updates sucker group ID',
   async fn() {
@@ -190,7 +208,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'updateProject: handles no updates',
   async fn() {
@@ -209,7 +227,7 @@ Deno.test({
 // Update Project Chain Tests
 // ============================================================================
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'updateProjectChain: updates chain project ID and tx hash',
   async fn() {
@@ -230,7 +248,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'updateProjectChain: updates sucker address and status',
   async fn() {
@@ -249,7 +267,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'updateProjectChain: throws on missing chain',
   async fn() {
@@ -262,7 +280,7 @@ Deno.test({
         });
       },
       Error,
-      'not found'
+      'not found',
     );
   },
   sanitizeOps: false,
@@ -273,7 +291,7 @@ Deno.test({
 // Get Project Tests
 // ============================================================================
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'getProjectById: returns project',
   async fn() {
@@ -291,7 +309,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'getProjectById: returns null for non-existent',
   async fn() {
@@ -303,7 +321,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'getProjectChains: returns all chain records',
   async fn() {
@@ -327,7 +345,7 @@ Deno.test({
 // Get Projects By User Tests
 // ============================================================================
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'getProjectsByUser: returns user projects with chains',
   async fn() {
@@ -339,7 +357,7 @@ Deno.test({
 
     assertEquals(projects.length >= 2, true);
     // Each project should have chains
-    projects.forEach(project => {
+    projects.forEach((project) => {
       assertExists(project.chains);
       assertEquals(project.chains.length > 0, true);
     });
@@ -348,7 +366,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'getProjectsByUser: filters by project type',
   async fn() {
@@ -359,7 +377,7 @@ Deno.test({
       projectType: 'revnet',
     });
 
-    projects.forEach(project => {
+    projects.forEach((project) => {
       assertEquals(project.projectType, 'revnet');
     });
   },
@@ -367,7 +385,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'getProjectsByUser: respects limit and offset',
   async fn() {
@@ -386,7 +404,7 @@ Deno.test({
 // Revnet Stages Tests
 // ============================================================================
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'saveRevnetStages: saves stage configurations',
   async fn() {
@@ -425,7 +443,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'saveRevnetStages: upserts on duplicate stage number',
   async fn() {
@@ -467,7 +485,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'getRevnetStages: returns empty for project without stages',
   async fn() {
@@ -485,7 +503,7 @@ Deno.test({
 // Integration Tests
 // ============================================================================
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'Integration: full project creation workflow',
   async fn() {
@@ -529,16 +547,16 @@ Deno.test({
     assertEquals(final.creationStatus, 'completed');
 
     const chains = await getProjectChains(project.id);
-    assertEquals(chains.every(c => c.status === 'confirmed'), true);
-    assertEquals(chains.find(c => c.chainId === 1)?.projectId, 100);
-    assertEquals(chains.find(c => c.chainId === 10)?.projectId, 200);
-    assertEquals(chains.find(c => c.chainId === 8453)?.projectId, 300);
+    assertEquals(chains.every((c) => c.status === 'confirmed'), true);
+    assertEquals(chains.find((c) => c.chainId === 1)?.projectId, 100);
+    assertEquals(chains.find((c) => c.chainId === 10)?.projectId, 200);
+    assertEquals(chains.find((c) => c.chainId === 8453)?.projectId, 300);
   },
   sanitizeOps: false,
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'Integration: revnet with stages and suckers',
   async fn() {
@@ -595,7 +613,7 @@ Deno.test({
     assertEquals(final.suckerGroupId, '0xsuckergroup123');
 
     const chains = await getProjectChains(project.id);
-    assertEquals(chains.every(c => c.suckerStatus === 'confirmed'), true);
+    assertEquals(chains.every((c) => c.suckerStatus === 'confirmed'), true);
 
     const stages = await getRevnetStages(project.id);
     assertEquals(stages.length, 1);
@@ -604,7 +622,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'Integration: partial failure handling',
   async fn() {
@@ -637,8 +655,8 @@ Deno.test({
     assertEquals(final?.creationStatus, 'partial');
 
     const chains = await getProjectChains(project.id);
-    assertEquals(chains.filter(c => c.status === 'confirmed').length, 2);
-    assertEquals(chains.filter(c => c.status === 'failed').length, 1);
+    assertEquals(chains.filter((c) => c.status === 'confirmed').length, 2);
+    assertEquals(chains.filter((c) => c.status === 'failed').length, 1);
   },
   sanitizeOps: false,
   sanitizeResources: false,

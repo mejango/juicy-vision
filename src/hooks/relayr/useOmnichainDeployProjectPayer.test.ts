@@ -11,7 +11,10 @@ const { call, getSafetyPublicClient } = vi.hoisted(() => {
 
 vi.mock('../../utils/transactionSafety', () => ({ getSafetyPublicClient }))
 
-import { preflightProjectPayerTransactions } from './useOmnichainDeployProjectPayer'
+import {
+  preflightProjectPayerTransactions,
+  submitManagedProjectPayerBundle,
+} from './useOmnichainDeployProjectPayer'
 import { JB_PROJECT_PAYER_DEPLOYER } from '../../services/projectPayers'
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
@@ -64,5 +67,26 @@ describe('preflightProjectPayerTransactions', () => {
       account: ACCOUNT,
     })).rejects.toThrow('does not match the reviewed chains')
     expect(getSafetyPublicClient).not.toHaveBeenCalled()
+  })
+})
+
+describe('managed project-payer Relayr submission', () => {
+  it('submits only the reviewed deploy calls through the active managed account', async () => {
+    const submit = vi.fn().mockResolvedValue({ bundleId: 'payer-bundle' })
+    const calls = [
+      { chainId: 1, to: DEPLOYER, data: '0x12345678' as const },
+      { chainId: 10, to: DEPLOYER, data: '0x9abcdef0' as const },
+    ]
+
+    await expect(submitManagedProjectPayerBundle(calls, ACCOUNT, ACCOUNT, submit))
+      .resolves.toEqual({ bundleId: 'payer-bundle' })
+    expect(submit).toHaveBeenCalledWith(
+      [
+        { chainId: 1, target: DEPLOYER, data: '0x12345678', value: '0' },
+        { chainId: 10, target: DEPLOYER, data: '0x9abcdef0', value: '0' },
+      ],
+      ACCOUNT,
+      ACCOUNT,
+    )
   })
 })

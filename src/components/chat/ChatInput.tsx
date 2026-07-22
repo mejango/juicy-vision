@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useAccount, useSignMessage, useChainId } from 'wagmi'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
-import { hasValidWalletSession, signInWithWallet, getWalletSession } from '../../services/siwe'
+import { hasValidWalletSession, signInWithWalletClient, getWalletSession } from '../../services/siwe'
 import { getPasskeyWallet } from '../../services/passkeyWallet'
 import { JuicyIdPopover, type AnchorPosition } from './WalletInfo'
 import { useJuicyIdentityDisplay } from './hooks/useJuicyIdentityDisplay'
@@ -368,9 +368,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
     if (!address || signing) return
     setSigning(true)
     try {
-      await signInWithWallet(address, chainId, async (message) => {
-        return await signMessageAsync({ message })
-      })
+      await signInWithWalletClient(address, chainId, signMessageAsync)
       setSignedIn(true)
     } catch (err) {
       console.error('Sign-in failed:', err)
@@ -493,6 +491,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
         />
         <button
           type="submit"
+          aria-label="Send message"
           disabled={disabled || (!input.trim() && attachments.length === 0)}
           className={`self-stretch flex items-center justify-center w-12 shrink-0 border transition-colors ${
             disabled || (!input.trim() && attachments.length === 0)
@@ -666,7 +665,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
                       setJuicyIdAnchorPosition({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
                       setJuicyIdPopoverOpen(true)
                     }}
-                    className="ml-1 transition-colors text-juice-orange/70 hover:text-juice-orange"
+                    className="ml-1 transition-colors text-juice-orange/80 hover:text-juice-orange"
                   >
                     · Set your Juicy ID
                   </button>

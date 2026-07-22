@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // Mock fetch globally
 const mockFetch = vi.fn()
-global.fetch = mockFetch
 
 // Mock navigator.credentials
 const mockCredentialsCreate = vi.fn()
@@ -28,6 +27,7 @@ Object.defineProperty(global, 'PublicKeyCredential', {
 
 describe('Passkey Service', () => {
   beforeEach(() => {
+    vi.stubGlobal('fetch', mockFetch)
     vi.resetModules()
     mockFetch.mockReset()
     mockCredentialsCreate.mockReset()
@@ -44,11 +44,9 @@ describe('Passkey Service', () => {
       expect(isPasskeySupported()).toBe(true)
     })
 
-    // Skip: PublicKeyCredential is defined as non-configurable in JSDOM, so we can't mock its absence
-    // The actual function correctly checks for typeof PublicKeyCredential !== 'undefined'
-    it.skip('returns false when PublicKeyCredential is not available', async () => {
-      // This test would verify isPasskeySupported returns false when the browser doesn't support passkeys
-      // In JSDOM, PublicKeyCredential is always defined and non-configurable
+    it('returns false when PublicKeyCredential is not available', async () => {
+      const { isPasskeySupported } = await import('./passkey')
+      expect(isPasskeySupported({})).toBe(false)
     })
   })
 

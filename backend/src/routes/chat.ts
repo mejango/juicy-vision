@@ -429,7 +429,12 @@ async function loadOwnedFolder(
   c: Context,
   folderId: string,
   address: string,
-): Promise<{ folder: NonNullable<Awaited<ReturnType<typeof getFolder>>>; error?: never } | { folder?: never; error: Response }> {
+): Promise<
+  { folder: NonNullable<Awaited<ReturnType<typeof getFolder>>>; error?: never } | {
+    folder?: never;
+    error: Response;
+  }
+> {
   const folder = await getFolder(folderId);
   if (!folder) {
     return { error: c.json({ success: false, error: 'Folder not found' }, 404) };

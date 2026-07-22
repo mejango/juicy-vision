@@ -108,7 +108,7 @@ Deno.test('shouldTriggerSummarization - threshold behavior', async (t) => {
 
 function getMessagesToSummarize(
   totalMessages: number,
-  alreadySummarized: number
+  alreadySummarized: number,
 ): { start: number; end: number; count: number } {
   const unsummarized = totalMessages - alreadySummarized;
   const keepRaw = SUMMARIZATION_CONFIG.keepRecentCount;
@@ -246,14 +246,14 @@ The user is creating a community garden project. They've made progress on basic 
     const result = parseStructuredSummary(sampleSummary);
     assertExists(result.projectDesign);
     assertEquals(result.projectDesign?.length, 3);
-    assertEquals(result.projectDesign?.some(d => d.includes('10%')), true);
+    assertEquals(result.projectDesign?.some((d) => d.includes('10%')), true);
   });
 
   await t.step('extracts artifact references', () => {
     const result = parseStructuredSummary(sampleSummary);
     assertExists(result.artifactReferences);
     assertEquals(result.artifactReferences?.length, 2);
-    assertEquals(result.artifactReferences?.some(a => a.includes('pitch-deck')), true);
+    assertEquals(result.artifactReferences?.some((a) => a.includes('pitch-deck')), true);
   });
 
   await t.step('extracts pending items', () => {
@@ -390,7 +390,7 @@ Tier 1: $25.00`;
     const result = parseExtractedData(summary);
     assertExists(result.amounts);
     const amounts = result.amounts as string[];
-    assertEquals(amounts.some(a => a.includes('50,000')), true);
+    assertEquals(amounts.some((a) => a.includes('50,000')), true);
   });
 
   await t.step('extracts crypto amounts', () => {
@@ -400,8 +400,8 @@ Fee: 100 USDC`;
 
     const result = parseExtractedData(summary);
     const amounts = result.amounts as string[];
-    assertEquals(amounts.some(a => a.includes('ETH')), true);
-    assertEquals(amounts.some(a => a.includes('USDC')), true);
+    assertEquals(amounts.some((a) => a.includes('ETH')), true);
+    assertEquals(amounts.some((a) => a.includes('USDC')), true);
   });
 
   await t.step('extracts percentages', () => {
@@ -431,14 +431,14 @@ Tax: 5%`;
 function mergeSummaryContent(
   existing: string[],
   newItems: string[],
-  maxItems: number = 20
+  maxItems: number = 20,
 ): string[] {
   // Combine, deduplicate, and limit
   const combined = [...existing];
 
   for (const item of newItems) {
     // Simple dedup - check if similar item exists
-    const isDupe = combined.some(e =>
+    const isDupe = combined.some((e) =>
       e.toLowerCase().includes(item.toLowerCase().slice(0, 20)) ||
       item.toLowerCase().includes(e.toLowerCase().slice(0, 20))
     );
@@ -486,10 +486,10 @@ Deno.test('mergeSummaryContent - combines lists', async (t) => {
 // ============================================================================
 
 function formatMessagesForSummarization(
-  messages: Array<{ role: string; content: string }>
+  messages: Array<{ role: string; content: string }>,
 ): string {
   return messages
-    .map(m => `[${m.role.toUpperCase()}]: ${m.content.slice(0, 2000)}`)
+    .map((m) => `[${m.role.toUpperCase()}]: ${m.content.slice(0, 2000)}`)
     .join('\n\n');
 }
 

@@ -26,10 +26,7 @@ test.describe('UX Bot - Exploratory Testing', () => {
   test.setTimeout(120000) // 2 minute timeout for exploratory tests
 
   test('runs custom scenario from environment', async ({ page }) => {
-    if (!customScenario) {
-      test.skip()
-      return
-    }
+    test.skip(!customScenario, 'Set UX_SCENARIO to run a custom exploratory scenario')
 
     const agent = createUXAgent(page, {
       maxSteps: 15,
@@ -37,7 +34,9 @@ test.describe('UX Bot - Exploratory Testing', () => {
       stopOnCriticalIssue: false,
     })
 
-    const report = await agent.runScenario(customScenario)
+    // Playwright ends this test when the conditional skip above fires; the
+    // non-null assertion communicates that control-flow contract to tsc.
+    const report = await agent.runScenario(customScenario!)
 
     // Verify no critical issues
     const criticalIssues = report.issues.filter(i => i.severity === 'critical')
@@ -49,10 +48,7 @@ test.describe('UX Bot - Exploratory Testing', () => {
   })
 
   test('runs default exploration scenario', async ({ page }) => {
-    if (customScenario) {
-      test.skip() // Skip if custom scenario is provided
-      return
-    }
+    test.skip(Boolean(customScenario), 'UX_SCENARIO replaces the default exploratory scenario')
 
     const agent = createUXAgent(page, {
       maxSteps: 10,
@@ -140,8 +136,11 @@ test.describe('UX Bot - API Testing', () => {
 test.describe('UX Bot - Regression Scenarios', () => {
   test.setTimeout(180000) // 3 minutes for full regression
 
-  test.skip('runs all main scenarios', async ({ page }) => {
-    // This test runs all main scenarios - skip by default due to length
+  test('runs all main scenarios', async ({ page }) => {
+    test.skip(
+      process.env.UX_FULL_REGRESSION !== 'true',
+      'Set UX_FULL_REGRESSION=true to run the intentionally long live AI regression',
+    )
     const agent = createUXAgent(page, {
       maxSteps: 20,
       screenshotOnEachStep: true,

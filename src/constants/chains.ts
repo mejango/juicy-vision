@@ -1,5 +1,5 @@
 import { mainnet, optimism, base, arbitrum, sepolia, optimismSepolia, baseSepolia, arbitrumSepolia } from 'viem/chains'
-import { IS_TESTNET, CHAIN_IDS } from '../config/environment'
+import { IS_TESTNET, IS_LOCAL_ONLY_BROWSER_TEST, CHAIN_IDS } from '../config/environment'
 import {
   CONTRACTS,
   MAINNET_CHAINS as SHARED_MAINNET_CHAINS,
@@ -28,11 +28,19 @@ export const MAINNET_VIEM_CHAINS = {
 } as const
 
 // Mainnet RPC endpoints (always available for on-chain reads of mainnet data in staging)
+const LOCAL_ONLY_RPC_ENDPOINT = IS_LOCAL_ONLY_BROWSER_TEST && typeof window !== 'undefined'
+  ? `${window.location.origin}/__juicy_test_rpc__`
+  : null
+
+function rpcEndpoints(...productionEndpoints: string[]): string[] {
+  return LOCAL_ONLY_RPC_ENDPOINT ? [LOCAL_ONLY_RPC_ENDPOINT] : productionEndpoints
+}
+
 export const MAINNET_RPC_ENDPOINTS: Record<number, string[]> = {
-  [MAINNET_CHAIN_IDS.ethereum]: ['https://ethereum.publicnode.com', 'https://eth.drpc.org', 'https://rpc.ankr.com/eth'],
-  [MAINNET_CHAIN_IDS.optimism]: ['https://optimism.publicnode.com', 'https://mainnet.optimism.io', 'https://rpc.ankr.com/optimism'],
-  [MAINNET_CHAIN_IDS.base]: ['https://base.publicnode.com', 'https://mainnet.base.org', 'https://rpc.ankr.com/base'],
-  [MAINNET_CHAIN_IDS.arbitrum]: ['https://arbitrum-one.publicnode.com', 'https://arb1.arbitrum.io/rpc', 'https://rpc.ankr.com/arbitrum'],
+  [MAINNET_CHAIN_IDS.ethereum]: rpcEndpoints('https://ethereum.publicnode.com', 'https://eth.drpc.org', 'https://rpc.ankr.com/eth'),
+  [MAINNET_CHAIN_IDS.optimism]: rpcEndpoints('https://optimism.publicnode.com', 'https://mainnet.optimism.io', 'https://rpc.ankr.com/optimism'),
+  [MAINNET_CHAIN_IDS.base]: rpcEndpoints('https://base.publicnode.com', 'https://mainnet.base.org', 'https://rpc.ankr.com/base'),
+  [MAINNET_CHAIN_IDS.arbitrum]: rpcEndpoints('https://arbitrum-one.publicnode.com', 'https://arb1.arbitrum.io/rpc', 'https://rpc.ankr.com/arbitrum'),
 }
 
 // Viem chain configurations for RPC calls
@@ -67,10 +75,10 @@ export const ALL_VIEM_CHAINS = {
 // RPC endpoints for each chain (public endpoints - users can configure custom RPCs in settings)
 export const RPC_ENDPOINTS: Record<number, string[]> = IS_TESTNET
   ? {
-      [CHAIN_IDS.ethereum]: ['https://sepolia.drpc.org', 'https://ethereum-sepolia-rpc.publicnode.com', 'https://rpc.ankr.com/eth_sepolia'],
-      [CHAIN_IDS.optimism]: ['https://sepolia.optimism.io', 'https://optimism-sepolia.drpc.org', 'https://rpc.ankr.com/optimism_sepolia'],
-      [CHAIN_IDS.base]: ['https://sepolia.base.org', 'https://base-sepolia.drpc.org', 'https://rpc.ankr.com/base_sepolia'],
-      [CHAIN_IDS.arbitrum]: ['https://sepolia-rollup.arbitrum.io/rpc', 'https://arbitrum-sepolia.drpc.org', 'https://rpc.ankr.com/arbitrum_sepolia'],
+      [CHAIN_IDS.ethereum]: rpcEndpoints('https://sepolia.drpc.org', 'https://ethereum-sepolia-rpc.publicnode.com', 'https://rpc.ankr.com/eth_sepolia'),
+      [CHAIN_IDS.optimism]: rpcEndpoints('https://sepolia.optimism.io', 'https://optimism-sepolia.drpc.org', 'https://rpc.ankr.com/optimism_sepolia'),
+      [CHAIN_IDS.base]: rpcEndpoints('https://sepolia.base.org', 'https://base-sepolia.drpc.org', 'https://rpc.ankr.com/base_sepolia'),
+      [CHAIN_IDS.arbitrum]: rpcEndpoints('https://sepolia-rollup.arbitrum.io/rpc', 'https://arbitrum-sepolia.drpc.org', 'https://rpc.ankr.com/arbitrum_sepolia'),
     }
   : MAINNET_RPC_ENDPOINTS
 

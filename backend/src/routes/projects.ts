@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import {
+  type CreatedProject,
   createProject,
   getProjectById,
   getProjectChains,
@@ -9,9 +10,15 @@ import {
   updateProject,
   updateProjectChain,
 } from '../services/projectCreation.ts';
-import { optionalAuth, requireAuth } from '../middleware/auth.ts';
+import { requireAuth } from '../middleware/auth.ts';
 import { getIpfsClient } from '../services/ipfs.ts';
 import { rateLimitByUser } from '../services/rateLimit.ts';
+import {
+  costBodyLimit,
+  PIN_FILE_MAX_BYTES,
+  pinFileBodyLimit,
+  validatePinFileRequest,
+} from '../middleware/bodyLimit.ts';
 
 const projectsRouter = new Hono();
 
@@ -19,18 +26,30 @@ const projectsRouter = new Hono();
 // Validation Schemas
 // =============================================================================
 
+const ChainIdSchema = z.number().int().min(1).max(2_147_483_647);
+const ProjectIdParamSchema = z.object({ id: z.string().uuid() });
+const ProjectChainParamSchema = z.object({
+  id: z.string().uuid(),
+  chainId: z.coerce.number().int().min(1).max(2_147_483_647),
+});
+
 const CreateProjectSchema = z.object({
   projectName: z.string().min(1).max(255),
   projectUri: z.string().max(255).optional(),
   projectType: z.enum(['project', 'revnet']),
   splitOperator: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
-  chainIds: z.array(z.number().int().positive()),
+  chainIds: z.array(ChainIdSchema).min(1).max(10).refine(
+    (chainIds) => new Set(chainIds).size === chainIds.length,
+    { message: 'chainIds must be unique' },
+  ),
   creationBundleId: z.string().max(66).optional(),
 });
 
 const UpdateProjectSchema = z.object({
   creationStatus: z.enum(['pending', 'processing', 'completed', 'failed', 'partial']).optional(),
-  suckerGroupId: z.string().max(66).optional(),
+  suckerGroupId: z.string().regex(/^0x[a-fA-F0-9]{64}$/).optional(),
+}).refine((value) => Object.values(value).some((entry) => entry !== undefined), {
+  message: 'At least one update is required',
 });
 
 const UpdateProjectChainSchema = z.object({
@@ -39,6 +58,14 @@ const UpdateProjectChainSchema = z.object({
   status: z.enum(['pending', 'processing', 'confirmed', 'failed']).optional(),
   suckerAddress: z.string().regex(/^0x[a-fA-F0-9]{40}$/).optional(),
   suckerStatus: z.enum(['pending', 'processing', 'confirmed', 'failed']).optional(),
+}).refine((value) => Object.values(value).some((entry) => entry !== undefined), {
+  message: 'At least one update is required',
+});
+
+const ListProjectsQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+  offset: z.coerce.number().int().min(0).max(100_000).default(0),
+  type: z.enum(['project', 'revnet']).optional(),
 });
 
 const PinMetadataSchema = z.object({
@@ -48,6 +75,13 @@ const PinMetadataSchema = z.object({
   message: 'Metadata is too large',
 });
 
+export function isProjectOwner(
+  project: Pick<CreatedProject, 'userId'>,
+  user: { id: string },
+): boolean {
+  return project.userId === user.id;
+}
+
 // =============================================================================
 // Routes
 // =============================================================================
@@ -55,8 +89,9 @@ const PinMetadataSchema = z.object({
 // POST /projects/pin-metadata - Pin reviewed project or tier metadata.
 projectsRouter.post(
   '/pin-metadata',
-  optionalAuth,
+  requireAuth,
   rateLimitByUser('toolPinToIpfs'),
+  costBodyLimit,
   zValidator('json', PinMetadataSchema),
   async (c) => {
     try {
@@ -71,12 +106,13 @@ projectsRouter.post(
 );
 
 // POST /projects/pin-file - Pin project/item media (logo, cover image, item media).
-const PIN_FILE_MAX_BYTES = 25 * 1024 * 1024;
 const PIN_FILE_ALLOWED_TYPES = /^(image\/|video\/|audio\/|application\/pdf$|text\/plain$)/;
 projectsRouter.post(
   '/pin-file',
-  optionalAuth,
+  requireAuth,
   rateLimitByUser('toolPinToIpfs'),
+  validatePinFileRequest,
+  pinFileBodyLimit,
   async (c) => {
     try {
       const body = await c.req.parseBody();
@@ -105,7 +141,7 @@ projectsRouter.post(
 // POST /projects - Create a new project record
 projectsRouter.post(
   '/',
-  optionalAuth,
+  requireAuth,
   zValidator('json', CreateProjectSchema),
   async (c) => {
     const data = c.req.valid('json');
@@ -113,7 +149,7 @@ projectsRouter.post(
 
     try {
       const project = await createProject({
-        userId: user?.id,
+        userId: user.id,
         projectName: data.projectName,
         projectUri: data.projectUri,
         projectType: data.projectType,
@@ -136,16 +172,21 @@ projectsRouter.post(
 // PATCH /projects/:id - Update project record
 projectsRouter.patch(
   '/:id',
-  optionalAuth,
+  requireAuth,
+  zValidator('param', ProjectIdParamSchema),
   zValidator('json', UpdateProjectSchema),
   async (c) => {
-    const id = c.req.param('id');
+    const { id } = c.req.valid('param');
     const data = c.req.valid('json');
+    const user = c.get('user');
 
     try {
       const existing = await getProjectById(id);
       if (!existing) {
         return c.json({ success: false, error: 'Project not found' }, 404);
+      }
+      if (!isProjectOwner(existing, user)) {
+        return c.json({ success: false, error: 'Project ownership required' }, 403);
       }
 
       const project = await updateProject(id, {
@@ -167,17 +208,21 @@ projectsRouter.patch(
 // PATCH /projects/:id/chains/:chainId - Update chain-specific status
 projectsRouter.patch(
   '/:id/chains/:chainId',
-  optionalAuth,
+  requireAuth,
+  zValidator('param', ProjectChainParamSchema),
   zValidator('json', UpdateProjectChainSchema),
   async (c) => {
-    const id = c.req.param('id');
-    const chainId = parseInt(c.req.param('chainId'), 10);
+    const { id, chainId } = c.req.valid('param');
     const data = c.req.valid('json');
+    const user = c.get('user');
 
     try {
       const existing = await getProjectById(id);
       if (!existing) {
         return c.json({ success: false, error: 'Project not found' }, 404);
+      }
+      if (!isProjectOwner(existing, user)) {
+        return c.json({ success: false, error: 'Project ownership required' }, 403);
       }
 
       const chain = await updateProjectChain(id, chainId, {
@@ -202,14 +247,19 @@ projectsRouter.patch(
 // GET /projects/:id - Get a specific project with chain details
 projectsRouter.get(
   '/:id',
-  optionalAuth,
+  requireAuth,
+  zValidator('param', ProjectIdParamSchema),
   async (c) => {
-    const id = c.req.param('id');
+    const { id } = c.req.valid('param');
+    const user = c.get('user');
 
     try {
       const project = await getProjectById(id);
       if (!project) {
         return c.json({ success: false, error: 'Project not found' }, 404);
+      }
+      if (!isProjectOwner(project, user)) {
+        return c.json({ success: false, error: 'Project ownership required' }, 403);
       }
 
       const chains = await getProjectChains(id);
@@ -232,11 +282,10 @@ projectsRouter.get(
 projectsRouter.get(
   '/',
   requireAuth,
+  zValidator('query', ListProjectsQuerySchema),
   async (c) => {
     const user = c.get('user');
-    const limit = parseInt(c.req.query('limit') || '50');
-    const offset = parseInt(c.req.query('offset') || '0');
-    const projectType = c.req.query('type') as 'project' | 'revnet' | undefined;
+    const { limit, offset, type: projectType } = c.req.valid('query');
 
     try {
       const projects = await getProjectsByUser(user.id, {
@@ -259,14 +308,19 @@ projectsRouter.get(
 // GET /projects/:id/status - Get creation status for a project
 projectsRouter.get(
   '/:id/status',
-  optionalAuth,
+  requireAuth,
+  zValidator('param', ProjectIdParamSchema),
   async (c) => {
-    const id = c.req.param('id');
+    const { id } = c.req.valid('param');
+    const user = c.get('user');
 
     try {
       const project = await getProjectById(id);
       if (!project) {
         return c.json({ success: false, error: 'Project not found' }, 404);
+      }
+      if (!isProjectOwner(project, user)) {
+        return c.json({ success: false, error: 'Project ownership required' }, 403);
       }
 
       const chains = await getProjectChains(id);

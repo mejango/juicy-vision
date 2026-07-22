@@ -98,7 +98,7 @@ function AddressDisplay({ address, chainId, isDark }: { address: string; chainId
         )}
         {/* Loading indicator */}
         {loading && !label && (
-          <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>...</span>
+          <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>...</span>
         )}
         {/* Known label (contract name or token) */}
         {label && (
@@ -107,7 +107,7 @@ function AddressDisplay({ address, chainId, isDark }: { address: string; chainId
           </span>
         )}
         {/* Address (full or truncated based on context) */}
-        <span className={label || ensName ? (isDark ? 'text-gray-500' : 'text-gray-400') : ''}>
+        <span className={label || ensName ? (isDark ? 'text-gray-400' : 'text-gray-600') : ''}>
           {label || ensName ? `(${truncated})` : address}
         </span>
       </span>
@@ -397,7 +397,7 @@ export default function TechnicalDetails({
       <button
         onClick={() => setExpanded(!expanded)}
         className={`flex items-center gap-2 text-xs w-full px-4 py-2 ${
-          isDark ? 'text-gray-500 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'
+          isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-600 hover:text-gray-700'
         }`}
       >
         <svg
@@ -414,7 +414,7 @@ export default function TechnicalDetails({
       {expanded && (
         <div className="px-4 pb-3 space-y-1.5 text-xs">
           {/* Contract */}
-          <div className={`flex justify-between ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+          <div className={`flex justify-between ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
             <span>Contract</span>
             <span className="font-mono text-right">
               <AddressDisplay address={contractAddress} chainId={chainId} isDark={isDark} />
@@ -422,13 +422,13 @@ export default function TechnicalDetails({
           </div>
 
           {/* Function */}
-          <div className={`flex justify-between ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+          <div className={`flex justify-between ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
             <span>Function</span>
             <span className="font-mono">{functionName}</span>
           </div>
 
           {/* Chain(s) */}
-          <div className={`flex justify-between items-start ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+          <div className={`flex justify-between items-start ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
             <span>Chain{allChains && allChains.length > 1 ? 's' : ''}</span>
             <div className="flex gap-1 flex-wrap justify-end">
               {allChains && allChains.length > 1 ? (
@@ -450,7 +450,7 @@ export default function TechnicalDetails({
 
           {/* Project ID */}
           {projectId && (
-            <div className={`flex justify-between ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+            <div className={`flex justify-between ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
               <span>Project</span>
               <span className="font-mono">#{projectId}</span>
             </div>

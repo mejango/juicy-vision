@@ -6,8 +6,12 @@ import { test, expect } from '@playwright/test'
  */
 
 const API_BASE = process.env.VITE_API_URL || 'http://localhost:3001'
+const LIVE_API_E2E = process.env.LIVE_API_E2E === 'true'
+const LIVE_API_PRECONDITION =
+  'LIVE_API_E2E requires a reachable API and explicitly seeded authenticated fixtures'
 
 test.describe('Chat API', () => {
+  test.skip(!LIVE_API_E2E, 'Set LIVE_API_E2E=true with a seeded test API to run this live suite')
   // Test auth token for API calls
   let authToken: string
 
@@ -39,7 +43,7 @@ test.describe('Chat API', () => {
         expect(data.data.chat.name).toBe('Test Chat')
       } else {
         // Skip if API not available
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
       }
     })
 
@@ -90,7 +94,7 @@ test.describe('Chat API', () => {
       })
 
       if (!createResponse.ok()) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -98,7 +102,7 @@ test.describe('Chat API', () => {
       const chatId = createData.data?.chat?.id
 
       if (!chatId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -163,7 +167,7 @@ test.describe('Chat API', () => {
       })
 
       if (!createResponse.ok()) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -171,7 +175,7 @@ test.describe('Chat API', () => {
       const chatId = data?.chat?.id
 
       if (!chatId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -204,7 +208,7 @@ test.describe('Chat API', () => {
       })
 
       if (!createResponse.ok()) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -212,7 +216,7 @@ test.describe('Chat API', () => {
       const chatId = data?.chat?.id
 
       if (!chatId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 

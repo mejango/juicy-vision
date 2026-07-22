@@ -191,15 +191,15 @@ export function getMetricsSummary(hoursBack = 24): AIMetricsSummary {
     totalInvocations: invocations.length,
     successfulInvocations: successful.length,
     failedInvocations: invocations.length - successful.length,
-    avgResponseTimeMs:
-      responseTimes.length > 0
-        ? responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length
-        : 0,
+    avgResponseTimeMs: responseTimes.length > 0
+      ? responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length
+      : 0,
     p95ResponseTimeMs: responseTimes[p95Index] || 0,
     totalInputTokens,
     totalOutputTokens,
-    avgTokensPerRequest:
-      invocations.length > 0 ? (totalInputTokens + totalOutputTokens) / invocations.length : 0,
+    avgTokensPerRequest: invocations.length > 0
+      ? (totalInputTokens + totalOutputTokens) / invocations.length
+      : 0,
     toolUsageCounts,
     toolSuccessRates,
     avgToolsPerInvocation: invocations.length > 0 ? totalToolsUsed / invocations.length : 0,
@@ -241,10 +241,9 @@ export function getChatToolUsage(chatId: string): {
     }
   }
 
-  const avgResponseTime =
-    chatInvocations.length > 0
-      ? chatInvocations.reduce((sum, e) => sum + e.totalDurationMs, 0) / chatInvocations.length
-      : 0;
+  const avgResponseTime = chatInvocations.length > 0
+    ? chatInvocations.reduce((sum, e) => sum + e.totalDurationMs, 0) / chatInvocations.length
+    : 0;
 
   return {
     tools,

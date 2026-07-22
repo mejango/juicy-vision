@@ -15,7 +15,7 @@
 import { exportAllTrainingData } from './export.ts';
 import { analyzeTrainingData } from './analyze.ts';
 import { generateOptimizedOutput } from './optimize.ts';
-import { getPool, closePool } from '../../src/db/index.ts';
+import { closePool } from '../../src/db/index.ts';
 import { query } from '../../src/db/index.ts';
 
 interface TrainingRun {
@@ -31,16 +31,17 @@ interface TrainingRun {
 
 async function recordTrainingRun(
   status: 'running' | 'completed' | 'failed',
-  data?: {
+  _data?: {
     conversationsAnalyzed?: number;
     suggestionsGenerated?: number;
     outputPath?: string;
     errorMessage?: string;
-  }
+  },
 ): Promise<string> {
   // Try to create table if not exists
   try {
-    await query(`
+    await query(
+      `
       CREATE TABLE IF NOT EXISTS training_runs (
         id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
         started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -51,7 +52,9 @@ async function recordTrainingRun(
         output_path TEXT,
         error_message TEXT
       )
-    `, []);
+    `,
+      [],
+    );
   } catch {
     // Table might already exist
   }
@@ -59,7 +62,7 @@ async function recordTrainingRun(
   if (status === 'running') {
     const [row] = await query<{ id: string }>(
       `INSERT INTO training_runs (status) VALUES ('running') RETURNING id`,
-      []
+      [],
     );
     return row.id;
   }
@@ -75,7 +78,7 @@ async function updateTrainingRun(
     suggestionsGenerated?: number;
     outputPath?: string;
     errorMessage?: string;
-  }
+  },
 ) {
   await query(
     `UPDATE training_runs SET
@@ -93,7 +96,7 @@ async function updateTrainingRun(
       data.outputPath ?? null,
       data.errorMessage ?? null,
       id,
-    ]
+    ],
   );
 }
 
@@ -171,10 +174,21 @@ async function main() {
     console.log('╔═══════════════════════════════════════════════════════════╗');
     console.log('║                    TRAINING COMPLETE                      ║');
     console.log('╠═══════════════════════════════════════════════════════════╣');
-    console.log(`║  Conversations analyzed: ${(trainingData.goodConversations.length + trainingData.badConversations.length).toString().padEnd(32)}║`);
-    console.log(`║  Corrections processed:  ${trainingData.corrections.length.toString().padEnd(32)}║`);
-    console.log(`║  Prompt suggestions:     ${analysis.promptSuggestions.length.toString().padEnd(32)}║`);
-    console.log(`║  Few-shot examples:      ${analysis.fewShotCandidates.length.toString().padEnd(32)}║`);
+    console.log(
+      `║  Conversations analyzed: ${
+        (trainingData.goodConversations.length + trainingData.badConversations.length).toString()
+          .padEnd(32)
+      }║`,
+    );
+    console.log(
+      `║  Corrections processed:  ${trainingData.corrections.length.toString().padEnd(32)}║`,
+    );
+    console.log(
+      `║  Prompt suggestions:     ${analysis.promptSuggestions.length.toString().padEnd(32)}║`,
+    );
+    console.log(
+      `║  Few-shot examples:      ${analysis.fewShotCandidates.length.toString().padEnd(32)}║`,
+    );
     console.log('╠═══════════════════════════════════════════════════════════╣');
     console.log(`║  Output directory: ${outputDir.padEnd(38)}║`);
     console.log('╚═══════════════════════════════════════════════════════════╝');
@@ -191,12 +205,12 @@ async function main() {
     // Record success
     if (runId) {
       await updateTrainingRun(runId, 'completed', {
-        conversationsAnalyzed: trainingData.goodConversations.length + trainingData.badConversations.length,
+        conversationsAnalyzed: trainingData.goodConversations.length +
+          trainingData.badConversations.length,
         suggestionsGenerated: analysis.promptSuggestions.length,
         outputPath: outputDir,
       });
     }
-
   } catch (error) {
     console.error('Training pipeline failed:', error);
 

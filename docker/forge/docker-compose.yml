@@ -1,7 +1,4 @@
-# Forge Sandbox Docker Compose Configuration
-#
-# This configuration runs the Forge sandbox container with strict security limits.
-# Used by the backend forge service for compiling and testing user-submitted hooks.
+# Unsupported local experiment. This is never part of the production API.
 #
 # Usage:
 #   docker-compose up -d        # Start the base service
@@ -10,14 +7,15 @@
 # For job execution, the backend service creates ephemeral containers with:
 #   docker run --rm --network none --read-only ... forge-sandbox forge build
 
-version: '3.8'
-
 services:
   forge:
+    profiles: [experimental]
     build:
       context: .
       dockerfile: Dockerfile
-    image: juicy-vision/forge-sandbox:latest
+      args:
+        FOUNDRY_IMAGE: ${FORGE_SANDBOX_IMAGE:?Set an approved digest-pinned Foundry image}
+    image: juicy-vision/forge-sandbox:local
 
     # Security: Run as non-root
     user: "1000:1000"
@@ -57,22 +55,7 @@ services:
       - ./workspace:/workspace:rw
 
     # Default command
-    command: ["forge", "--version"]
-
-  # RPC Proxy service for fork tests
-  # This provides rate-limited, method-filtered access to chain RPCs
-  rpc-proxy:
-    image: nginx:alpine
-    ports:
-      - "8545:80"
-    volumes:
-      - ./nginx-rpc-proxy.conf:/etc/nginx/nginx.conf:ro
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-    restart: unless-stopped
+    command: ["--version"]
 
 networks:
   default:

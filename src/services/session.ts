@@ -108,6 +108,25 @@ export function getCachedPseudoAddress(): string | null {
   return cachedPseudoAddress
 }
 
+interface CurrentAddressSources {
+  walletSession: { address: string; expiresAt: number } | null
+  smartAccountAddress: string | null
+  pseudoAddress: string | null
+  now: number
+}
+
+export function selectCurrentUserAddress(sources: CurrentAddressSources): string | null {
+  if (
+    sources.walletSession?.address &&
+    sources.walletSession.expiresAt > sources.now + 3_600_000
+  ) {
+    return sources.walletSession.address.toLowerCase()
+  }
+  if (sources.smartAccountAddress) return sources.smartAccountAddress.toLowerCase()
+  if (sources.pseudoAddress) return sources.pseudoAddress.toLowerCase()
+  return null
+}
+
 /**
  * Get the current user's address with correct priority for identity matching.
  *
@@ -126,23 +145,12 @@ export function getCurrentUserAddress(): string | null {
   // (siwe.ts imports getSessionId from this file)
   const walletSession = storage.getJSON<{ address: string; expiresAt: number }>(STORAGE_KEYS.WALLET_SESSION)
 
-  // Priority 1: SIWE wallet session (self-custody) - check expiration with 1hr buffer
-  if (walletSession?.address && walletSession.expiresAt > Date.now() + 3600000) {
-    return walletSession.address.toLowerCase()
-  }
-
-  // Priority 2: Smart account (managed mode / Touch ID)
-  const smartAccount = localStorage.getItem('juice-smart-account-address')
-  if (smartAccount) {
-    return smartAccount.toLowerCase()
-  }
-
-  // Priority 3: Session pseudo-address (anonymous)
-  if (cachedPseudoAddress) {
-    return cachedPseudoAddress.toLowerCase()
-  }
-
-  return null
+  return selectCurrentUserAddress({
+    walletSession,
+    smartAccountAddress: localStorage.getItem('juice-smart-account-address'),
+    pseudoAddress: cachedPseudoAddress,
+    now: Date.now(),
+  })
 }
 
 // Pre-fetch pseudo-address on module load to populate cache early

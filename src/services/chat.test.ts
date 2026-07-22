@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // Mock fetch globally
 const mockFetch = vi.fn()
-global.fetch = mockFetch
 
 // Mock the auth store
 vi.mock('../stores/authStore', () => ({
@@ -20,6 +19,7 @@ vi.mock('./session', () => ({
 
 describe('chat service', () => {
   beforeEach(() => {
+    vi.stubGlobal('fetch', mockFetch)
     mockFetch.mockReset()
   })
 

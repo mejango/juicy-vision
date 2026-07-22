@@ -60,6 +60,13 @@ interface ChainTxState {
   error?: string
 }
 
+export function submitReviewedRulesetQueue(
+  guarded: Pick<ReturnType<typeof useGuardedTx>, 'run'>,
+  request: Parameters<ReturnType<typeof useGuardedTx>['run']>[0],
+): Promise<`0x${string}`> {
+  return guarded.run(request)
+}
+
 export default function QueueRulesetModal({
   isOpen,
   onClose,
@@ -439,7 +446,7 @@ export default function QueueRulesetModal({
       })
 
       const callArgs = [BigInt(chainData.projectId), rulesetArgs, memo] as const
-      const hash = await guarded.run({
+      const hash = await submitReviewedRulesetQueue(guarded, {
         chainId: chainData.chainId,
         to: queueTarget,
         data: callData,

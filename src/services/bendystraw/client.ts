@@ -5,7 +5,7 @@ import { tokenCurrencyId } from '@bananapus/nana-sdk-core/v6'
 import { useSettingsStore, useDebugStore } from '../../stores'
 import { VIEM_CHAINS, ZERO_ADDRESS, REV_OWNER, JB_CONTRACTS, JB_ROUTER_TERMINAL, JB_ROUTER_TERMINAL_REGISTRY, RPC_ENDPOINTS, USDC_ADDRESSES, MAINNET_VIEM_CHAINS, MAINNET_RPC_ENDPOINTS, NATIVE_TOKEN, type SupportedChainId } from '../../constants'
 import { fetchIpfsMetadata } from '../../utils/ipfs'
-import { IS_TESTNET } from '../../config/environment'
+import { IS_TESTNET, IS_LOCAL_ONLY_BROWSER_TEST } from '../../config/environment'
 import { createCache, CACHE_DURATIONS, bendystrawCircuit } from '../../utils'
 import { getPaymentTerminal } from '../../utils/paymentTerminal'
 import { sanitizeTokenLabel } from '../../utils/erc20Safety'
@@ -2145,6 +2145,8 @@ const ethPriceCache = createCache<number>(20 * 60 * 1000)
 
 // Fetch current ETH price in USD
 export async function fetchEthPrice(): Promise<number | null> {
+  if (IS_LOCAL_ONLY_BROWSER_TEST) return null
+
   const cached = ethPriceCache.get('ethusd')
   if (cached !== null) return cached
 

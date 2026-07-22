@@ -1,305 +1,298 @@
-# Deployment Architecture
+# Deployment and operations
 
-This document describes the production deployment architecture for Juicy Vision.
+Juicy Vision ships as two independent, portable artifacts:
 
-## Overview
+- a static React bundle, either served by the non-root Nginx image or uploaded
+  as the reviewed `dist/` artifact; and
+- a non-root Deno/Hono API image backed by PostgreSQL.
 
-Juicy Vision uses a multi-service architecture deployed across several platforms:
+The primary release unit is an OCI digest. Storacha/IPFS remains an optional
+copy of the static frontend, not the control plane for the API or database.
+No workflow in this repository deploys the backend automatically.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         CDN / IPFS                              │
-│                    (Static Frontend)                            │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Load Balancer                              │
-│                   (Railway / GCP)                               │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-              ┌───────────────┼───────────────┐
-              ▼               ▼               ▼
-┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
-│   API Server     │ │   WebSocket      │ │   Cron Jobs      │
-│   (Hono/Deno)    │ │   Server         │ │   (Scheduled)    │
-└──────────────────┘ └──────────────────┘ └──────────────────┘
-              │               │               │
-              └───────────────┼───────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      PostgreSQL                                 │
-│                   (Railway / GCP)                               │
-└─────────────────────────────────────────────────────────────────┘
-```
+## Release invariants
 
-## Production Stack
+Every production release must satisfy all of these:
 
-### Frontend
-- **Build**: Vite with React 18 and TypeScript
-- **Hosting Options**:
-  - **IPFS**: Decentralized hosting via Pinata gateway
-  - **Railway**: Static site hosting with custom domain
-  - **Cloudflare Pages**: Alternative CDN option
-- **CDN**: Cloudflare for caching and performance
+1. `.github/workflows/test.yml` is green, including contract parity, wallet
+   write inventory, unit/coverage, browser egress, the fail-closed PostgreSQL
+   migration/integration lane, both OCI builds, and the frontend container
+   smoke test plus backend migration/liveness/readiness smoke test.
+2. The backend production configuration passes `deno task config:check`.
+3. Database migrations run once as a release job before API rollout. API
+   replicas never migrate on startup.
+4. Images are selected by `@sha256:` digest, not `latest` or a mutable tag.
+5. `/livez` is used for process liveness and `/readyz` for traffic readiness.
+6. The exact frontend origin is present in backend `ALLOWED_ORIGINS` before the
+   frontend is made public.
+7. A rollback digest and a current database backup are recorded before rollout.
 
-### Backend
-- **Runtime**: Deno with Hono framework
-- **Hosting**:
-  - **Railway** (primary): Serverless containers
-  - **GCP Cloud Run**: Alternative serverless option
-- **Features**:
-  - REST API endpoints
-  - WebSocket connections for real-time chat
-  - Claude AI streaming integration
-  - Cron jobs for maintenance tasks
+## Toolchains
 
-### Database
-- **Engine**: PostgreSQL 16
-- **Hosting**:
-  - **Railway**: Managed PostgreSQL service
-  - **Google Cloud SQL**: Production-grade managed database
-- **Migrations**: Managed via Deno migrations
+- Node `22.16.0` and npm `10.9.2` (`.nvmrc` and `packageManager`)
+- Deno `2.6.5`
+- Ubuntu `24.04` in GitHub Actions
 
-### External Services
-| Service | Purpose |
-|---------|---------|
-| Anthropic API | Claude AI for chat |
-| Pinata | IPFS pinning for archives |
-| Stripe | Fiat payment processing |
-| Relayr | Gas sponsorship |
-| Bendystraw | Juicebox GraphQL API |
-| WalletConnect | Wallet connections |
+Use the lockfiles. CI uses `npm ci` and Deno `--frozen`; a lockfile drift is a
+failure, not something the release job repairs.
 
-## Environment Configuration
+## Configuration
 
-### Backend Environment Variables
+### Frontend build variables
 
-#### Required
-```env
-PORT=3001
-DATABASE_URL=postgres://...
-JWT_SECRET=<32-char-secure-random>
-ANTHROPIC_API_KEY=sk-ant-...
-RESERVES_PRIVATE_KEY=0x...
-CRON_SECRET=<secure-random>
+| Variable | Production rule |
+| --- | --- |
+| `VITE_API_URL` | Exact HTTPS API origin, without a trailing slash. It may be empty only when the API is deliberately reverse-proxied on the frontend origin and `ALLOW_SAME_ORIGIN_API=true`. |
+| `VITE_WALLETCONNECT_PROJECT_ID` | Required 32-character WalletConnect project ID. The source fallback is for local development only. |
+| `VITE_TESTNET_MODE` | Sets the default network for a new browser. Users can still switch network mode. |
+| `VITE_RELAYR_APP_ID` | Optional explicit Relayr application ID. |
+| `BUILD_SHA` | Full source revision; release workflows set this automatically. |
+| `SOURCE_DATE_EPOCH` | Commit timestamp used for reproducible build metadata. |
+
+Validate without building:
+
+```sh
+DEPLOY_ENV=production \
+VITE_API_URL=https://api.juicy.vision \
+VITE_WALLETCONNECT_PROJECT_ID=0123456789abcdef0123456789abcdef \
+npm run check:release-config
 ```
 
-#### Optional
-```env
-# External APIs
-BENDYSTRAW_API_KEY=
-THEGRAPH_API_KEY=
-ANKR_API_KEY=
+### Required backend production variables
 
-# Payments
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
+| Variable | Rule |
+| --- | --- |
+| `DENO_ENV` | Exactly `production`. |
+| `PORT` | Defaults to `8080` in the OCI image. |
+| `DATABASE_URL` | Non-local `postgres://` or `postgresql://` URL. Store it as a secret. |
+| `ALLOWED_ORIGINS` | Comma-separated exact HTTPS origins. No wildcard or substring matching. |
+| `TRUST_PROXY` | Keep `false` unless every request arrives through a trusted proxy that overwrites client-supplied forwarding headers. |
+| `JWT_SECRET` | Independent random value, at least 32 characters. |
+| `ENCRYPTION_MASTER_KEY` | Independent random value, at least 32 characters and different from `JWT_SECRET`. |
+| `CRON_SECRET` | Independent random value, at least 32 characters. |
+| `RESERVES_PRIVATE_KEY` | 32-byte hex key. Never use a development key. Prefer a constrained signer/HSM before holding meaningful reserves. |
 
-# Gas Sponsorship (Relayr)
-RELAYR_API_URL=https://relayr-api-staging.up.railway.app  # or production URL
-RELAYR_APP_ID=juicy-vision
-RELAYR_API_KEY=                                           # Required for balance bundles
+Feature credentials such as Stripe, Anthropic/Moonshot, Relayr, Bendystraw,
+The Graph, Ankr, Pinata, Replicate, and Voyage are conditional. Leave a feature
+disabled until all of its credentials, webhooks, limits, and monitoring are
+configured. `FORGE_DOCKER_ENABLED` and `SEMGREP_ENABLED` must remain `false` in
+the API container.
 
-# Storage
-PINATA_JWT=
+Authentication is mandatory for admin, project persistence/mutation, IPFS pin,
+and image-generation routes. Cost-bearing quotas fail closed with `503` when
+their database-backed limiter is unavailable; do not bypass that response at a
+proxy. With `TRUST_PROXY=false`, client-supplied `CF-Connecting-IP` and
+`X-Forwarded-For` headers are ignored. If proxy trust is enabled, configure the
+edge to erase and replace both headers before forwarding traffic.
+
+The example file is safe to commit and contains placeholders only:
+
+```sh
+cp backend/.env.example backend/.env
+cd backend
+deno task config:check
 ```
 
-### Frontend Environment Variables
+Never bake an env file into an image. Both Docker ignore policies explicitly
+exclude env files.
 
-```env
-VITE_API_URL=https://api.juicy.vision
-VITE_WALLETCONNECT_PROJECT_ID=
-VITE_THEGRAPH_API_KEY=
+## CI and release artifacts
+
+`.github/workflows/release-images.yml` builds both components on `v*` tags. A
+manual run is build-only unless the operator explicitly selects `publish`.
+Before either image can be pushed, the workflow calls the complete reusable
+quality workflow: frontend dependency/protocol/write/unit/build/bundle/browser
+gates, backend frozen fmt/lint/check/tests, and local container validation. The
+backend lane uses deterministic non-secret CI credentials and a health-checked
+PostgreSQL `16.14-alpine3.24` service pinned to its manifest digest. It migrates
+an empty `juicyvision_ci` database before tests and sets
+`REQUIRE_TEST_DATABASE=true`, so a missing database, unsafe database name, or
+skipped database suite fails the release dependency. Its current expected
+summary is `448 passed (1020 steps), 0 failed, 10 ignored`; only the 10
+credential-gated live-AI cases may be ignored. Both images are built for
+`linux/amd64` and `linux/arm64`.
+
+That backend lane also reconstructs the former migration runner's metadata gap
+on the ephemeral database: schema and migrations 002-010 present, 001
+unrecorded, and 011 absent. It must seed 001 without replaying its non-idempotent
+DDL, apply and validate 011, then complete a second no-op migration run before
+backend tests begin. This protects upgrades from pre-release/local databases
+created by the legacy runner as well as clean first deployments.
+
+The portable-image job separately starts the built pinned PostgreSQL image on
+an internal Docker network, migrates it with the built backend image, and runs
+the API image as its non-root `deno` user with a read-only root filesystem,
+all capabilities dropped, and `no-new-privileges`. The job requires both
+`/livez` and database-backed `/readyz` before it succeeds and always removes
+the ephemeral containers and network.
+Published packages are:
+
+```text
+ghcr.io/OWNER/REPOSITORY-frontend:sha-FULL_COMMIT_SHA
+ghcr.io/OWNER/REPOSITORY-backend:sha-FULL_COMMIT_SHA
 ```
 
-## CI/CD Pipeline
+The workflow records each registry digest in the job summary and attaches an
+SBOM, BuildKit provenance, and GitHub build-provenance attestation. It never
+creates `latest`. Deploy the digest shown in the summary:
 
-### GitHub Actions Workflow
-
-1. **On Pull Request**:
-   - Run frontend tests (`npm test`)
-   - Run E2E tests (`npm run test:e2e`)
-   - Type checking (`npm run typecheck`)
-   - Lint check (`npm run lint`)
-
-2. **On Merge to Main**:
-   - Build frontend (`npm run build`)
-   - Deploy to IPFS via Pinata
-   - Deploy backend to Railway/GCP
-   - Run database migrations
-   - Notify on success/failure
-
-### Deployment Commands
-
-```bash
-# Frontend build
-npm run build
-
-# Analyze bundle
-npm run build -- --analyze
-
-# Backend deploy (Railway)
-railway up --service backend
-
-# Database migrations
-railway run --service backend deno task migrate
+```text
+ghcr.io/OWNER/REPOSITORY-backend@sha256:...
 ```
 
-## Monitoring
+The separate frontend publication workflow also runs only for a release tag or
+an explicit manual request and is attached to the GitHub `production`
+environment for both artifact validation and publication. Its reviewed build
+reads `PRODUCTION_API_URL` and `WALLETCONNECT_PROJECT_ID` from that environment,
+then fails release-config validation if either is unsuitable. Configure required
+reviewers there before adding variables or Storacha secrets; ordinary pushes to
+`main` use deterministic non-local placeholders, test the same production
+configuration path, and retain CI diagnostics without publishing.
 
-### Application Logs
-- **Railway**: Built-in log streaming in dashboard
-- **GCP**: Cloud Logging with structured JSON output
+The Node, Deno, unprivileged Nginx, and local-development PostgreSQL base images
+are pinned by their reviewed official multi-platform manifest digests.
+Dependabot monitors the npm, GitHub Actions, and Docker surfaces weekly,
+grouping minor/patch updates while keeping major upgrades in separate reviewable
+pull requests. Every Docker update must retain both the human-readable version
+tag and immutable digest. Deno imports retain their dedicated manual monthly
+review described in the stack ADR.
 
-### Health Checks
-- `GET /health` - Basic health check
-- `GET /api/health` - Full API health with dependencies
+## Local image validation
 
-### Metrics to Monitor
-- Response time (p50, p95, p99)
-- WebSocket connections count
-- Database connection pool usage
-- Database replication lag (if replica configured)
-- Database disk usage and growth rate
-- Claude API token usage
-- Error rate by endpoint
+From the repository root:
 
-### Alerts
-Set up alerts for:
-- Error rate > 1%
-- Response time p95 > 2s
-- WebSocket disconnection spikes
-- Database connection exhaustion (pool at 80%+)
-- Database replication lag > 10s
-- Database disk usage > 80%
-- Claude API rate limit warnings
+```sh
+docker build -f Dockerfile.frontend -t juicy-vision-frontend:local .
+docker run --rm -p 8080:8080 juicy-vision-frontend:local
+curl --fail http://127.0.0.1:8080/healthz
 
-## Scaling
+docker build -f backend/Dockerfile -t juicy-vision-backend:local .
+docker run --rm \
+  --env-file backend/.env \
+  juicy-vision-backend:local task config:check
+```
 
-### Horizontal Scaling
-- Backend: Railway auto-scales based on CPU/memory
-- Database: Vertical scaling (upgrade instance) or read replicas
-  - **TODO**: Configure read replica for failover (see Database Resilience section)
+The frontend image is Nginx running as UID 101. The backend runs as the Deno
+user with network, environment, and read permissions only. It has no Docker
+client/socket, subprocess permission, or filesystem-write permission.
 
-### Performance Optimizations
-- Frontend code splitting by vendor
-- WebSocket connection pooling
-- Database connection pooling (20 connections default)
-- Response caching for static data
-- CDN caching for frontend assets
+## Database migrations
 
-## Production TODO
+Migrations are serialized with a PostgreSQL advisory lock and each incremental
+migration is transactional. A new database starts from the reviewed
+`schema.sql` snapshot and records its explicit migration baseline so old
+non-idempotent changes are not replayed.
 
-### SPA Routing for Clean URLs
-- [ ] Configure server to serve `index.html` for all routes (enables `/eth:3` style URLs)
-  - **Cloudflare Pages**: Automatic (no config needed)
-  - **Railway**: Automatic for static sites
-  - **Nginx**: Add `try_files $uri /index.html;`
-  - **Netlify**: Add `_redirects` file with `/* /index.html 200`
-- Note: Hash URLs (`/#/eth:3`) work everywhere including IPFS as fallback
+Run the exact backend release image once:
 
-### Bundle & Privacy
-- [ ] Verify MetaMask SDK is tree-shaken out (we use `injected()` not `metaMask()`)
-- [ ] Verify Coinbase Wallet SDK is tree-shaken out (we use `injected()` not `coinbaseWallet()`)
-- [ ] Confirm WalletConnect telemetry is minimized (check network tab for `pulse.walletconnect.org`)
-- [ ] Audit outbound requests in production build for unexpected analytics endpoints
-- [ ] Review bundle size - ensure unused wallet SDKs aren't included
+```sh
+docker run --rm \
+  --env-file /secure/path/backend-production.env \
+  ghcr.io/OWNER/REPOSITORY-backend@sha256:... \
+  task migrate
+```
 
-### Wallet Connection
-- [ ] Test all supported wallets with `injected()` connector (MetaMask, Coinbase, Rainbow, etc.)
-- [ ] Test WalletConnect flow on mobile
-- [ ] Test Safe wallet integration
-- [ ] Verify RPC endpoints are working (Ankr) - no fallback to llamarpc or other public RPCs
+Operational rules:
 
-### Third-Party Dependencies
-- [ ] Review wagmi/viem version for security updates
-- [ ] Check for known vulnerabilities in dependencies (`npm audit`)
-- [ ] Document all external API dependencies and their data handling policies
+- Take and verify a database backup first.
+- Run one migration job, even though the advisory lock also prevents overlap.
+- Save its logs with the release record.
+- Do not start a new API revision if migration fails.
+- Prefer backward-compatible expand/contract schema changes. Do not run an
+  automatic down migration during rollback.
+- Update `schema.sql`, `SCHEMA_SNAPSHOT_BASELINE`, and the migration test when a
+  new reviewed snapshot supersedes the current baseline.
 
-## Security Checklist
+## Rollout order
 
-- [ ] All API keys stored in environment variables, not in code
-- [ ] JWT secrets are securely generated (32+ chars)
-- [ ] Database connections use SSL in production
-- [ ] CORS configured to allow only production domains
-- [ ] Rate limiting enabled on API endpoints
-- [ ] WebSocket connections require authentication
-- [ ] Cron endpoints require secret token
-- [ ] Frontend bundle does not contain API keys
-- [ ] `ENCRYPTION_MASTER_KEY` differs from `JWT_SECRET`
-- [ ] `RESERVES_PRIVATE_KEY` hot wallet has limited balance
+1. Record the currently deployed frontend and backend digests.
+2. Verify PostgreSQL backup/PITR and available storage.
+3. Run the new backend image's `task config:check` with production secrets.
+4. Run its one-shot `task migrate` job.
+5. Deploy one backend canary by digest.
+6. Wait for `/livez`, then `/readyz`; exercise auth and a read-only project query.
+7. Roll out remaining backend replicas.
+8. Build/publish the frontend with the final API origin and WalletConnect ID.
+9. Deploy the frontend digest or static artifact and exercise the maintained
+   browser journeys at desktop and mobile widths.
+10. Observe errors, latency, PostgreSQL connections, scheduler results, and
+    wallet/Relayr failures before declaring the release complete.
 
-## Deployment Guides
+### Health endpoints
 
-- [Railway Deployment](../DEPLOY_RAILWAY.md) - Step-by-step Railway setup
-- [Local Development](../README.md) - Local dev environment
+| Endpoint | Meaning | Use |
+| --- | --- | --- |
+| `GET /livez` | Deno process can answer HTTP; no dependency check. | Container liveness/restart probe. |
+| `GET /health` | Compatibility alias with the same payload as `/livez`. | Platforms that require `/health`. |
+| `GET /readyz` | PostgreSQL is reachable and the core schema/tracking table exists. | Load-balancer readiness probe. |
+| `GET /healthz` on frontend | Nginx is serving. | Frontend container health probe. |
 
-## Database Resilience
+Do not use `/livez` as readiness: it intentionally stays healthy during a
+database incident so the platform does not create a restart storm.
 
-### Resilience Checklist
+## Frontend hosting and routing
 
-- [ ] **Backup verification**: Confirm PITR (point-in-time recovery) is enabled on PostgreSQL instance
-- [ ] **Read replica**: Set up at least one read replica for failover and read scaling
-- [ ] **WAL archiving**: Enable WAL archiving for platform-independent recovery
-- [ ] **Disaster recovery drill**: Test restore process quarterly (document last test date)
-- [ ] **Connection pooling**: Verify pool size (currently 10) is appropriate for load
-- [ ] **Backup retention**: Confirm backup retention period meets compliance needs
+The Nginx image implements BrowserRouter fallback (`try_files ... /index.html`),
+one-year immutable caching for hashed assets, and no-cache behavior for HTML,
+the manifest, and service workers.
 
-### Redundancy Status
+Equivalent static hosts must rewrite every non-file route to `index.html`.
+Test at least `/pay/:sessionId`, `/merchant`, `/join/:code`, `/chat/:id`, and a
+project route directly from a fresh browser URL.
 
-| Component | Current State | Target State |
-|-----------|---------------|--------------|
-| Primary DB | Single instance (Railway/GCP) | Same |
-| Read Replica | ❌ Not configured | ✅ At least 1 replica |
-| Multi-region | ❌ Single region | ⚠️ Consider for critical data |
-| PITR | ⚠️ Platform-dependent | ✅ Verified enabled |
-| WAL Archive | ❌ Not configured | ✅ External storage |
+Raw IPFS gateways do not generally provide this rewrite. An immutable Storacha
+directory is therefore safe as an archival/root-link copy, but raw CID deep
+links are not a production BrowserRouter host. Put a stable gateway/CDN with SPA
+fallback in front of the CID, and add that exact stable HTTPS origin to
+`ALLOWED_ORIGINS`. Do not add broad `*.ipfs` CORS patterns when credentials are
+enabled.
 
-### Event Sourcing Candidates
+## Scheduled work
 
-These domains have audit trails but could benefit from full event sourcing if needed:
+Production does not use in-process timers. Configure one external scheduler to
+call the reviewed endpoints, normally:
 
-| Domain | Current Approach | Event Sourcing Value |
-|--------|------------------|----------------------|
-| Juice transactions | Separate tables per action | High - financial audit trail |
-| Smart account exports | JSON status per chain | Medium - multi-chain coordination |
-| Identity changes | History table | Low - already sufficient |
+```text
+POST /cron/maintenance
+X-Cron-Secret: <CRON_SECRET>
+```
 
-## Disaster Recovery
+Use a secret-manager reference rather than embedding the value in scheduler
+configuration. Alert on non-2xx results and prevent overlapping invocations.
+Payment settlements, credits, spends, cash-outs, and transfers affect user
+funds; reconcile scheduler output against Stripe, PostgreSQL, Relayr, and chain
+receipts.
 
-### Database Backups
-- Railway: Automatic daily backups (Pro plan)
-- GCP: Point-in-time recovery enabled
-- **Verify**: Run `SELECT pg_is_in_recovery();` to confirm replica status
+## Rollback
 
-### Recovery Procedure
-1. Scale down backend services
-2. Restore database from backup
-3. Run integrity checks:
-   ```sql
-   -- Verify critical table counts
-   SELECT 'users' as tbl, count(*) FROM users
-   UNION SELECT 'juice_balances', count(*) FROM juice_balances
-   UNION SELECT 'user_smart_accounts', count(*) FROM user_smart_accounts;
-   ```
-4. Verify foreign key constraints: `SELECT conname FROM pg_constraint WHERE contype = 'f';`
-5. Scale up backend services
-6. Clear CDN cache if needed
-7. **Document** the incident and recovery in runbook
+1. Stop the rollout and keep the failing digest for investigation.
+2. Restore the previous backend digest. Do not reverse a migration unless a
+   separately reviewed recovery procedure requires it.
+3. Confirm `/readyz` and the read-only/auth canary.
+4. Restore the previous frontend digest or static artifact.
+5. Purge only HTML/service-worker CDN entries; hashed assets are immutable.
+6. Record impact, transaction state, and any reconciliation required.
 
-### Recovery Time Objectives
+If a migration is not backward-compatible, rollback is blocked: ship a forward
+fix or restore the database under an incident procedure.
 
-| Scenario | RTO Target | RPO Target |
-|----------|------------|------------|
-| Database corruption | < 1 hour | < 5 minutes (with PITR) |
-| Region outage | < 4 hours | < 1 hour |
-| Full restore from backup | < 2 hours | Last daily backup |
+## Platform adapters
 
-### Rollback Procedure
-1. Identify last known good deployment
-2. Railway: Revert to previous deployment in dashboard
-3. GCP: Redeploy previous container image
-4. Verify functionality
-5. Investigate root cause
+Railway, Cloud Run, Kubernetes, Fly, and a conventional VM may all run the same
+OCI digests. Platform configuration should only provide secrets, networking,
+replica counts, probes, and scheduler integration; it should not rebuild source
+with a different toolchain. Configure termination grace long enough for Deno's
+SIGTERM handler to drain and close the PostgreSQL pool.
+
+## Initial-production exclusions
+
+Hook compilation is unavailable in the initial production release. The old
+Docker-in-Docker path is quarantined under `docker/forge/` as a development
+experiment and cannot be enabled in the API process. A production version needs
+an authenticated separate worker, digest-pinned Foundry/V6 dependencies, a
+queue, strict resource limits, and method-filtered RPC egress.
+
+Before accepting stored value or operating a reserves key, complete the
+financial controls in `backend/RISKS.md`: signer isolation, balance/liability
+reconciliation, Stripe dispute handling, scheduler alerts, backup restore drill,
+and an incident pause procedure.

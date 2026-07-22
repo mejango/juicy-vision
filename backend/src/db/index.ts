@@ -40,7 +40,7 @@ export async function execute(sql: string, args?: unknown[]): Promise<number> {
 
 // Transaction helper - passes raw connection for tagged template support
 export async function transaction<T>(
-  fn: (client: PoolClient) => Promise<T>
+  fn: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
   const pool = getPool();
   const connection = await pool.connect();

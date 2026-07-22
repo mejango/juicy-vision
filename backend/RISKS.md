@@ -72,6 +72,8 @@ This document outlines potential failure modes, security considerations, and ope
 - [x] **Webhook auth**: Stripe signature verification
 - [x] **User isolation**: All queries include user_id check
 - [x] **Amount limits**: Purchase $1-$10k, Cash-out $1-$10k, Spend $1-$50k
+- [x] **Request body limits**: JSON is capped before parsing, cost-bearing control payloads have a 64 KiB ceiling, and file uploads require fixed multipart framing under the 25 MiB file limit
+- [x] **Dedicated Juice rate limits**: Purchase, spend, and cash-out use separate per-user quotas backed by PostgreSQL and fail closed in production
 
 #### Authentication (Tested via Integration Tests)
 - [x] **Email OTP timing-safe comparison**: Prevents timing attacks on code verification
@@ -90,12 +92,11 @@ This document outlines potential failure modes, security considerations, and ope
 ### Potential Concerns
 
 #### Rate Limiting
-The Juice API endpoints don't have dedicated rate limiting. Relies on global API rate limits.
-
-**Recommendation**: Add endpoint-specific limits:
-- `/purchase`: 10/hour (prevent PaymentIntent spam)
-- `/spend`: 20/hour (prevent queue flooding)
-- `/cash-out`: 5/hour (prevent withdrawal spam)
+Juice purchase, spend, and cash-out endpoints now use dedicated per-user
+PostgreSQL-backed quotas. Production requests fail closed if quota storage is
+unavailable, so a database incident cannot silently disable financial abuse
+controls. The remaining operational work is alerting on sustained quota denials
+and storage failures, then tuning limits from observed legitimate traffic.
 
 #### Floating-Point Precision
 USD to Wei conversion uses JavaScript floats:

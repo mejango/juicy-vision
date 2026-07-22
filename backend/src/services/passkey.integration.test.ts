@@ -16,15 +16,19 @@
  * These tests require a running database connection.
  */
 
-import { assertEquals, assertExists, assertNotEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
-import { query, queryOne, execute } from '../db/index.ts';
 import {
-  createRegistrationChallenge,
-  createAuthenticationChallenge,
-  getUserPasskeys,
-  deletePasskey,
-  renamePasskey,
+  assertEquals,
+  assertExists,
+  assertNotEquals,
+} from 'https://deno.land/std@0.224.0/assert/mod.ts';
+import { execute, query, queryOne } from '../db/index.ts';
+import {
   cleanupExpiredChallenges,
+  createAuthenticationChallenge,
+  createRegistrationChallenge,
+  deletePasskey,
+  getUserPasskeys,
+  renamePasskey,
 } from './passkey.ts';
 import { findOrCreateUser } from './auth.ts';
 import { SKIP_DB_TESTS } from '../test/helpers.ts';
@@ -35,7 +39,6 @@ import { SKIP_DB_TESTS } from '../test/helpers.ts';
 
 const TEST_EMAIL_1 = 'passkey-test-1@integration.test';
 const TEST_EMAIL_2 = 'passkey-test-2@integration.test';
-const TEST_CREDENTIAL_ID = 'test-credential-id-12345';
 const TEST_CREDENTIAL_ID_B64 = 'dGVzdC1jcmVkZW50aWFsLWlkLTEyMzQ1';
 
 let testUserId1: string;
@@ -52,42 +55,42 @@ async function cleanupTestData(): Promise<void> {
   // Get test user IDs
   const users = await query<{ id: string }>(
     `SELECT id FROM users WHERE email = ANY($1)`,
-    [[TEST_EMAIL_1, TEST_EMAIL_2]]
+    [[TEST_EMAIL_1, TEST_EMAIL_2]],
   );
-  const userIds = users.map(u => u.id);
+  const userIds = users.map((u) => u.id);
 
   if (userIds.length > 0) {
     // Clean up passkey credentials
     await execute(
       `DELETE FROM passkey_credentials WHERE user_id = ANY($1)`,
-      [userIds]
+      [userIds],
     );
 
     // Clean up passkey challenges
     await execute(
       `DELETE FROM passkey_challenges WHERE user_id = ANY($1)`,
-      [userIds]
+      [userIds],
     );
   }
 
   // Clean up challenges by email
   await execute(
     `DELETE FROM passkey_challenges WHERE email = ANY($1)`,
-    [[TEST_EMAIL_1, TEST_EMAIL_2]]
+    [[TEST_EMAIL_1, TEST_EMAIL_2]],
   );
 
   // Clean up sessions
   if (userIds.length > 0) {
     await execute(
       `DELETE FROM sessions WHERE user_id = ANY($1)`,
-      [userIds]
+      [userIds],
     );
   }
 
   // Clean up users
   await execute(
     `DELETE FROM users WHERE email = ANY($1)`,
-    [[TEST_EMAIL_1, TEST_EMAIL_2]]
+    [[TEST_EMAIL_1, TEST_EMAIL_2]],
   );
 }
 
@@ -113,7 +116,7 @@ async function createTestCredential(userId: string, credentialIdB64: string): Pr
       true,
       false,
       'Test Device',
-    ]
+    ],
   );
   return result.id;
 }
@@ -155,7 +158,7 @@ Deno.test({
     const stored = await queryOne<{ challenge_b64: string; type: string }>(
       `SELECT challenge_b64, type FROM passkey_challenges
        WHERE user_id = $1 AND type = 'registration'`,
-      [testUserId1]
+      [testUserId1],
     );
     assertExists(stored);
     assertEquals(stored.challenge_b64, options.challenge);
@@ -186,7 +189,7 @@ Deno.test({
     // Verify challenge is stored
     const stored = await queryOne<{ type: string }>(
       `SELECT type FROM passkey_challenges WHERE challenge_b64 = $1`,
-      [options.challenge]
+      [options.challenge],
     );
     assertExists(stored);
     assertEquals(stored.type, 'authentication');
@@ -262,8 +265,8 @@ Deno.test({
     const passkeys = await getUserPasskeys(testUserId1);
 
     assertEquals(passkeys.length, 2);
-    assertEquals(passkeys.some(p => p.credentialIdB64 === 'cred-1-b64'), true);
-    assertEquals(passkeys.some(p => p.credentialIdB64 === 'cred-2-b64'), true);
+    assertEquals(passkeys.some((p) => p.credentialIdB64 === 'cred-1-b64'), true);
+    assertEquals(passkeys.some((p) => p.credentialIdB64 === 'cred-2-b64'), true);
 
     // Each passkey should have required fields
     for (const passkey of passkeys) {
@@ -426,7 +429,7 @@ Deno.test({
     // Simulate counter update (as would happen after authentication)
     await execute(
       `UPDATE passkey_credentials SET counter = $1 WHERE credential_id_b64 = $2`,
-      [42, 'counter-test']
+      [42, 'counter-test'],
     );
 
     const updated = await getUserPasskeys(testUserId1);
@@ -455,7 +458,7 @@ Deno.test({
     // Simulate authentication updating last_used_at
     await execute(
       `UPDATE passkey_credentials SET last_used_at = NOW() WHERE credential_id_b64 = $1`,
-      ['last-used-test']
+      ['last-used-test'],
     );
 
     const after = await getUserPasskeys(testUserId1);
@@ -487,9 +490,13 @@ Deno.test({
     // User's passkey_enabled should be false
     const user = await queryOne<{ passkey_enabled: boolean }>(
       `SELECT passkey_enabled FROM users WHERE id = $1`,
-      [testUserId1]
+      [testUserId1],
     );
-    assertEquals(user?.passkey_enabled, false, 'passkey_enabled should be false after deleting last passkey');
+    assertEquals(
+      user?.passkey_enabled,
+      false,
+      'passkey_enabled should be false after deleting last passkey',
+    );
 
     await cleanupTestData();
   },
@@ -535,13 +542,13 @@ Deno.test({
     await execute(
       `UPDATE passkey_challenges SET expires_at = NOW() - INTERVAL '1 hour'
        WHERE user_id = $1`,
-      [testUserId1]
+      [testUserId1],
     );
 
     // Verify it exists but is expired
     const before = await queryOne<{ id: string }>(
       `SELECT id FROM passkey_challenges WHERE user_id = $1`,
-      [testUserId1]
+      [testUserId1],
     );
     assertExists(before);
 
@@ -551,7 +558,7 @@ Deno.test({
     // Should be gone
     const after = await queryOne<{ id: string }>(
       `SELECT id FROM passkey_challenges WHERE user_id = $1`,
-      [testUserId1]
+      [testUserId1],
     );
     assertEquals(after, null, 'Expired challenge should be deleted');
 
@@ -582,9 +589,9 @@ Deno.test({
         'backup-test',
         new Uint8Array([4, 5, 6]),
         0,
-        true,  // backup eligible (multi-device credential)
-        true,  // backup state (currently synced)
-      ]
+        true, // backup eligible (multi-device credential)
+        true, // backup state (currently synced)
+      ],
     );
 
     const passkeys = await getUserPasskeys(testUserId1);
@@ -614,7 +621,7 @@ Deno.test({
       `INSERT INTO passkey_credentials (
         user_id, credential_id, credential_id_b64, public_key, counter
       ) VALUES ($1, $2, $3, $4, $5)`,
-      [testUserId1, duplicateCredentialId, 'dup-test-1', new Uint8Array([1, 2, 3]), 0]
+      [testUserId1, duplicateCredentialId, 'dup-test-1', new Uint8Array([1, 2, 3]), 0],
     );
 
     // Try to create duplicate with same credential_id bytes
@@ -624,7 +631,7 @@ Deno.test({
         `INSERT INTO passkey_credentials (
           user_id, credential_id, credential_id_b64, public_key, counter
         ) VALUES ($1, $2, $3, $4, $5)`,
-        [testUserId1, duplicateCredentialId, 'dup-test-2', new Uint8Array([4, 5, 6]), 0]
+        [testUserId1, duplicateCredentialId, 'dup-test-2', new Uint8Array([4, 5, 6]), 0],
       );
     } catch (error) {
       if (error instanceof Error && error.message.includes('duplicate key')) {

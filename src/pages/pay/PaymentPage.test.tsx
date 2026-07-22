@@ -6,9 +6,11 @@ import PaymentPage from './PaymentPage'
 const ACCOUNT = '0x1234567890123456789012345678901234567890'
 const TERMINAL = '0x130f5Dd2bD8805443Cf41755253D778a75a67f53'
 const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe'
-const { sendTransaction, readContract } = vi.hoisted(() => ({
+const { sendTransaction, readContract, waitForTransactionReceipt, call } = vi.hoisted(() => ({
   sendTransaction: vi.fn(),
   readContract: vi.fn(),
+  waitForTransactionReceipt: vi.fn(),
+  call: vi.fn(),
 }))
 
 vi.mock('react-router-dom', () => ({
@@ -33,8 +35,8 @@ vi.mock('viem', () => ({
   createPublicClient: () => ({
     readContract,
     getBalance: vi.fn().mockResolvedValue(2_000_000_000_000_000n),
-    call: vi.fn(),
-    waitForTransactionReceipt: vi.fn(),
+    call,
+    waitForTransactionReceipt,
   }),
   encodeFunctionData: vi.fn(({ functionName }) => functionName === 'pay' ? '0x1234' : '0xabcd'),
   erc20Abi: [],
@@ -73,6 +75,9 @@ describe('PaymentPage wallet review', () => {
       0n,
       [],
     ])
+    sendTransaction.mockResolvedValue(`0x${'ab'.repeat(32)}`)
+    call.mockResolvedValue({ data: '0x' })
+    waitForTransactionReceipt.mockResolvedValue({ status: 'success' })
 
     const session = {
       id: 'session-1',
@@ -110,6 +115,12 @@ describe('PaymentPage wallet review', () => {
           }),
         }
       }
+      if (url.endsWith('/terminal/session/session-1/pay/wallet/start')) {
+        return { json: async () => ({ success: true }) }
+      }
+      if (url.endsWith('/terminal/session/session-1/pay/wallet/confirm')) {
+        return { json: async () => ({ success: true }) }
+      }
       throw new Error(`Unexpected request: ${url}`)
     }))
   })
@@ -144,6 +155,30 @@ describe('PaymentPage wallet review', () => {
     })
     expect(sendTransaction).not.toHaveBeenCalled()
     expect(vi.mocked(fetch).mock.calls.some(([url]) => String(url).endsWith('/pay/wallet/start'))).toBe(false)
+    window.removeEventListener(PAYMENT_REVIEW_EVENT, onReview)
+  })
+
+  it('submits the exact reviewed call and waits for a successful receipt before completion', async () => {
+    const onReview = (event: Event) => {
+      ;(event as CustomEvent<PaymentReviewRequest>).detail.respond(true)
+    }
+    window.addEventListener(PAYMENT_REVIEW_EVENT, onReview)
+    render(<PaymentPage />)
+
+    fireEvent.click(await screen.findByRole('button', { name: /Pay with 0x1234/i }))
+
+    expect(await screen.findByRole('heading', { name: 'Payment Complete' })).toBeInTheDocument()
+    expect(sendTransaction).toHaveBeenCalledWith(expect.objectContaining({
+      account: ACCOUNT,
+      to: TERMINAL,
+      data: '0x1234',
+      value: 1_000_000_000_000_000n,
+    }))
+    expect(waitForTransactionReceipt).toHaveBeenCalledWith({
+      hash: `0x${'ab'.repeat(32)}`,
+    })
+    expect(vi.mocked(fetch).mock.calls.filter(([url]) =>
+      String(url).endsWith('/pay/wallet/confirm'))).toHaveLength(2)
     window.removeEventListener(PAYMENT_REVIEW_EVENT, onReview)
   })
 })

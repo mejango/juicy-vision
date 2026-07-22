@@ -12,15 +12,15 @@ import * as moonshot from './moonshot.ts';
 // Re-export types from claude.ts (they're shared)
 export type {
   ChatMessage,
-  ToolDefinition,
   ClaudeRequest,
   ClaudeResponse,
-  ToolCall,
-  ToolResult,
   ContentBlock,
-  TextBlock,
-  ImageBlock,
   DocumentBlock,
+  ImageBlock,
+  TextBlock,
+  ToolCall,
+  ToolDefinition,
+  ToolResult,
 } from './claude.ts';
 
 // Get the current provider based on config
@@ -34,7 +34,7 @@ function getProvider() {
  */
 export async function sendMessage(
   userId: string,
-  request: claude.ClaudeRequest
+  request: claude.ClaudeRequest,
 ): Promise<claude.ClaudeResponse> {
   const provider = getProvider();
   return provider.sendMessage(userId, request);
@@ -46,7 +46,7 @@ export async function sendMessage(
 export async function* streamMessage(
   userId: string,
   request: claude.ClaudeRequest,
-  userApiKey?: string
+  userApiKey?: string,
 ): AsyncGenerator<{ type: 'text' | 'tool_use' | 'usage'; data: unknown }> {
   const provider = getProvider();
   yield* provider.streamMessage(userId, request, userApiKey);
@@ -59,8 +59,10 @@ export async function* streamMessageWithTools(
   userId: string,
   request: claude.ClaudeRequest,
   userApiKey?: string,
-  maxIterations = 10
-): AsyncGenerator<{ type: 'text' | 'tool_use' | 'tool_result' | 'usage' | 'thinking'; data: unknown }> {
+  maxIterations = 10,
+): AsyncGenerator<
+  { type: 'text' | 'tool_use' | 'tool_result' | 'usage' | 'thinking'; data: unknown }
+> {
   const provider = getProvider();
   yield* provider.streamMessageWithTools(userId, request, userApiKey, maxIterations);
 }
@@ -86,8 +88,8 @@ export async function buildEnhancedPrompt(options: {
   chatId?: string;
   userId?: string;
   includeOmnichain?: boolean;
-  useSemanticDetection?: boolean;  // Enable semantic intent detection (Phase 2)
-  useSubModules?: boolean;  // Enable granular sub-module loading (Phase 1)
+  useSemanticDetection?: boolean; // Enable semantic intent detection (Phase 2)
+  useSubModules?: boolean; // Enable granular sub-module loading (Phase 1)
 }): Promise<{
   systemPrompt: string;
   context: import('./contextManager.ts').OptimizedContext | null;
@@ -109,7 +111,7 @@ export function getCurrentProvider(): 'anthropic' | 'moonshot' {
 /**
  * Re-export omnichain tools and context
  */
-export { OMNICHAIN_CONTEXT, OMNICHAIN_TOOLS, handleOmnichainTool } from './claude.ts';
+export { handleOmnichainTool, OMNICHAIN_CONTEXT, OMNICHAIN_TOOLS } from './claude.ts';
 
 /**
  * Cleanup rate limits (shared across providers)

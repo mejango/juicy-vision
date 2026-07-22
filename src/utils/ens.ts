@@ -1,9 +1,12 @@
 import { createPublicClient, http, getAddress } from 'viem'
 import { mainnet } from 'viem/chains'
 import { STORAGE_KEYS } from '../constants'
+import { IS_LOCAL_ONLY_BROWSER_TEST } from '../config/environment'
 
 // Use PublicNode's free RPC - no auth required, CORS-friendly, same as useEnsName hook
-const ENS_RPC = 'https://ethereum-rpc.publicnode.com'
+const ENS_RPC = IS_LOCAL_ONLY_BROWSER_TEST && typeof window !== 'undefined'
+  ? `${window.location.origin}/__juicy_test_rpc__`
+  : 'https://ethereum-rpc.publicnode.com'
 
 // Classic ENS reverse registrar - fallback if getEnsName fails
 const REVERSE_REGISTRAR = '0x084b1c3C81545d370f3634392De611CaaBFf8148' as const

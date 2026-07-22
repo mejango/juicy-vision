@@ -1,5 +1,5 @@
-import { queryOne, execute } from '../db/index.ts';
-import { getConfig } from '../utils/config.ts';
+import { execute, queryOne } from '../db/index.ts';
+import { getConfig, validateForgeDevelopmentConfig } from '../utils/config.ts';
 import { computeFilesHash } from './hookProjects.ts';
 
 // ============================================================================
@@ -85,7 +85,6 @@ export interface ForgeJob {
 
 const COMPILE_TIMEOUT_MS = 30_000; // 30 seconds
 const TEST_TIMEOUT_MS = 120_000; // 2 minutes
-const JOB_EXPIRY_MINUTES = 30;
 const MAX_FILE_SIZE = 500 * 1024; // 500KB per file
 const MAX_TOTAL_SIZE = 5 * 1024 * 1024; // 5MB total
 const MAX_FILES = 50;
@@ -187,8 +186,14 @@ export async function submitJob(
   userAddress: string,
   jobType: ForgeJobType,
   input: ForgeJobInput,
-  projectId?: string
+  projectId?: string,
 ): Promise<ForgeJob> {
+  const config = getConfig();
+  if (config.env !== 'development') {
+    throw new Error('Hook compilation is unavailable in the initial production release');
+  }
+  validateForgeDevelopmentConfig(config);
+
   // Validate input
   const validation = validateJobInput(input);
   if (!validation.valid) {
@@ -207,7 +212,7 @@ export async function submitJob(
        AND expires_at > NOW()
      ORDER BY created_at DESC
      LIMIT 1`,
-    [inputHash, jobType]
+    [inputHash, jobType],
   );
 
   if (existingJob) {
@@ -221,7 +226,7 @@ export async function submitJob(
        project_id, user_address, job_type, input_hash, input_data, status
      ) VALUES ($1, $2, $3, $4, $5, 'queued')
      RETURNING *`,
-    [projectId || null, userAddress, jobType, inputHash, JSON.stringify(input)]
+    [projectId || null, userAddress, jobType, inputHash, JSON.stringify(input)],
   );
 
   if (!job) {
@@ -237,14 +242,12 @@ export async function submitJob(
 }
 
 export async function getJob(jobId: string, userAddress?: string): Promise<ForgeJob | null> {
-  const whereClause = userAddress
-    ? 'WHERE id = $1 AND user_address = $2'
-    : 'WHERE id = $1';
+  const whereClause = userAddress ? 'WHERE id = $1 AND user_address = $2' : 'WHERE id = $1';
   const params = userAddress ? [jobId, userAddress] : [jobId];
 
   const job = await queryOne<DbForgeJob>(
     `SELECT * FROM forge_jobs ${whereClause}`,
-    params
+    params,
   );
 
   return job ? transformJob(job) : null;
@@ -253,7 +256,7 @@ export async function getJob(jobId: string, userAddress?: string): Promise<Forge
 export async function getJobOutput(jobId: string): Promise<string | null> {
   const result = await queryOne<{ output_log: string | null }>(
     `SELECT output_log FROM forge_jobs WHERE id = $1`,
-    [jobId]
+    [jobId],
   );
 
   return result?.output_log || null;
@@ -263,7 +266,7 @@ async function updateJobStatus(
   jobId: string,
   status: ForgeJobStatus,
   resultData?: ForgeJobResult,
-  containerId?: string
+  containerId?: string,
 ): Promise<void> {
   const updates: string[] = ['status = $1'];
   const values: unknown[] = [status];
@@ -291,7 +294,7 @@ async function updateJobStatus(
 
   await execute(
     `UPDATE forge_jobs SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
-    values
+    values,
   );
 }
 
@@ -300,7 +303,7 @@ async function appendJobOutput(jobId: string, output: string): Promise<void> {
     `UPDATE forge_jobs
      SET output_log = COALESCE(output_log, '') || $1
      WHERE id = $2`,
-    [output, jobId]
+    [output, jobId],
   );
 }
 
@@ -311,7 +314,7 @@ async function appendJobOutput(jobId: string, output: string): Promise<void> {
 async function executeJob(jobId: string): Promise<void> {
   const job = await queryOne<DbForgeJob>(
     `SELECT * FROM forge_jobs WHERE id = $1`,
-    [jobId]
+    [jobId],
   );
 
   if (!job) {
@@ -336,7 +339,7 @@ async function executeJob(jobId: string): Promise<void> {
     await updateJobStatus(
       jobId,
       result.success ? 'completed' : 'failed',
-      result
+      result,
     );
   } catch (error) {
     console.error(`[Forge] Job ${jobId} failed:`, error);
@@ -346,7 +349,13 @@ async function executeJob(jobId: string): Promise<void> {
     if (errorMessage.includes('timeout')) {
       await updateJobStatus(jobId, 'timeout', {
         success: false,
-        errors: [{ file: '', line: 0, column: 0, message: 'Execution timed out', severity: 'error' }],
+        errors: [{
+          file: '',
+          line: 0,
+          column: 0,
+          message: 'Execution timed out',
+          severity: 'error',
+        }],
       });
     } else {
       await updateJobStatus(jobId, 'failed', {
@@ -421,20 +430,27 @@ function buildDockerCommand(
   job: DbForgeJob,
   tmpDir: string,
   input: ForgeJobInput,
-  timeout: number,
-  config: ReturnType<typeof getConfig>
+  _timeout: number,
+  config: ReturnType<typeof getConfig>,
 ): string[] {
   const args = [
     'run',
     '--rm',
-    '--network', 'none', // No network access by default
-    '--memory', '2g',
-    '--cpus', '2',
-    '--pids-limit', '256',
+    '--network',
+    'none', // No network access by default
+    '--memory',
+    '2g',
+    '--cpus',
+    '2',
+    '--pids-limit',
+    '256',
     '--read-only',
-    '--tmpfs', '/tmp:rw,noexec,nosuid,size=512m',
-    '-v', `${tmpDir}:/app:ro`,
-    '-w', '/app',
+    '--tmpfs',
+    '/tmp:rw,noexec,nosuid,size=512m',
+    '-v',
+    `${tmpDir}:/app:ro`,
+    '-w',
+    '/app',
   ];
 
   // Enable network for fork tests - call RPCs directly
@@ -448,7 +464,10 @@ function buildDockerCommand(
     }
   }
 
-  args.push('ghcr.io/foundry-rs/foundry:latest');
+  if (!config.forgeSandboxImage) {
+    throw new Error('FORGE_SANDBOX_IMAGE is required when Forge execution is enabled');
+  }
+  args.push(config.forgeSandboxImage);
 
   // Add forge command
   if (job.job_type === 'compile') {
@@ -474,7 +493,7 @@ function buildDockerCommand(
   return args;
 }
 
-function generateFoundryConfig(input: ForgeJobInput): string {
+function generateFoundryConfig(_input: ForgeJobInput): string {
   return `[profile.default]
 src = "src"
 out = "out"
@@ -503,7 +522,7 @@ runs = 256
 function parseForgeOutput(
   jobType: ForgeJobType,
   output: string,
-  success: boolean
+  success: boolean,
 ): ForgeJobResult {
   const result: ForgeJobResult = { success };
 
@@ -516,7 +535,13 @@ function parseForgeOutput(
       if (jobType === 'compile') {
         if (parsed.errors) {
           result.success = false;
-          result.errors = parsed.errors.map((e: { sourceLocation?: { file: string; start: number; end: number }; message: string; severity: string }) => ({
+          result.errors = parsed.errors.map((
+            e: {
+              sourceLocation?: { file: string; start: number; end: number };
+              message: string;
+              severity: string;
+            },
+          ) => ({
             file: e.sourceLocation?.file || '',
             line: e.sourceLocation?.start || 0,
             column: 0,
@@ -528,11 +553,16 @@ function parseForgeOutput(
         if (parsed.contracts) {
           result.artifacts = Object.entries(parsed.contracts).flatMap(
             ([_file, contracts]) =>
-              Object.entries(contracts as Record<string, { evm?: { bytecode?: { object: string } }; abi?: unknown[] }>).map(([name, data]) => ({
+              Object.entries(
+                contracts as Record<
+                  string,
+                  { evm?: { bytecode?: { object: string } }; abi?: unknown[] }
+                >,
+              ).map(([name, data]) => ({
                 contractName: name,
                 bytecode: data.evm?.bytecode?.object || '',
                 abi: data.abi || [],
-              }))
+              })),
           );
         }
       } else if (jobType === 'test') {
@@ -540,14 +570,25 @@ function parseForgeOutput(
           const tests = parsed.testResults || parsed.tests;
           result.testResults = Object.entries(tests).flatMap(
             ([_suite, suiteTests]) =>
-              Object.entries(suiteTests as Record<string, { status: string; gasUsed?: number; duration?: number; logs?: string[]; reason?: string }>).map(([name, test]) => ({
+              Object.entries(
+                suiteTests as Record<
+                  string,
+                  {
+                    status: string;
+                    gasUsed?: number;
+                    duration?: number;
+                    logs?: string[];
+                    reason?: string;
+                  }
+                >,
+              ).map(([name, test]) => ({
                 name,
                 passed: test.status === 'passed' || test.status === 'Success',
                 gasUsed: test.gasUsed,
                 duration: test.duration,
                 logs: test.logs,
                 error: test.reason,
-              }))
+              })),
           );
           result.success = result.testResults.every((t) => t.passed);
         }
@@ -594,7 +635,7 @@ async function simulateForgeExecution(job: DbForgeJob): Promise<void> {
 
   // Parse the input files to check for obvious errors
   const hasMainContract = job.input_data.files.some(
-    (f) => f.path.endsWith('.sol') && f.path.startsWith('src/')
+    (f) => f.path.endsWith('.sol') && f.path.startsWith('src/'),
   );
 
   if (!hasMainContract) {
@@ -654,7 +695,7 @@ async function simulateForgeExecution(job: DbForgeJob): Promise<void> {
 export async function cleanupExpiredJobs(): Promise<number> {
   const result = await execute(
     `DELETE FROM forge_jobs WHERE expires_at < NOW()`,
-    []
+    [],
   );
 
   if (result > 0) {
@@ -673,7 +714,7 @@ export async function cancelStaleJobs(): Promise<number> {
          result_data = '{"success": false, "errors": [{"file": "", "line": 0, "column": 0, "message": "Job exceeded maximum runtime", "severity": "error"}]}'::jsonb
      WHERE status = 'running'
        AND started_at < NOW() - INTERVAL '10 minutes'`,
-    []
+    [],
   );
 
   if (result > 0) {
@@ -696,7 +737,7 @@ export async function recoverOrphanedJobs(): Promise<number> {
          result_data = '{"success": false, "errors": [{"file": "", "line": 0, "column": 0, "message": "Job interrupted by server restart", "severity": "error"}]}'::jsonb
      WHERE status = 'running'
        AND started_at < NOW() - INTERVAL '2 minutes'`,
-    []
+    [],
   );
 
   return result;

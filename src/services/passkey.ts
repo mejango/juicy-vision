@@ -44,6 +44,14 @@ interface PasskeyInfo {
   lastUsedAt: string | null
 }
 
+type PublicKeyCredentialWithAttachment = PublicKeyCredential & {
+  authenticatorAttachment?: string | null
+}
+
+type RequestOptionsWithHints = PublicKeyCredentialRequestOptions & {
+  hints?: string[]
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -80,10 +88,12 @@ async function apiRequest<T>(
 // Feature Detection
 // ============================================================================
 
-export function isPasskeySupported(): boolean {
+export function isPasskeySupported(
+  browser: { PublicKeyCredential?: typeof PublicKeyCredential } = window,
+): boolean {
   return !!(
-    window.PublicKeyCredential &&
-    typeof window.PublicKeyCredential === 'function'
+    browser.PublicKeyCredential &&
+    typeof browser.PublicKeyCredential === 'function'
   )
 }
 
@@ -142,7 +152,7 @@ export async function registerPasskey(
             attestationObject: arrayBufferToBase64Url(response.attestationObject),
             transports: response.getTransports?.() || [],
           },
-          authenticatorAttachment: (credential as any).authenticatorAttachment,
+          authenticatorAttachment: (credential as PublicKeyCredentialWithAttachment).authenticatorAttachment,
           type: credential.type,
         },
         displayName,
@@ -178,7 +188,7 @@ export async function loginWithPasskey(email?: string, deviceHint: DeviceHint = 
   )
 
   // 2. Build WebAuthn options with device hints
-  const publicKeyOptions: PublicKeyCredentialRequestOptions = {
+  const publicKeyOptions: RequestOptionsWithHints = {
     challenge: base64UrlToArrayBuffer(options.challenge),
     rpId: options.rpId,
     timeout: options.timeout,
@@ -198,9 +208,9 @@ export async function loginWithPasskey(email?: string, deviceHint: DeviceHint = 
   // Add hints for modern browsers (Chrome 128+)
   // This tells the browser which UI to show first
   if (deviceHint === 'this-device') {
-    (publicKeyOptions as any).hints = ['client-device']
+    publicKeyOptions.hints = ['client-device']
   } else if (deviceHint === 'another-device') {
-    (publicKeyOptions as any).hints = ['hybrid']
+    publicKeyOptions.hints = ['hybrid']
   }
 
   // 3. Get credential using WebAuthn API
@@ -229,7 +239,7 @@ export async function loginWithPasskey(email?: string, deviceHint: DeviceHint = 
             ? arrayBufferToBase64Url(response.userHandle)
             : undefined,
         },
-        authenticatorAttachment: (credential as any).authenticatorAttachment,
+        authenticatorAttachment: (credential as PublicKeyCredentialWithAttachment).authenticatorAttachment,
         type: credential.type,
       },
     }),
@@ -337,7 +347,7 @@ export async function signupWithPasskey(deviceHint: DeviceHint = 'this-device'):
           attestationObject: arrayBufferToBase64Url(response.attestationObject),
           transports: response.getTransports?.() || [],
         },
-        authenticatorAttachment: (credential as any).authenticatorAttachment,
+        authenticatorAttachment: (credential as PublicKeyCredentialWithAttachment).authenticatorAttachment,
         type: credential.type,
       },
     }),

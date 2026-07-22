@@ -7,7 +7,9 @@
  */
 
 import { useState, useEffect, useCallback } from 'react'
-import { loadStripe } from '@stripe/stripe-js'
+// The pure loader does not inject Stripe.js merely because the app bundle was
+// evaluated. Stripe is loaded only after this hook receives a publishable key.
+import { loadStripe } from '@stripe/stripe-js/pure'
 import { useAuthStore } from '../../stores'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''

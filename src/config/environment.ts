@@ -11,6 +11,17 @@
 
 const NETWORK_STORAGE_KEY = 'jb-network'
 
+/**
+ * Runtime marker installed by the maintained Playwright fixture before any
+ * application module executes. Production builds do not set it. Keeping this
+ * runtime-scoped lets CI exercise the exact deployable bundle while replacing
+ * only third-party startup integrations with deterministic local adapters.
+ */
+export const IS_LOCAL_ONLY_BROWSER_TEST =
+  typeof window !== 'undefined' &&
+  (window as typeof window & { __JUICY_LOCAL_ONLY_TEST__?: boolean })
+    .__JUICY_LOCAL_ONLY_TEST__ === true
+
 function resolveTestnetMode(): boolean {
   try {
     const stored = localStorage.getItem(NETWORK_STORAGE_KEY)

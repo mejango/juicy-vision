@@ -5,14 +5,59 @@
  * updates, and status queries.
  */
 
-import { assertEquals, assertExists, assertStringIncludes } from 'https://deno.land/std@0.224.0/assert/mod.ts';
+import {
+  assertEquals,
+  assertExists,
+  assertStringIncludes,
+} from 'https://deno.land/std@0.224.0/assert/mod.ts';
+import { Hono } from 'hono';
+import { execute } from '../db/index.ts';
+import { createSession, findOrCreateUser } from '../services/auth.ts';
 import { SKIP_DB_TESTS } from '../test/helpers.ts';
+import { projectsRouter } from './projects.ts';
 
 const BASE_URL = 'http://localhost:3001/api';
 const SESSION_ID = 'ses_test_projects_api_12345678';
+const TEST_EMAIL = 'projects-route@integration.test';
+const testApp = new Hono().route('/api/projects', projectsRouter);
+let authToken: string | null = null;
 
-// Track created project IDs for cleanup
-const createdProjectIds: string[] = [];
+async function getAuthToken(): Promise<string> {
+  if (authToken) return authToken;
+  const user = await findOrCreateUser(TEST_EMAIL);
+  const session = await createSession(user.id);
+  authToken = session.token;
+  return authToken;
+}
+
+async function authenticatedHeaders(): Promise<Record<string, string>> {
+  return {
+    Authorization: `Bearer ${await getAuthToken()}`,
+    'X-Session-ID': SESSION_ID,
+  };
+}
+
+async function cleanupTestProjects(): Promise<void> {
+  await execute(
+    `DELETE FROM created_projects
+     WHERE user_id IN (SELECT id FROM users WHERE email = $1)`,
+    [TEST_EMAIL],
+  );
+}
+
+function isolatedDatabaseTest(definition: Deno.TestDefinition): void {
+  Deno.test({
+    ...definition,
+    async fn(context) {
+      await cleanupTestProjects();
+      try {
+        await definition.fn(context);
+      } finally {
+        await cleanupTestProjects();
+      }
+    },
+  });
+}
 
 // ============================================================================
 // Helper Functions
@@ -25,34 +70,31 @@ async function createProjectViaAPI(data: {
   chainIds: number[];
   splitOperator?: string;
 }) {
-  const res = await fetch(`${BASE_URL}/projects`, {
+  const res = await testApp.request(`${BASE_URL}/projects`, {
     method: 'POST',
     headers: {
+      ...await authenticatedHeaders(),
       'Content-Type': 'application/json',
-      'X-Session-ID': SESSION_ID,
     },
     body: JSON.stringify(data),
   });
   const json = await res.json();
-  if (json.success && json.data?.id) {
-    createdProjectIds.push(json.data.id);
-  }
   return { res, json };
 }
 
 async function getProjectViaAPI(id: string) {
-  const res = await fetch(`${BASE_URL}/projects/${id}`, {
-    headers: { 'X-Session-ID': SESSION_ID },
+  const res = await testApp.request(`${BASE_URL}/projects/${id}`, {
+    headers: await authenticatedHeaders(),
   });
   return { res, json: await res.json() };
 }
 
 async function updateProjectViaAPI(id: string, data: Record<string, unknown>) {
-  const res = await fetch(`${BASE_URL}/projects/${id}`, {
+  const res = await testApp.request(`${BASE_URL}/projects/${id}`, {
     method: 'PATCH',
     headers: {
+      ...await authenticatedHeaders(),
       'Content-Type': 'application/json',
-      'X-Session-ID': SESSION_ID,
     },
     body: JSON.stringify(data),
   });
@@ -62,13 +104,13 @@ async function updateProjectViaAPI(id: string, data: Record<string, unknown>) {
 async function updateProjectChainViaAPI(
   id: string,
   chainId: number,
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
 ) {
-  const res = await fetch(`${BASE_URL}/projects/${id}/chains/${chainId}`, {
+  const res = await testApp.request(`${BASE_URL}/projects/${id}/chains/${chainId}`, {
     method: 'PATCH',
     headers: {
+      ...await authenticatedHeaders(),
       'Content-Type': 'application/json',
-      'X-Session-ID': SESSION_ID,
     },
     body: JSON.stringify(data),
   });
@@ -76,8 +118,8 @@ async function updateProjectChainViaAPI(
 }
 
 async function getProjectStatusViaAPI(id: string) {
-  const res = await fetch(`${BASE_URL}/projects/${id}/status`, {
-    headers: { 'X-Session-ID': SESSION_ID },
+  const res = await testApp.request(`${BASE_URL}/projects/${id}/status`, {
+    headers: await authenticatedHeaders(),
   });
   return { res, json: await res.json() };
 }
@@ -86,7 +128,7 @@ async function getProjectStatusViaAPI(id: string) {
 // POST /projects Tests
 // ============================================================================
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'POST /projects: creates project successfully',
   async fn() {
@@ -109,7 +151,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'POST /projects: creates revnet with split operator',
   async fn() {
@@ -131,15 +173,15 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'POST /projects: validates required fields',
   async fn() {
-    const res = await fetch(`${BASE_URL}/projects`, {
+    const res = await testApp.request(`${BASE_URL}/projects`, {
       method: 'POST',
       headers: {
+        ...await authenticatedHeaders(),
         'Content-Type': 'application/json',
-        'X-Session-ID': SESSION_ID,
       },
       body: JSON.stringify({
         projectType: 'project',
@@ -156,15 +198,15 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'POST /projects: validates project type enum',
   async fn() {
-    const res = await fetch(`${BASE_URL}/projects`, {
+    const res = await testApp.request(`${BASE_URL}/projects`, {
       method: 'POST',
       headers: {
+        ...await authenticatedHeaders(),
         'Content-Type': 'application/json',
-        'X-Session-ID': SESSION_ID,
       },
       body: JSON.stringify({
         projectName: 'Test',
@@ -181,15 +223,15 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'POST /projects: validates split operator address format',
   async fn() {
-    const res = await fetch(`${BASE_URL}/projects`, {
+    const res = await testApp.request(`${BASE_URL}/projects`, {
       method: 'POST',
       headers: {
+        ...await authenticatedHeaders(),
         'Content-Type': 'application/json',
-        'X-Session-ID': SESSION_ID,
       },
       body: JSON.stringify({
         projectName: 'Test',
@@ -211,7 +253,7 @@ Deno.test({
 // GET /projects/:id Tests
 // ============================================================================
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'GET /projects/:id: returns project with chains',
   async fn() {
@@ -234,7 +276,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'GET /projects/:id: returns 404 for non-existent',
   async fn() {
@@ -252,7 +294,7 @@ Deno.test({
 // PATCH /projects/:id Tests
 // ============================================================================
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'PATCH /projects/:id: updates creation status',
   async fn() {
@@ -274,7 +316,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'PATCH /projects/:id: updates sucker group ID',
   async fn() {
@@ -284,7 +326,7 @@ Deno.test({
       chainIds: [1, 10],
     });
 
-    const suckerGroupId = '0xsuckergroup123abc';
+    const suckerGroupId = `0x${'ab'.repeat(32)}`;
     const { res, json } = await updateProjectViaAPI(created.data.id, {
       suckerGroupId,
     });
@@ -297,13 +339,13 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'PATCH /projects/:id: returns 404 for non-existent',
   async fn() {
     const { res, json } = await updateProjectViaAPI(
       '00000000-0000-0000-0000-000000000000',
-      { creationStatus: 'completed' }
+      { creationStatus: 'completed' },
     );
 
     assertEquals(res.status, 404);
@@ -313,7 +355,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'PATCH /projects/:id: validates status enum',
   async fn() {
@@ -323,11 +365,11 @@ Deno.test({
       chainIds: [1],
     });
 
-    const res = await fetch(`${BASE_URL}/projects/${created.data.id}`, {
+    const res = await testApp.request(`${BASE_URL}/projects/${created.data.id}`, {
       method: 'PATCH',
       headers: {
+        ...await authenticatedHeaders(),
         'Content-Type': 'application/json',
-        'X-Session-ID': SESSION_ID,
       },
       body: JSON.stringify({
         creationStatus: 'invalid_status',
@@ -346,7 +388,7 @@ Deno.test({
 // PATCH /projects/:id/chains/:chainId Tests
 // ============================================================================
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'PATCH /projects/:id/chains/:chainId: updates chain status',
   async fn() {
@@ -373,7 +415,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'PATCH /projects/:id/chains/:chainId: updates sucker info',
   async fn() {
@@ -398,7 +440,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'PATCH /projects/:id/chains/:chainId: validates tx hash format',
   async fn() {
@@ -408,11 +450,11 @@ Deno.test({
       chainIds: [1],
     });
 
-    const res = await fetch(`${BASE_URL}/projects/${created.data.id}/chains/1`, {
+    const res = await testApp.request(`${BASE_URL}/projects/${created.data.id}/chains/1`, {
       method: 'PATCH',
       headers: {
+        ...await authenticatedHeaders(),
         'Content-Type': 'application/json',
-        'X-Session-ID': SESSION_ID,
       },
       body: JSON.stringify({
         txHash: 'invalid-hash',
@@ -431,7 +473,7 @@ Deno.test({
 // GET /projects/:id/status Tests
 // ============================================================================
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'GET /projects/:id/status: returns computed status',
   async fn() {
@@ -466,7 +508,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'GET /projects/:id/status: computes completed status',
   async fn() {
@@ -495,7 +537,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'GET /projects/:id/status: computes partial status',
   async fn() {
@@ -523,7 +565,7 @@ Deno.test({
   sanitizeResources: false,
 });
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'GET /projects/:id/status: returns 404 for non-existent',
   async fn() {
@@ -540,7 +582,7 @@ Deno.test({
 // Integration Tests
 // ============================================================================
 
-Deno.test({
+isolatedDatabaseTest({
   ignore: SKIP_DB_TESTS,
   name: 'Integration: full project creation workflow via API',
   async fn() {
@@ -583,12 +625,24 @@ Deno.test({
     // 4. Check status - should be completed
     const { json: status } = await getProjectStatusViaAPI(projectId);
     assertEquals(status.data.creationStatus, 'completed');
-    assertEquals(status.data.chains.every((c: { status: string }) => c.status === 'confirmed'), true);
+    assertEquals(
+      status.data.chains.every((c: { status: string }) => c.status === 'confirmed'),
+      true,
+    );
 
     // 5. Verify project IDs
-    assertEquals(status.data.chains.find((c: { chainId: number }) => c.chainId === 1).projectId, 100);
-    assertEquals(status.data.chains.find((c: { chainId: number }) => c.chainId === 10).projectId, 200);
-    assertEquals(status.data.chains.find((c: { chainId: number }) => c.chainId === 8453).projectId, 300);
+    assertEquals(
+      status.data.chains.find((c: { chainId: number }) => c.chainId === 1).projectId,
+      100,
+    );
+    assertEquals(
+      status.data.chains.find((c: { chainId: number }) => c.chainId === 10).projectId,
+      200,
+    );
+    assertEquals(
+      status.data.chains.find((c: { chainId: number }) => c.chainId === 8453).projectId,
+      300,
+    );
   },
   sanitizeOps: false,
   sanitizeResources: false,

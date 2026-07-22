@@ -13,7 +13,7 @@ import { PAY_HOOK_TEMPLATE } from './pay-hook.ts';
 import { CASH_OUT_HOOK_TEMPLATE } from './cash-out-hook.ts';
 import { SPLIT_HOOK_TEMPLATE } from './split-hook.ts';
 
-export { PAY_HOOK_TEMPLATE, CASH_OUT_HOOK_TEMPLATE, SPLIT_HOOK_TEMPLATE };
+export { CASH_OUT_HOOK_TEMPLATE, PAY_HOOK_TEMPLATE, SPLIT_HOOK_TEMPLATE };
 
 export type HookType = 'pay-hook' | 'cash-out-hook' | 'split-hook';
 
@@ -51,7 +51,7 @@ export function customizeTemplate(
     contractName?: string;
     projectId?: number;
     directoryAddress?: string;
-  }
+  },
 ): HookTemplate {
   const { contractName, projectId, directoryAddress } = options;
 
@@ -70,7 +70,7 @@ export function customizeTemplate(
       // Update import paths in test files
       content = content.replace(
         /from "\.\.\/src\/My/g,
-        `from "../src/${contractName.replace(/(Hook|Test)$/g, '')}`
+        `from "../src/${contractName.replace(/(Hook|Test)$/g, '')}`,
       );
     }
 
@@ -78,7 +78,7 @@ export function customizeTemplate(
     if (projectId !== undefined) {
       content = content.replace(
         /uint256 projectId = 1;/g,
-        `uint256 projectId = ${projectId};`
+        `uint256 projectId = ${projectId};`,
       );
     }
 
@@ -86,7 +86,7 @@ export function customizeTemplate(
     if (directoryAddress) {
       content = content.replace(
         /address mockDirectory = address\(0x1\);/g,
-        `address mockDirectory = ${directoryAddress};`
+        `address mockDirectory = ${directoryAddress};`,
       );
     }
 

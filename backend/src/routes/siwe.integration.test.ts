@@ -14,8 +14,12 @@
  * These tests require a running database connection.
  */
 
-import { assertEquals, assertExists, assertNotEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
-import { query, queryOne, execute } from '../db/index.ts';
+import {
+  assertEquals,
+  assertExists,
+  assertNotEquals,
+} from 'https://deno.land/std@0.224.0/assert/mod.ts';
+import { execute, query, queryOne } from '../db/index.ts';
 import { SKIP_DB_TESTS } from '../test/helpers.ts';
 
 // ============================================================================
@@ -29,13 +33,13 @@ const TEST_SESSION_ID = 'ses_test_siwe_12345678';
 async function cleanupTestData(): Promise<void> {
   await execute(
     `DELETE FROM wallet_sessions WHERE wallet_address = ANY($1)`,
-    [[TEST_WALLET_1.toLowerCase(), TEST_WALLET_2.toLowerCase()]]
+    [[TEST_WALLET_1.toLowerCase(), TEST_WALLET_2.toLowerCase()]],
   );
 
   // Clean up any test multi_chat data
   await execute(
     `DELETE FROM multi_chat_members WHERE member_address = ANY($1)`,
-    [[TEST_WALLET_1.toLowerCase(), TEST_WALLET_2.toLowerCase()]]
+    [[TEST_WALLET_1.toLowerCase(), TEST_WALLET_2.toLowerCase()]],
   );
 }
 
@@ -74,7 +78,7 @@ Deno.test({
     await execute(
       `INSERT INTO wallet_sessions (session_token, wallet_address, siwe_message, siwe_signature, nonce, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [token, TEST_WALLET_1.toLowerCase(), message, signature, nonce, expiresAt]
+      [token, TEST_WALLET_1.toLowerCase(), message, signature, nonce, expiresAt],
     );
 
     // Verify session is stored
@@ -86,7 +90,7 @@ Deno.test({
     }>(
       `SELECT session_token, wallet_address, siwe_message, nonce
        FROM wallet_sessions WHERE wallet_address = $1`,
-      [TEST_WALLET_1.toLowerCase()]
+      [TEST_WALLET_1.toLowerCase()],
     );
 
     assertExists(stored);
@@ -136,7 +140,7 @@ Deno.test({
     await execute(
       `INSERT INTO wallet_sessions (session_token, wallet_address, siwe_message, siwe_signature, nonce, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [token1, TEST_WALLET_1.toLowerCase(), 'message1', '0xsig1', nonce1, expiresAt]
+      [token1, TEST_WALLET_1.toLowerCase(), 'message1', '0xsig1', nonce1, expiresAt],
     );
 
     // Simulate re-login (upsert)
@@ -151,13 +155,13 @@ Deno.test({
          siwe_signature = EXCLUDED.siwe_signature,
          nonce = EXCLUDED.nonce,
          expires_at = EXCLUDED.expires_at`,
-      [token2, TEST_WALLET_1.toLowerCase(), 'message2', '0xsig2', nonce2, expiresAt]
+      [token2, TEST_WALLET_1.toLowerCase(), 'message2', '0xsig2', nonce2, expiresAt],
     );
 
     // Should only have one session
     const sessions = await query<{ session_token: string }>(
       `SELECT session_token FROM wallet_sessions WHERE wallet_address = $1`,
-      [TEST_WALLET_1.toLowerCase()]
+      [TEST_WALLET_1.toLowerCase()],
     );
 
     assertEquals(sessions.length, 1);
@@ -183,14 +187,14 @@ Deno.test({
     await execute(
       `INSERT INTO wallet_sessions (session_token, wallet_address, siwe_message, siwe_signature, nonce, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [token, TEST_WALLET_1.toLowerCase(), 'message', '0xsig', 'nonce', expiresAt]
+      [token, TEST_WALLET_1.toLowerCase(), 'message', '0xsig', 'nonce', expiresAt],
     );
 
     // Query for valid session
     const session = await queryOne<{ wallet_address: string; expires_at: Date }>(
       `SELECT wallet_address, expires_at FROM wallet_sessions
        WHERE session_token = $1 AND expires_at > NOW()`,
-      [token]
+      [token],
     );
 
     assertExists(session);
@@ -216,14 +220,14 @@ Deno.test({
     await execute(
       `INSERT INTO wallet_sessions (session_token, wallet_address, siwe_message, siwe_signature, nonce, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [token, TEST_WALLET_1.toLowerCase(), 'message', '0xsig', 'nonce', expiredAt]
+      [token, TEST_WALLET_1.toLowerCase(), 'message', '0xsig', 'nonce', expiredAt],
     );
 
     // Query should not find expired session
     const session = await queryOne<{ wallet_address: string }>(
       `SELECT wallet_address FROM wallet_sessions
        WHERE session_token = $1 AND expires_at > NOW()`,
-      [token]
+      [token],
     );
 
     assertEquals(session, null, 'Expired session should not be found');
@@ -245,7 +249,7 @@ Deno.test({
     const session = await queryOne<{ wallet_address: string }>(
       `SELECT wallet_address FROM wallet_sessions
        WHERE session_token = $1 AND expires_at > NOW()`,
-      ['invalid-token-that-does-not-exist']
+      ['invalid-token-that-does-not-exist'],
     );
 
     assertEquals(session, null);
@@ -270,13 +274,13 @@ Deno.test({
     await execute(
       `INSERT INTO wallet_sessions (session_token, wallet_address, siwe_message, siwe_signature, nonce, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [token, TEST_WALLET_1.toLowerCase(), 'message', '0xsig', 'nonce', expiresAt]
+      [token, TEST_WALLET_1.toLowerCase(), 'message', '0xsig', 'nonce', expiresAt],
     );
 
     // Verify session exists
     const before = await queryOne<{ session_token: string }>(
       `SELECT session_token FROM wallet_sessions WHERE session_token = $1`,
-      [token]
+      [token],
     );
     assertExists(before);
 
@@ -286,7 +290,7 @@ Deno.test({
     // Session should be gone
     const after = await queryOne<{ session_token: string }>(
       `SELECT session_token FROM wallet_sessions WHERE session_token = $1`,
-      [token]
+      [token],
     );
     assertEquals(after, null);
 
@@ -312,20 +316,22 @@ Deno.test({
     await execute(
       `INSERT INTO wallet_sessions (session_token, wallet_address, siwe_message, siwe_signature, nonce, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [token, mixedCaseAddress.toLowerCase(), 'message', '0xsig', 'nonce', expiresAt]
+      [token, mixedCaseAddress.toLowerCase(), 'message', '0xsig', 'nonce', expiresAt],
     );
 
     // Query with original case should work (after normalizing)
     const session = await queryOne<{ wallet_address: string }>(
       `SELECT wallet_address FROM wallet_sessions WHERE wallet_address = $1`,
-      [mixedCaseAddress.toLowerCase()]
+      [mixedCaseAddress.toLowerCase()],
     );
 
     assertExists(session);
     assertEquals(session.wallet_address, mixedCaseAddress.toLowerCase());
 
     // Clean up
-    await execute(`DELETE FROM wallet_sessions WHERE wallet_address = $1`, [mixedCaseAddress.toLowerCase()]);
+    await execute(`DELETE FROM wallet_sessions WHERE wallet_address = $1`, [
+      mixedCaseAddress.toLowerCase(),
+    ]);
   },
 });
 
@@ -346,12 +352,12 @@ Deno.test({
     await execute(
       `INSERT INTO wallet_sessions (session_token, wallet_address, siwe_message, siwe_signature, nonce, anonymous_session_id, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [token, TEST_WALLET_1.toLowerCase(), 'message', '0xsig', 'nonce', TEST_SESSION_ID, expiresAt]
+      [token, TEST_WALLET_1.toLowerCase(), 'message', '0xsig', 'nonce', TEST_SESSION_ID, expiresAt],
     );
 
     const stored = await queryOne<{ anonymous_session_id: string }>(
       `SELECT anonymous_session_id FROM wallet_sessions WHERE session_token = $1`,
-      [token]
+      [token],
     );
 
     assertExists(stored);
@@ -379,13 +385,13 @@ Deno.test({
     await execute(
       `INSERT INTO wallet_sessions (session_token, wallet_address, siwe_message, siwe_signature, nonce, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [token1, TEST_WALLET_1.toLowerCase(), 'message1', '0xsig1', 'nonce1', expiresAt]
+      [token1, TEST_WALLET_1.toLowerCase(), 'message1', '0xsig1', 'nonce1', expiresAt],
     );
 
     await execute(
       `INSERT INTO wallet_sessions (session_token, wallet_address, siwe_message, siwe_signature, nonce, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [token2, TEST_WALLET_2.toLowerCase(), 'message2', '0xsig2', 'nonce2', expiresAt]
+      [token2, TEST_WALLET_2.toLowerCase(), 'message2', '0xsig2', 'nonce2', expiresAt],
     );
 
     // Both sessions should exist
@@ -393,7 +399,7 @@ Deno.test({
       `SELECT wallet_address FROM wallet_sessions
        WHERE wallet_address = ANY($1)
        ORDER BY wallet_address`,
-      [[TEST_WALLET_1.toLowerCase(), TEST_WALLET_2.toLowerCase()]]
+      [[TEST_WALLET_1.toLowerCase(), TEST_WALLET_2.toLowerCase()]],
     );
 
     assertEquals(sessions.length, 2);
@@ -420,12 +426,12 @@ Deno.test({
     await execute(
       `INSERT INTO wallet_sessions (session_token, wallet_address, siwe_message, siwe_signature, nonce, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [token, TEST_WALLET_1.toLowerCase(), 'message', '0xsig', 'nonce', expiresAt]
+      [token, TEST_WALLET_1.toLowerCase(), 'message', '0xsig', 'nonce', expiresAt],
     );
 
     const stored = await queryOne<{ expires_at: Date }>(
       `SELECT expires_at FROM wallet_sessions WHERE session_token = $1`,
-      [token]
+      [token],
     );
 
     assertExists(stored);
@@ -470,12 +476,12 @@ Issued At: 2024-01-01T00:00:00.000Z`;
     await execute(
       `INSERT INTO wallet_sessions (session_token, wallet_address, siwe_message, siwe_signature, nonce, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [token, TEST_WALLET_1.toLowerCase(), message, signature, nonce, expiresAt]
+      [token, TEST_WALLET_1.toLowerCase(), message, signature, nonce, expiresAt],
     );
 
     const stored = await queryOne<{ siwe_message: string; siwe_signature: string }>(
       `SELECT siwe_message, siwe_signature FROM wallet_sessions WHERE session_token = $1`,
-      [token]
+      [token],
     );
 
     assertExists(stored);
@@ -504,7 +510,7 @@ Deno.test({
     await execute(
       `INSERT INTO wallet_sessions (session_token, wallet_address, siwe_message, siwe_signature, nonce, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [token1, TEST_WALLET_1.toLowerCase(), 'message1', '0xsig1', 'nonce1', expiresAt]
+      [token1, TEST_WALLET_1.toLowerCase(), 'message1', '0xsig1', 'nonce1', expiresAt],
     );
 
     // Second insert for same wallet should fail without ON CONFLICT
@@ -513,7 +519,7 @@ Deno.test({
       await execute(
         `INSERT INTO wallet_sessions (session_token, wallet_address, siwe_message, siwe_signature, nonce, expires_at)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [token2, TEST_WALLET_1.toLowerCase(), 'message2', '0xsig2', 'nonce2', expiresAt]
+        [token2, TEST_WALLET_1.toLowerCase(), 'message2', '0xsig2', 'nonce2', expiresAt],
       );
     } catch (error) {
       if (error instanceof Error && error.message.includes('duplicate key')) {
@@ -543,13 +549,13 @@ Deno.test({
     await execute(
       `INSERT INTO wallet_sessions (session_token, wallet_address, siwe_message, siwe_signature, nonce, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      [token, TEST_WALLET_1.toLowerCase(), 'message', '0xsig', 'nonce', expiresAt]
+      [token, TEST_WALLET_1.toLowerCase(), 'message', '0xsig', 'nonce', expiresAt],
     );
 
     // Look up by token
     const session = await queryOne<{ wallet_address: string }>(
       `SELECT wallet_address FROM wallet_sessions WHERE session_token = $1`,
-      [token]
+      [token],
     );
 
     assertExists(session);
@@ -576,12 +582,12 @@ Deno.test({
     await execute(
       `INSERT INTO wallet_sessions (session_token, wallet_address, siwe_message, siwe_signature, nonce, expires_at, created_at)
        VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-      [token, TEST_WALLET_1.toLowerCase(), 'message', '0xsig', 'nonce', expiresAt]
+      [token, TEST_WALLET_1.toLowerCase(), 'message', '0xsig', 'nonce', expiresAt],
     );
 
     const stored = await queryOne<{ created_at: Date }>(
       `SELECT created_at FROM wallet_sessions WHERE session_token = $1`,
-      [token]
+      [token],
     );
 
     assertExists(stored);

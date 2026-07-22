@@ -4,7 +4,7 @@
  * Generate shareable invite links with customizable permissions
  */
 
-import { query, execute } from '../db/index.ts';
+import { execute, query } from '../db/index.ts';
 
 /**
  * Chat Invite with permission settings
@@ -117,7 +117,20 @@ export async function createInvite(params: CreateInviteParams): Promise<ChatInvi
       can_invoke_ai, can_pause_ai, can_grant_pause_ai, role, max_uses, expires_at
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     RETURNING *`,
-    [chatId, code, createdBy, canSendMessages, canInviteOthers, canPassOnRoles, canInvokeAi, canPauseAi, canGrantPauseAi, role, maxUses, expiresAt]
+    [
+      chatId,
+      code,
+      createdBy,
+      canSendMessages,
+      canInviteOthers,
+      canPassOnRoles,
+      canInvokeAi,
+      canPauseAi,
+      canGrantPauseAi,
+      role,
+      maxUses,
+      expiresAt,
+    ],
   );
 
   const row = result[0];
@@ -162,7 +175,7 @@ export async function getInviteByCode(code: string): Promise<ChatInvite | null> 
     created_at: string;
   }>(
     `SELECT * FROM chat_invites WHERE code = $1`,
-    [code]
+    [code],
   );
 
   if (result.length === 0) return null;
@@ -209,7 +222,7 @@ export async function getInvitesForChat(chatId: string): Promise<ChatInvite[]> {
     created_at: string;
   }>(
     `SELECT * FROM chat_invites WHERE chat_id = $1 ORDER BY created_at DESC`,
-    [chatId]
+    [chatId],
   );
 
   return result.map((row) => ({
@@ -254,7 +267,7 @@ export function isInviteValid(invite: ChatInvite): boolean {
 export async function useInvite(inviteId: string): Promise<void> {
   await execute(
     `UPDATE chat_invites SET uses = uses + 1 WHERE id = $1`,
-    [inviteId]
+    [inviteId],
   );
 }
 
@@ -273,7 +286,7 @@ export async function createChatEvent(
   eventType: string,
   actorId?: string,
   targetId?: string,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
 ): Promise<ChatEvent> {
   const result = await query<{
     id: string;
@@ -287,7 +300,13 @@ export async function createChatEvent(
     `INSERT INTO chat_events (chat_id, event_type, actor_id, target_id, metadata)
      VALUES ($1, $2, $3, $4, $5)
      RETURNING *`,
-    [chatId, eventType, actorId || null, targetId || null, metadata ? JSON.stringify(metadata) : null]
+    [
+      chatId,
+      eventType,
+      actorId || null,
+      targetId || null,
+      metadata ? JSON.stringify(metadata) : null,
+    ],
   );
 
   const row = result[0];
@@ -316,7 +335,7 @@ export async function getChatEvents(chatId: string, limit = 100): Promise<ChatEv
     created_at: string;
   }>(
     `SELECT * FROM chat_events WHERE chat_id = $1 ORDER BY created_at DESC LIMIT $2`,
-    [chatId, limit]
+    [chatId, limit],
   );
 
   return result.map((row) => ({

@@ -5,7 +5,7 @@
  * Tests cover account linking, identity resolution, and edge cases.
  */
 
-import { assertEquals, assertExists, assertRejects } from 'std/assert/mod.ts';
+import { assertEquals, assertExists } from 'std/assert/mod.ts';
 
 // ============================================================================
 // Type Definitions (from future implementation)
@@ -43,7 +43,7 @@ async function linkAddress(
   primaryAddress: string,
   linkedAddress: string,
   linkType: 'manual' | 'smart_account' | 'passkey' | 'wallet' = 'manual',
-  performedBy?: string
+  _performedBy?: string,
 ): Promise<LinkResult> {
   const primaryLower = primaryAddress.toLowerCase();
   const linkedLower = linkedAddress.toLowerCase();
@@ -230,7 +230,10 @@ Deno.test('LinkedAddresses - Validation', async (t) => {
     const result = await linkAddress('0xPrimary', '0xSecondary', 'manual');
 
     assertEquals(result.success, false);
-    assertEquals(result.error, 'Linked address already has a JuicyID. Must delete it before linking.');
+    assertEquals(
+      result.error,
+      'Linked address already has a JuicyID. Must delete it before linking.',
+    );
   });
 
   await t.step('rejects circular links (primary is already linked)', async () => {
@@ -407,7 +410,7 @@ Deno.test('LinkedAddresses - Edge Cases', async (t) => {
     const result = await linkAddress(
       '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed',
       '0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359',
-      'wallet'
+      'wallet',
     );
 
     assertEquals(result.success, true);

@@ -1691,14 +1691,31 @@ CREATE TABLE public.smart_account_withdrawals (
     amount character varying(78) NOT NULL,
     to_address character varying(42) NOT NULL,
     status character varying(20) DEFAULT 'pending'::character varying NOT NULL,
+    transfer_type character varying(20) DEFAULT 'immediate'::character varying NOT NULL,
+    available_at timestamp with time zone,
     tx_hash character varying(66),
     executed_at timestamp with time zone,
     error_message text,
     gas_sponsored boolean DEFAULT true NOT NULL,
     gas_cost_wei character varying(78),
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT smart_account_withdrawals_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('processing'::character varying)::text, ('completed'::character varying)::text, ('failed'::character varying)::text, ('cancelled'::character varying)::text])))
+    CONSTRAINT smart_account_withdrawals_status_check CHECK (((status)::text = ANY (ARRAY[('pending'::character varying)::text, ('processing'::character varying)::text, ('completed'::character varying)::text, ('failed'::character varying)::text, ('cancelled'::character varying)::text]))),
+    CONSTRAINT smart_account_withdrawals_transfer_type_check CHECK (((transfer_type)::text = ANY (ARRAY[('immediate'::character varying)::text, ('delayed'::character varying)::text])))
 );
+
+
+--
+-- Name: COLUMN smart_account_withdrawals.transfer_type; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.smart_account_withdrawals.transfer_type IS 'immediate: executes right away, delayed: waits for available_at (fraud protection)';
+
+
+--
+-- Name: COLUMN smart_account_withdrawals.available_at; Type: COMMENT; Schema: public; Owner: -
+--
+
+COMMENT ON COLUMN public.smart_account_withdrawals.available_at IS 'For delayed transfers, the timestamp when the transfer becomes executable';
 
 
 --
@@ -3841,6 +3858,13 @@ CREATE INDEX idx_wallet_sessions_token ON public.wallet_sessions USING btree (se
 --
 
 CREATE INDEX idx_withdrawals_account ON public.smart_account_withdrawals USING btree (smart_account_id);
+
+
+--
+-- Name: idx_withdrawals_available_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_withdrawals_available_at ON public.smart_account_withdrawals USING btree (available_at) WHERE (((status)::text = 'pending'::text) AND ((transfer_type)::text = 'delayed'::text));
 
 
 --

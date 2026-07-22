@@ -8,9 +8,28 @@
     <meta name="description" content="Fund your thing, your way" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+    <script>
+      // Maintained browser tests install this marker before document scripts.
+      // Production retains Space Mono; the hermetic test surface exercises the
+      // documented fallback without contacting a third-party font service.
+      if (!window.__JUICY_LOCAL_ONLY_TEST__) {
+        const fontStylesOrigin = document.createElement('link')
+        fontStylesOrigin.rel = 'preconnect'
+        fontStylesOrigin.href = 'https://fonts.googleapis.com'
+        document.head.appendChild(fontStylesOrigin)
+
+        const fontFilesOrigin = document.createElement('link')
+        fontFilesOrigin.rel = 'preconnect'
+        fontFilesOrigin.href = 'https://fonts.gstatic.com'
+        fontFilesOrigin.crossOrigin = 'anonymous'
+        document.head.appendChild(fontFilesOrigin)
+
+        const font = document.createElement('link')
+        font.rel = 'stylesheet'
+        font.href = 'https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap'
+        document.head.appendChild(font)
+      }
+    </script>
     <title>Juicy Vision</title>
   </head>
   <body class="bg-juice-dark text-white antialiased">

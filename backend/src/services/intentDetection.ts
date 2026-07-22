@@ -12,14 +12,11 @@
  */
 
 import { query } from '../db/index.ts';
+import { formatEmbeddingForPostgres, generateEmbedding } from './embeddingService.ts';
 import {
-  generateEmbedding,
-  formatEmbeddingForPostgres,
-} from './embeddingService.ts';
-import {
-  TRANSACTION_SUB_MODULES,
-  matchSubModulesByKeywords,
   INTENT_HINTS,
+  matchSubModulesByKeywords,
+  TRANSACTION_SUB_MODULES,
 } from '@shared/prompts/index.ts';
 
 // ============================================================================
@@ -102,7 +99,7 @@ interface IntentEmbeddingRow {
  */
 async function queryTopKIntents(
   queryEmbedding: number[],
-  k: number = TOP_K_RESULTS
+  k: number = TOP_K_RESULTS,
 ): Promise<IntentEmbeddingRow[]> {
   const vectorStr = formatEmbeddingForPostgres(queryEmbedding);
 
@@ -117,7 +114,7 @@ async function queryTopKIntents(
      FROM intent_embeddings
      ORDER BY embedding <=> $1::vector
      LIMIT $2`,
-    [vectorStr, k]
+    [vectorStr, k],
   );
 
   return results;
@@ -129,7 +126,7 @@ async function queryTopKIntents(
 async function hasIntentEmbeddings(): Promise<boolean> {
   try {
     const result = await query<{ count: number }>(
-      'SELECT COUNT(*) as count FROM intent_embeddings'
+      'SELECT COUNT(*) as count FROM intent_embeddings',
     );
     return result.length > 0 && result[0].count > 0;
   } catch {
@@ -177,9 +174,7 @@ function detectIntentsWithKeywords(text: string): KeywordResult {
   };
 
   // Get sub-modules if transaction is detected
-  const subModules = domains.transaction
-    ? matchSubModulesByKeywords(lowerText)
-    : [];
+  const subModules = domains.transaction ? matchSubModulesByKeywords(lowerText) : [];
 
   return { domains, subModules, matchedKeywords };
 }
@@ -202,7 +197,7 @@ export async function detectSemanticIntents(
   options: {
     useKeywordFallback?: boolean;
     minConfidence?: number;
-  } = {}
+  } = {},
 ): Promise<SemanticIntentResult> {
   const startTime = Date.now();
   const useKeywordFallback = options.useKeywordFallback ?? true;
@@ -294,7 +289,7 @@ export async function detectSemanticIntents(
           // Hybrid: boost semantic with keyword confirmation
           const boostedConfidence = Math.min(
             1,
-            currentConfidence * SEMANTIC_WEIGHT + KEYWORD_WEIGHT
+            currentConfidence * SEMANTIC_WEIGHT + KEYWORD_WEIGHT,
           );
           result.domains[domainKey] = {
             matched: true,
@@ -318,10 +313,10 @@ export async function detectSemanticIntents(
 
         // Add to matches if not already there
         const existing = result.matches.find(
-          m => m.domain === 'transaction' && m.subModule === subModule
+          (m) => m.domain === 'transaction' && m.subModule === subModule,
         );
         if (!existing) {
-          const moduleInfo = TRANSACTION_SUB_MODULES.find(m => m.id === subModule);
+          const moduleInfo = TRANSACTION_SUB_MODULES.find((m) => m.id === subModule);
           result.matches.push({
             domain: 'transaction',
             subModule,
@@ -335,10 +330,10 @@ export async function detectSemanticIntents(
   }
 
   // Calculate overall confidence
-  const matchedDomains = Object.values(result.domains).filter(d => d.matched);
+  const matchedDomains = Object.values(result.domains).filter((d) => d.matched);
   if (matchedDomains.length > 0) {
-    result.overallConfidence =
-      matchedDomains.reduce((sum, d) => sum + d.confidence, 0) / matchedDomains.length;
+    result.overallConfidence = matchedDomains.reduce((sum, d) => sum + d.confidence, 0) /
+      matchedDomains.length;
   }
 
   result.metadata.processingTimeMs = Date.now() - startTime;
@@ -350,8 +345,4 @@ export async function detectSemanticIntents(
 // Exports
 // ============================================================================
 
-export {
-  SIMILARITY_THRESHOLDS,
-  TOP_K_RESULTS,
-  hasIntentEmbeddings,
-};
+export { hasIntentEmbeddings, SIMILARITY_THRESHOLDS, TOP_K_RESULTS };

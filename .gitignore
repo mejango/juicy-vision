@@ -18,6 +18,18 @@ dist/
 *.env.bak
 .env.staging
 
+# Private keys and encrypted key stores (public .crt/.cer/.pub files remain allowed)
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_ed25519
+id_ecdsa
+id_dsa
+
 # Editor directories
 .idea/
 .vscode/
@@ -31,6 +43,7 @@ npm-debug.log*
 
 # Testing
 coverage/
+.contract-source/
 
 # TypeScript cache
 *.tsbuildinfo

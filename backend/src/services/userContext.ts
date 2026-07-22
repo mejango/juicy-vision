@@ -11,7 +11,7 @@
  * Mirror the user's language. Let them lead the complexity.
  */
 
-import { queryOne, execute } from '../db/index.ts';
+import { execute, queryOne } from '../db/index.ts';
 
 // ============================================================================
 // Types
@@ -118,7 +118,7 @@ export const JARGON_ALTERNATIVES: Record<string, { beginner: string; intermediat
     intermediate: 'price curve based on supply',
   },
   'treasury': {
-    beginner: 'the project\'s funds',
+    beginner: "the project's funds",
     intermediate: 'treasury',
   },
   'revnet': {
@@ -126,7 +126,7 @@ export const JARGON_ALTERNATIVES: Record<string, { beginner: string; intermediat
     intermediate: 'revenue network (revnet)',
   },
   'ruleset': {
-    beginner: 'the project\'s settings',
+    beginner: "the project's settings",
     intermediate: 'ruleset configuration',
   },
   'splits': {
@@ -177,7 +177,7 @@ export const JARGON_ALTERNATIVES: Record<string, { beginner: string; intermediat
 export async function getUserContext(userId: string): Promise<string> {
   const result = await queryOne<{ context_md: string }>(
     'SELECT context_md FROM user_contexts WHERE user_id = $1',
-    [userId]
+    [userId],
   );
 
   if (result) {
@@ -189,7 +189,7 @@ export async function getUserContext(userId: string): Promise<string> {
     `INSERT INTO user_contexts (user_id, context_md)
      VALUES ($1, $2)
      ON CONFLICT (user_id) DO NOTHING`,
-    [userId, DEFAULT_CONTEXT]
+    [userId, DEFAULT_CONTEXT],
   );
 
   return DEFAULT_CONTEXT;
@@ -202,7 +202,7 @@ export async function addObservation(
   userId: string,
   observation: string,
   confidence: 'high' | 'medium' | 'low' = 'medium',
-  supersedes?: string
+  supersedes?: string,
 ): Promise<void> {
   const newObs: Observation = {
     content: observation,
@@ -214,7 +214,7 @@ export async function addObservation(
   // Get current observations
   const current = await queryOne<{ observations: Observation[] }>(
     'SELECT observations FROM user_contexts WHERE user_id = $1',
-    [userId]
+    [userId],
   );
 
   let observations = current?.observations || [];
@@ -236,7 +236,7 @@ export async function addObservation(
     `UPDATE user_contexts
      SET observations = $1::jsonb, updated_at = NOW()
      WHERE user_id = $2`,
-    [JSON.stringify(observations), userId]
+    [JSON.stringify(observations), userId],
   );
 
   // Regenerate context markdown
@@ -255,7 +255,7 @@ export async function recordFamiliarTerm(userId: string, term: string): Promise<
      ),
      updated_at = NOW()
      WHERE user_id = $2`,
-    [term.toLowerCase(), userId]
+    [term.toLowerCase(), userId],
   );
 
   // Check if we should upgrade jargon level
@@ -271,7 +271,7 @@ async function maybeUpgradeJargonLevel(userId: string): Promise<void> {
     familiar_terms: string[];
   }>(
     'SELECT jargon_level, familiar_terms FROM user_contexts WHERE user_id = $1',
-    [userId]
+    [userId],
   );
 
   if (!context) return;
@@ -288,7 +288,7 @@ async function maybeUpgradeJargonLevel(userId: string): Promise<void> {
   if (newLevel !== context.jargon_level) {
     await execute(
       'UPDATE user_contexts SET jargon_level = $1, updated_at = NOW() WHERE user_id = $2',
-      [newLevel, userId]
+      [newLevel, userId],
     );
   }
 }
@@ -298,7 +298,7 @@ async function maybeUpgradeJargonLevel(userId: string): Promise<void> {
  */
 export async function addExplicitPreference(
   userId: string,
-  preference: string
+  preference: string,
 ): Promise<void> {
   await addObservation(userId, `[EXPLICIT] ${preference}`, 'high');
 }
@@ -308,7 +308,7 @@ export async function addExplicitPreference(
  */
 export async function recordMilestone(
   userId: string,
-  milestone: 'wallet_connected' | 'payment_made' | 'project_created'
+  milestone: 'wallet_connected' | 'payment_made' | 'project_created',
 ): Promise<void> {
   const milestoneMessages = {
     wallet_connected: 'User connected a wallet',
@@ -329,7 +329,7 @@ async function regenerateContextMd(userId: string): Promise<void> {
     observations: Observation[];
   }>(
     'SELECT jargon_level, familiar_terms, observations FROM user_contexts WHERE user_id = $1',
-    [userId]
+    [userId],
   );
 
   if (!data) return;
@@ -354,17 +354,21 @@ async function regenerateContextMd(userId: string): Promise<void> {
 4. Focus on what they GET, not how it WORKS
 
 ## Explicit Preferences
-${explicit.length > 0
-  ? explicit.map((o) => `- ${o.content.replace('[EXPLICIT] ', '')}`).join('\n')
-  : '(none stated)'}
+${
+    explicit.length > 0
+      ? explicit.map((o) => `- ${o.content.replace('[EXPLICIT] ', '')}`).join('\n')
+      : '(none stated)'
+  }
 
 ## Observations (newest first)
-${observed.length > 0
-  ? observed.slice(0, 20).map((o) => {
-      const age = getRelativeTime(new Date(o.timestamp));
-      return `- [${o.confidence}] ${o.content} (${age})`;
-    }).join('\n')
-  : '(none yet)'}
+${
+    observed.length > 0
+      ? observed.slice(0, 20).map((o) => {
+        const age = getRelativeTime(new Date(o.timestamp));
+        return `- [${o.confidence}] ${o.content} (${age})`;
+      }).join('\n')
+      : '(none yet)'
+  }
 
 ---
 Last updated: ${new Date().toISOString()}
@@ -372,7 +376,7 @@ Last updated: ${new Date().toISOString()}
 
   await execute(
     'UPDATE user_contexts SET context_md = $1, updated_at = NOW() WHERE user_id = $2',
-    [contextMd, userId]
+    [contextMd, userId],
   );
 }
 
@@ -398,7 +402,7 @@ export function detectJargonInMessage(message: string): string[] {
  */
 export async function processUserMessage(
   userId: string,
-  message: string
+  message: string,
 ): Promise<void> {
   // Detect and record any jargon the user uses
   const usedJargon = detectJargonInMessage(message);
@@ -417,54 +421,54 @@ export async function processUserMessage(
 export const INPUT_PROMPTS = {
   // Initial/general prompts
   general: [
-    "What are you building?",
-    "Tell me about your project",
+    'What are you building?',
+    'Tell me about your project',
     "What's on your mind?",
-    "How can I help?",
-    "What would you like to create?",
+    'How can I help?',
+    'What would you like to create?',
     "Describe what you're working on",
   ],
 
   // After user describes a project
   projectDiscovery: [
     "What's the next step?",
-    "How do you want supporters to participate?",
-    "What does success look like?",
+    'How do you want supporters to participate?',
+    'What does success look like?',
     "Who's your audience?",
-    "What makes this special?",
+    'What makes this special?',
   ],
 
   // During configuration
   configuring: [
-    "Any adjustments?",
-    "What else should we consider?",
-    "Does this feel right?",
-    "Anything to change?",
-    "Ready to continue?",
+    'Any adjustments?',
+    'What else should we consider?',
+    'Does this feel right?',
+    'Anything to change?',
+    'Ready to continue?',
   ],
 
   // Near payment/launch
   prePayment: [
-    "Ready to launch?",
-    "Any final tweaks?",
-    "Looking good?",
-    "Shall we proceed?",
+    'Ready to launch?',
+    'Any final tweaks?',
+    'Looking good?',
+    'Shall we proceed?',
   ],
 
   // After successful action
   postSuccess: [
     "What's next?",
-    "Anything else?",
-    "How else can I help?",
-    "What now?",
+    'Anything else?',
+    'How else can I help?',
+    'What now?',
   ],
 
   // When user seems stuck
   encouragement: [
-    "Take your time",
-    "No rush - what questions do you have?",
-    "Want me to explain anything?",
-    "Need a different approach?",
+    'Take your time',
+    'No rush - what questions do you have?',
+    'Want me to explain anything?',
+    'Need a different approach?',
   ],
 };
 
@@ -475,12 +479,10 @@ export type PromptContext = keyof typeof INPUT_PROMPTS;
  */
 export function getInputPrompt(
   context: PromptContext = 'general',
-  exclude?: string[]
+  exclude?: string[],
 ): string {
   const prompts = INPUT_PROMPTS[context];
-  const available = exclude
-    ? prompts.filter((p) => !exclude.includes(p))
-    : prompts;
+  const available = exclude ? prompts.filter((p) => !exclude.includes(p)) : prompts;
 
   if (available.length === 0) {
     return INPUT_PROMPTS.general[0];

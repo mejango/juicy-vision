@@ -29,7 +29,7 @@ export async function generatePseudoAddress(sessionId: string): Promise<string> 
     keyData,
     { name: 'HMAC', hash: 'SHA-256' },
     false,
-    ['sign']
+    ['sign'],
   );
 
   // Generate HMAC
@@ -38,7 +38,7 @@ export async function generatePseudoAddress(sessionId: string): Promise<string> 
   // Convert to hex and take first 40 chars (20 bytes) for address
   const hashArray = new Uint8Array(signature);
   const hashHex = Array.from(hashArray)
-    .map(b => b.toString(16).padStart(2, '0'))
+    .map((b) => b.toString(16).padStart(2, '0'))
     .join('');
 
   return `0x${hashHex.slice(0, 40)}`;
@@ -92,7 +92,7 @@ export async function getPseudoAddress(sessionId: string): Promise<string> {
 export async function verifyWalletSignature(
   message: string,
   signature: string,
-  expectedAddress: string
+  expectedAddress: string,
 ): Promise<boolean> {
   try {
     const { verifyMessage } = await import('viem');
@@ -112,8 +112,11 @@ export async function verifyWalletSignature(
  * Verify a session merge signature message format and timestamp
  * Expected format: "I am merging my anonymous session to address 0x... at timestamp 1234567890"
  */
-export function parseSessionMergeMessage(message: string): { address: string; timestamp: number } | null {
-  const regex = /^I am merging my anonymous session to address (0x[a-fA-F0-9]{40}) at timestamp (\d+)$/;
+export function parseSessionMergeMessage(
+  message: string,
+): { address: string; timestamp: number } | null {
+  const regex =
+    /^I am merging my anonymous session to address (0x[a-fA-F0-9]{40}) at timestamp (\d+)$/;
   const match = message.match(regex);
   if (!match) return null;
 

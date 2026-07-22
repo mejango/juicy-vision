@@ -4,7 +4,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { AnalysisResult, PromptSuggestion, FewShotCandidate } from './analyze.ts';
+import type { AnalysisResult, FewShotCandidate, PromptSuggestion } from './analyze.ts';
 
 export interface OptimizedOutput {
   generatedAt: string;
@@ -39,8 +39,12 @@ function formatFewShotExamples(candidates: FewShotCandidate[]): string {
     output += `### ${tag.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}\n\n`;
 
     for (const example of examples.slice(0, 2)) {
-      output += `**User:** ${example.userMessage.slice(0, 200)}${example.userMessage.length > 200 ? '...' : ''}\n\n`;
-      output += `**Assistant:** ${example.assistantResponse.slice(0, 500)}${example.assistantResponse.length > 500 ? '...' : ''}\n\n`;
+      output += `**User:** ${example.userMessage.slice(0, 200)}${
+        example.userMessage.length > 200 ? '...' : ''
+      }\n\n`;
+      output += `**Assistant:** ${example.assistantResponse.slice(0, 500)}${
+        example.assistantResponse.length > 500 ? '...' : ''
+      }\n\n`;
       output += '---\n\n';
     }
   }
@@ -90,12 +94,13 @@ function formatPromptAdditions(suggestions: PromptSuggestion[]): string {
  */
 async function generateTrainingReport(
   client: Anthropic,
-  analysis: AnalysisResult
+  analysis: AnalysisResult,
 ): Promise<string> {
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 2048,
-    system: `You are generating a training report for a chatbot improvement cycle. Be concise and actionable.`,
+    system:
+      `You are generating a training report for a chatbot improvement cycle. Be concise and actionable.`,
     messages: [
       {
         role: 'user',
@@ -120,7 +125,10 @@ ${analysis.summary.commonCorrections.join('\n- ')}
 ${analysis.summary.suggestedImprovements.join('\n- ')}
 
 ## Prompt Suggestions
-${analysis.promptSuggestions.map((p) => `[${p.priority}] ${p.section}: ${p.currentIssue}`).join('\n')}
+${
+          analysis.promptSuggestions.map((p) => `[${p.priority}] ${p.section}: ${p.currentIssue}`)
+            .join('\n')
+        }
 
 Generate a report with:
 1. Executive Summary (2-3 sentences)
@@ -153,7 +161,7 @@ function createPromptPatches(suggestions: PromptSuggestion[]): PromptPatch[] {
  */
 export async function generateOptimizedOutput(
   analysis: AnalysisResult,
-  anthropicApiKey: string
+  anthropicApiKey: string,
 ): Promise<OptimizedOutput> {
   console.log('Generating optimized outputs...');
 

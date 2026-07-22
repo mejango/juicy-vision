@@ -328,9 +328,11 @@ authTest.describe('Comprehensive - Error Recovery', () => {
 authTest.describe('Comprehensive - Full Suite Summary', () => {
   authTest.setTimeout(600000) // 10 minutes
 
-  authTest.skip('runs ALL main scenarios and generates report', async ({ page, realAuth }) => {
-    // This test is skipped by default due to length
-    // Run with: npm run test:scenarios -- --grep "ALL main" --no-skip
+  authTest('runs ALL main scenarios and generates report', async ({ page, realAuth }) => {
+    authTest.skip(
+      process.env.UX_FULL_REGRESSION !== 'true',
+      'Set UX_FULL_REGRESSION=true to run the intentionally long authenticated AI regression',
+    )
 
     const allScenarios = getAllMainScenarios()
     const results: Array<{ scenario: string; status: string; issues: number }> = []

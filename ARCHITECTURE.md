@@ -1,5 +1,8 @@
 # Architecture
 
+The framework and deployment decision is recorded in
+[`docs/adr/0001-application-stack.md`](docs/adr/0001-application-stack.md).
+
 Juicy Vision is a conversational interface for the Juicebox ecosystem. This document covers the core architecture with emphasis on the account system, wallet management, and transaction modeling.
 
 ---
@@ -272,7 +275,7 @@ Both modes use ERC-2771 meta-transactions via a TrustedForwarder:
 │                              ▼ (execute)                        │
 │  TrustedForwarder.execute()                                      │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  to: 0xc29d6995...acbb566 (same on all chains)           │   │
+│  │  to: 0x3ba60b60...ce34e3e2 (same on all chains)           │   │
 │  │  data: execute(ForwardRequest)                           │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                  │
@@ -1711,7 +1714,7 @@ CREATE TABLE chat_summaries (
 | EntryPoint v0.7 | `0x0000000071727De22E5E9d8BAf0edAc6f37da032` |
 | ForwardableSimpleAccountFactory | `0x69a05d911af23501ff9d6b811a97cac972dade05` |
 | ForwardableSimpleAccount (implementation) | `0x605Cb84933FE2C28B56089912e8428DaC417495B` |
-| TrustedForwarder | `0xc29d6995ab3b0df4650ad643adeac55e7acbb566` |
+| TrustedForwarder | `0x3ba60b60933916a7c87d0860dcee62a0ce34e3e2` |
 
 > All ERC-4337 addresses above are identical across mainnets and testnets (deterministic CREATE2 deployment).
 

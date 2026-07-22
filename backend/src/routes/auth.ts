@@ -1,11 +1,11 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import {
-  requestOtp,
-  verifyOtpAndLogin,
-  logout,
-  updateUserPrivacyMode,
   emailService,
+  logout,
+  requestOtp,
+  updateUserPrivacyMode,
+  verifyOtpAndLogin,
 } from '../services/auth.ts';
 import { requireAuth } from '../middleware/auth.ts';
 import { z } from 'zod';
@@ -42,7 +42,7 @@ authRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to send code';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // POST /auth/verify-code - Verify OTP and login
@@ -76,7 +76,7 @@ authRouter.post(
       const message = error instanceof Error ? error.message : 'Verification failed';
       return c.json({ success: false, error: message }, 401);
     }
-  }
+  },
 );
 
 // POST /auth/logout
@@ -121,7 +121,7 @@ authRouter.patch(
       success: true,
       data: { privacyMode },
     });
-  }
+  },
 );
 
 // GET /auth/session-address - Get the pseudo-address for the current session

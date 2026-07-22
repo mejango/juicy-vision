@@ -6,8 +6,12 @@ import { test, expect } from '@playwright/test'
  */
 
 const API_BASE = process.env.VITE_API_URL || 'http://localhost:3001'
+const LIVE_API_E2E = process.env.LIVE_API_E2E === 'true'
+const LIVE_API_PRECONDITION =
+  'LIVE_API_E2E requires a reachable API and explicitly seeded authenticated fixtures'
 
 test.describe('Project API', () => {
+  test.skip(!LIVE_API_E2E, 'Set LIVE_API_E2E=true with a seeded test API to run this live suite')
   let authToken: string
 
   test.beforeAll(async () => {
@@ -35,7 +39,7 @@ test.describe('Project API', () => {
         expect(data.data.project.name).toBe('Test Project')
         expect(data.data.project.chainId).toBe(1)
       } else if (response.status() === 0) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
       }
     })
 
@@ -91,7 +95,7 @@ test.describe('Project API', () => {
       })
 
       if (!createResponse.ok()) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -99,7 +103,7 @@ test.describe('Project API', () => {
       const projectId = createData.data?.project?.id
 
       if (!projectId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -146,7 +150,7 @@ test.describe('Project API', () => {
       })
 
       if (!createResponse.ok()) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -154,7 +158,7 @@ test.describe('Project API', () => {
       const projectId = createData.data?.project?.id
 
       if (!projectId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -191,7 +195,7 @@ test.describe('Project API', () => {
       })
 
       if (!createResponse.ok()) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -199,7 +203,7 @@ test.describe('Project API', () => {
       const projectId = createData.data?.project?.id
 
       if (!projectId) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
         return
       }
 
@@ -246,7 +250,7 @@ test.describe('Project API', () => {
         expect(data.success).toBe(true)
         expect(data.data.bundleId).toBeDefined()
       } else if (response.status() === 0) {
-        test.skip()
+        throw new Error(LIVE_API_PRECONDITION)
       }
     })
 

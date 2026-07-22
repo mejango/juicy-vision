@@ -1,4 +1,4 @@
-import { assertEquals, assertExists, assertRejects } from 'std/assert/mod.ts';
+import { assertEquals, assertExists } from 'std/assert/mod.ts';
 
 // Test chain configurations
 Deno.test('Wallet Service - Chain Configuration', async (t) => {
@@ -261,7 +261,11 @@ Deno.test('Wallet Service - WalletBalance Mapping', async (t) => {
     const walletBalance: WalletBalance = {
       chainId,
       tokenAddress: `jb:${mockParticipant.projectId}`,
-      tokenSymbol: (mockParticipant.project?.metadata?.name || `Project #${mockParticipant.projectId}`).slice(0, 10),
+      tokenSymbol:
+        (mockParticipant.project?.metadata?.name || `Project #${mockParticipant.projectId}`).slice(
+          0,
+          10,
+        ),
       balance: mockParticipant.balance,
       decimals: 18,
       usdValue: undefined,
@@ -283,7 +287,8 @@ Deno.test('Wallet Service - WalletBalance Mapping', async (t) => {
       },
     };
 
-    const name = noNameParticipant.project?.metadata?.name || noNameParticipant.project?.handle || `Project #${noNameParticipant.projectId}`;
+    const name = noNameParticipant.project?.metadata?.name || noNameParticipant.project?.handle ||
+      `Project #${noNameParticipant.projectId}`;
     assertEquals(name, 'my-handle');
   });
 
@@ -294,7 +299,8 @@ Deno.test('Wallet Service - WalletBalance Mapping', async (t) => {
       volume: '200000000000000000000',
     };
 
-    const name = bareParticipant.project?.metadata?.name || bareParticipant.project?.handle || `Project #${bareParticipant.projectId}`;
+    const name = bareParticipant.project?.metadata?.name || bareParticipant.project?.handle ||
+      `Project #${bareParticipant.projectId}`;
     assertEquals(name, 'Project #3');
   });
 });

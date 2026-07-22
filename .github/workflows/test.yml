@@ -1,50 +1,332 @@
 name: Tests
 
 on:
+  workflow_call:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
-jobs:
-  frontend-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+permissions:
+  contents: read
 
-      - uses: actions/setup-node@v4
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend quality and browser safety
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          node-version: '20'
+          persist-credentials: false
+
+      - name: Check out pinned deploy-all-v6 deployment artifacts
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: Bananapus/deploy-all-v6
+          ref: 316e9d4d3f9e1c5b41a5df7c0ad6183abbeccc7f
+          path: .contract-source/deploy-all-v6
+          sparse-checkout: deployments
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: '.nvmrc'
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run unit tests
-        run: npm test
+      - name: Verify locked dependency tree
+        run: npm run deps:check
 
-      - name: Install Playwright browsers
+      - name: Reject high or critical production dependency advisories
+        run: npm run audit:prod
+
+      - name: Lint frontend
+        run: npm run lint:ci
+
+      - name: Typecheck frontend
+        run: npm run typecheck
+
+      - name: Verify authorization and test-discipline source invariants
+        run: npm run check:source
+
+      - name: Verify protocol fixture parity
+        env:
+          PROTOCOL_DEPLOYMENTS_DIR: ${{ github.workspace }}/.contract-source/deploy-all-v6/deployments
+        run: npm run check:protocol
+
+      - name: Verify wallet write-site and coverage inventory
+        run: npm run check:writes
+
+      - name: Run unit tests with coverage floors
+        run: npm run test:ci
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: frontend-coverage
+          path: coverage/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Read reproducible source timestamp
+        id: source
+        shell: bash
+        run: echo "epoch=$(git show -s --format=%ct '${{ github.sha }}')" >> "$GITHUB_OUTPUT"
+
+      - name: Build production frontend
+        env:
+          DEPLOY_ENV: production
+          VITE_API_URL: https://api.ci.invalid
+          VITE_WALLETCONNECT_PROJECT_ID: 00000000000000000000000000000000
+          BUILD_SHA: ${{ github.sha }}
+          SOURCE_DATE_EPOCH: ${{ steps.source.outputs.epoch }}
+        run: npm run check:release-config && npm run build
+
+      - name: Enforce bundle budgets
+        run: npm run check:bundle
+
+      - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Run E2E tests
+      - name: Run maintained browser gates
         run: npm run test:e2e
 
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
+      - name: Upload browser diagnostics
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: playwright-report
-          path: playwright-report/
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
           retention-days: 30
 
-  backend-tests:
-    runs-on: ubuntu-latest
+  backend:
+    name: Backend and PostgreSQL integration safety
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: postgresql://juicy_ci:juicy_ci_password@127.0.0.1:5432/juicyvision_ci
+      DENO_ENV: development
+      REQUIRE_TEST_DATABASE: 'true'
+      JWT_SECRET: ci-only-jwt-secret-not-used-outside-the-ephemeral-test-job
+      ENCRYPTION_MASTER_KEY: ci-only-encryption-key-not-used-outside-the-test-job
+    services:
+      postgres:
+        image: postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+        env:
+          POSTGRES_USER: juicy_ci
+          POSTGRES_PASSWORD: juicy_ci_password
+          POSTGRES_DB: juicyvision_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready --username=juicy_ci --dbname=juicyvision_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    defaults:
+      run:
+        working-directory: backend
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: denoland/setup-deno@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          deno-version: v2.x
+          persist-credentials: false
 
-      - name: Run backend tests
-        run: cd backend && deno task test
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.6.5
+
+      - name: Check backend formatting
+        run: deno task fmt:check
+
+      - name: Lint complete backend
+        run: deno task lint
+
+      - name: Typecheck backend
+        run: deno task check
+
+      - name: Initialize the ephemeral integration database
+        run: deno task migrate
+
+      - name: Verify legacy database upgrade and migration idempotency
+        run: deno task test:migrate:legacy
+
+      - name: Run backend tests with database coverage required
+        run: deno task test
+
+  containers:
+    name: Build portable deployment images
+    needs: [frontend, backend]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Build frontend image
+        run: |
+          docker build \
+            --file Dockerfile.frontend \
+            --build-arg BUILD_SHA="${{ github.sha }}" \
+            --build-arg SOURCE_DATE_EPOCH="$(git show -s --format=%ct '${{ github.sha }}')" \
+            --tag juicy-vision-frontend:ci \
+            .
+
+      - name: Smoke-test frontend image
+        shell: bash
+        run: |
+          docker run --detach \
+            --name juicy-vision-frontend-ci \
+            --publish 127.0.0.1:18080:8080 \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            juicy-vision-frontend:ci
+          trap 'docker rm --force juicy-vision-frontend-ci >/dev/null 2>&1 || true' EXIT
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:18080/healthz >/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl --fail --silent --show-error http://127.0.0.1:18080/healthz
+          curl --fail --silent --show-error --head http://127.0.0.1:18080/ \
+            | grep --ignore-case --extended-regexp 'x-content-type-options: nosniff'
+
+      - name: Build backend image
+        run: docker build --file backend/Dockerfile --tag juicy-vision-backend:ci .
+
+      - name: Build pinned local-development database image
+        run: >-
+          docker build
+          --file backend/src/db/Dockerfile.postgres
+          --tag juicy-vision-postgres:ci
+          backend/src/db
+
+      - name: Validate backend production configuration in the image
+        run: |
+          docker run --rm \
+            --network none \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --env DENO_ENV=production \
+            --env ALLOWED_ORIGINS=https://juicy.vision \
+            --env DATABASE_URL=postgresql://juicy:secret@database.invalid:5432/juicyvision \
+            --env JWT_SECRET=ci-jwt-secret-with-more-than-thirty-two-characters \
+            --env ENCRYPTION_MASTER_KEY=ci-encryption-secret-with-more-than-thirty-two-characters \
+            --env CRON_SECRET=ci-cron-secret-with-more-than-thirty-two-characters \
+            --env RESERVES_PRIVATE_KEY=0x1111111111111111111111111111111111111111111111111111111111111111 \
+            juicy-vision-backend:ci task config:check
+
+      - name: Smoke-test backend image with PostgreSQL
+        shell: bash
+        run: |
+          network_name=juicy-vision-backend-ci
+          database_name=juicy-vision-postgres-ci
+          api_name=juicy-vision-api-ci
+          cleanup() {
+            docker rm --force "$api_name" >/dev/null 2>&1 || true
+            docker rm --force "$database_name" >/dev/null 2>&1 || true
+            docker network rm "$network_name" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          docker network create --internal "$network_name"
+          docker run --detach \
+            --name "$database_name" \
+            --network "$network_name" \
+            --env POSTGRES_USER=juicy_ci \
+            --env POSTGRES_PASSWORD=juicy_ci_password \
+            --env POSTGRES_DB=juicyvision_ci \
+            --health-cmd "pg_isready --username=juicy_ci --dbname=juicyvision_ci" \
+            --health-interval 2s \
+            --health-timeout 2s \
+            --health-retries 15 \
+            juicy-vision-postgres:ci
+
+          for attempt in {1..30}; do
+            database_health="$(docker inspect --format '{{.State.Health.Status}}' "$database_name")"
+            if [[ "$database_health" == healthy ]]; then
+              break
+            fi
+            if [[ "$database_health" == unhealthy ]]; then
+              docker logs "$database_name"
+              exit 1
+            fi
+            sleep 1
+          done
+          if [[ "$(docker inspect --format '{{.State.Health.Status}}' "$database_name")" != healthy ]]; then
+            docker logs "$database_name"
+            exit 1
+          fi
+
+          docker run --rm \
+            --network "$network_name" \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --env DENO_ENV=production \
+            --env ALLOWED_ORIGINS=https://juicy.vision \
+            --env DATABASE_URL=postgresql://juicy_ci:juicy_ci_password@juicy-vision-postgres-ci:5432/juicyvision_ci \
+            --env JWT_SECRET=ci-jwt-secret-with-more-than-thirty-two-characters \
+            --env ENCRYPTION_MASTER_KEY=ci-encryption-secret-with-more-than-thirty-two-characters \
+            --env CRON_SECRET=ci-cron-secret-with-more-than-thirty-two-characters \
+            --env RESERVES_PRIVATE_KEY=0x1111111111111111111111111111111111111111111111111111111111111111 \
+            juicy-vision-backend:ci task migrate
+
+          docker run --detach \
+            --name "$api_name" \
+            --network "$network_name" \
+            --publish 127.0.0.1:18081:8080 \
+            --read-only \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --env DENO_ENV=production \
+            --env ALLOWED_ORIGINS=https://juicy.vision \
+            --env DATABASE_URL=postgresql://juicy_ci:juicy_ci_password@juicy-vision-postgres-ci:5432/juicyvision_ci \
+            --env JWT_SECRET=ci-jwt-secret-with-more-than-thirty-two-characters \
+            --env ENCRYPTION_MASTER_KEY=ci-encryption-secret-with-more-than-thirty-two-characters \
+            --env CRON_SECRET=ci-cron-secret-with-more-than-thirty-two-characters \
+            --env RESERVES_PRIVATE_KEY=0x1111111111111111111111111111111111111111111111111111111111111111 \
+            juicy-vision-backend:ci
+
+          if [[ "$(docker inspect --format '{{.Config.User}}' "$api_name")" != deno ]]; then
+            docker inspect "$api_name"
+            exit 1
+          fi
+
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:18081/livez >/dev/null \
+              && curl --fail --silent http://127.0.0.1:18081/readyz >/dev/null; then
+              break
+            fi
+            if [[ "$(docker inspect --format '{{.State.Running}}' "$api_name")" != true ]]; then
+              docker logs "$api_name"
+              exit 1
+            fi
+            sleep 1
+          done
+          if ! curl --fail --silent --show-error http://127.0.0.1:18081/livez; then
+            docker logs "$api_name"
+            exit 1
+          fi
+          if ! curl --fail --silent --show-error http://127.0.0.1:18081/readyz; then
+            docker logs "$api_name"
+            exit 1
+          fi

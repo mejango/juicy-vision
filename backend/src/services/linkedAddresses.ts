@@ -12,7 +12,7 @@
  * - Case-insensitive: All address comparisons are case-insensitive
  */
 
-import { query, queryOne, execute, transaction } from '../db/index.ts';
+import { query, queryOne, transaction } from '../db/index.ts';
 import { getIdentityByAddress } from './identity.ts';
 
 // ============================================================================
@@ -77,7 +77,7 @@ export async function linkAddress(
   linkedAddress: string,
   linkType: 'manual' | 'smart_account' | 'passkey' | 'wallet' = 'manual',
   performedBy?: string,
-  userId?: string
+  userId?: string,
 ): Promise<LinkResult> {
   const primaryLower = primaryAddress.toLowerCase();
   const linkedLower = linkedAddress.toLowerCase();
@@ -96,7 +96,7 @@ export async function linkAddress(
   // Validation: Linked address must not already be linked to another primary
   const existingLink = await queryOne<DbLinkedAddress>(
     `SELECT * FROM linked_addresses WHERE LOWER(linked_address) = LOWER($1)`,
-    [linkedAddress]
+    [linkedAddress],
   );
   if (existingLink) {
     return { success: false, error: 'Address is already linked to another account' };
@@ -105,7 +105,7 @@ export async function linkAddress(
   // Validation: Linked address must not be a primary for other links
   const isExistingPrimary = await queryOne<{ id: string }>(
     `SELECT id FROM linked_addresses WHERE LOWER(primary_address) = LOWER($1) LIMIT 1`,
-    [linkedAddress]
+    [linkedAddress],
   );
   if (isExistingPrimary) {
     return { success: false, error: 'Address is a primary for other linked addresses' };
@@ -114,7 +114,7 @@ export async function linkAddress(
   // Validation: Primary can't be someone else's linked address (prevent circular)
   const primaryIsLinked = await queryOne<DbLinkedAddress>(
     `SELECT * FROM linked_addresses WHERE LOWER(linked_address) = LOWER($1)`,
-    [primaryAddress]
+    [primaryAddress],
   );
   if (primaryIsLinked) {
     return { success: false, error: 'Primary address is already linked to another account' };
@@ -137,7 +137,7 @@ export async function linkAddress(
         `INSERT INTO linked_addresses (primary_address, linked_address, link_type, user_id)
          VALUES ($1, $2, $3, $4)
          RETURNING *`,
-        [primaryAddress, linkedAddress, linkType, userId ?? null]
+        [primaryAddress, linkedAddress, linkType, userId ?? null],
       );
 
       if (!result.rows[0]) {
@@ -148,7 +148,7 @@ export async function linkAddress(
       await client.queryObject(
         `INSERT INTO linked_address_history (primary_address, linked_address, link_type, action, performed_by_address)
          VALUES ($1, $2, $3, 'linked', $4)`,
-        [primaryAddress, linkedAddress, linkType, performedBy ?? primaryAddress]
+        [primaryAddress, linkedAddress, linkType, performedBy ?? primaryAddress],
       );
 
       return result.rows[0];
@@ -171,7 +171,7 @@ export async function linkAddress(
 export async function getPrimaryAddress(address: string): Promise<string | null> {
   const link = await queryOne<DbLinkedAddress>(
     `SELECT * FROM linked_addresses WHERE LOWER(linked_address) = LOWER($1)`,
-    [address]
+    [address],
   );
   return link?.primary_address ?? null;
 }
@@ -182,7 +182,7 @@ export async function getPrimaryAddress(address: string): Promise<string | null>
 export async function getLinkedAddresses(primaryAddress: string): Promise<LinkedAddress[]> {
   const links = await query<DbLinkedAddress>(
     `SELECT * FROM linked_addresses WHERE LOWER(primary_address) = LOWER($1) ORDER BY created_at ASC`,
-    [primaryAddress]
+    [primaryAddress],
   );
   return links.map(dbToLinkedAddress);
 }
@@ -194,7 +194,7 @@ export async function getLinkedAddresses(primaryAddress: string): Promise<Linked
 export async function unlinkAddress(linkedAddress: string, performedBy: string): Promise<boolean> {
   const link = await queryOne<DbLinkedAddress>(
     `SELECT * FROM linked_addresses WHERE LOWER(linked_address) = LOWER($1)`,
-    [linkedAddress]
+    [linkedAddress],
   );
 
   if (!link) {
@@ -216,13 +216,13 @@ export async function unlinkAddress(linkedAddress: string, performedBy: string):
     await client.queryObject(
       `INSERT INTO linked_address_history (primary_address, linked_address, link_type, action, performed_by_address)
        VALUES ($1, $2, $3, 'unlinked', $4)`,
-      [link.primary_address, link.linked_address, link.link_type, performedBy]
+      [link.primary_address, link.linked_address, link.link_type, performedBy],
     );
 
     // Delete the link
     await client.queryObject(
       `DELETE FROM linked_addresses WHERE id = $1`,
-      [link.id]
+      [link.id],
     );
   });
 
@@ -249,7 +249,7 @@ export async function canBeLinkTarget(address: string): Promise<{
   // Check if already linked
   const existingLink = await queryOne<DbLinkedAddress>(
     `SELECT * FROM linked_addresses WHERE LOWER(linked_address) = LOWER($1)`,
-    [address]
+    [address],
   );
   if (existingLink) {
     return { canLink: false, reason: 'Already linked to another account' };
@@ -258,7 +258,7 @@ export async function canBeLinkTarget(address: string): Promise<{
   // Check if this is a primary for other links
   const isPrimary = await queryOne<{ id: string }>(
     `SELECT id FROM linked_addresses WHERE LOWER(primary_address) = LOWER($1) LIMIT 1`,
-    [address]
+    [address],
   );
   if (isPrimary) {
     return { canLink: false, reason: 'This address has linked accounts' };
@@ -289,7 +289,7 @@ export async function canBePrimary(address: string): Promise<{
   // Can't be linked to someone else
   const isLinked = await queryOne<DbLinkedAddress>(
     `SELECT * FROM linked_addresses WHERE LOWER(linked_address) = LOWER($1)`,
-    [address]
+    [address],
   );
   if (isLinked) {
     return { canBePrimary: false, reason: 'Already linked to another account' };
@@ -324,7 +324,7 @@ export async function getLinkHistory(address: string): Promise<
     `SELECT * FROM linked_address_history
      WHERE LOWER(primary_address) = LOWER($1) OR LOWER(linked_address) = LOWER($1)
      ORDER BY performed_at DESC`,
-    [address]
+    [address],
   );
 
   return history.map((h) => ({

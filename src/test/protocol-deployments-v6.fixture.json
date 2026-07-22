@@ -1,0 +1,235 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repository": "https://github.com/Bananapus/deploy-all-v6",
+    "commit": "316e9d4d3f9e1c5b41a5df7c0ad6183abbeccc7f"
+  },
+  "chains": {
+    "1": { "name": "Ethereum", "deploymentDir": "ethereum" },
+    "10": { "name": "Optimism", "deploymentDir": "optimism" },
+    "8453": { "name": "Base", "deploymentDir": "base" },
+    "42161": { "name": "Arbitrum", "deploymentDir": "arbitrum" },
+    "84532": { "name": "Base Sepolia", "deploymentDir": "base_sepolia" },
+    "421614": { "name": "Arbitrum Sepolia", "deploymentDir": "arbitrum_sepolia" },
+    "11155111": { "name": "Sepolia", "deploymentDir": "sepolia" },
+    "11155420": { "name": "OP Sepolia", "deploymentDir": "optimism_sepolia" }
+  },
+  "contracts": {
+    "ERC2771Forwarder": {
+      "address": "0x3ba60b60933916a7c87d0860dcee62a0ce34e3e2",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JBController": {
+      "address": "0x3fcec3572e84b624477bcff4e2cf1f7deab648f1",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JBMultiTerminal": {
+      "address": "0x130f5dd2bd8805443cf41755253d778a75a67f53",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JBRulesets": {
+      "address": "0x26f2228a4e8b0079ed1c2a3d22f12ff7f83cdfba",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JBTerminalStore": {
+      "address": "0x7497ae014a60561925b51c0a3b4ade7460b9927c",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JBProjects": {
+      "address": "0x6017d1fba9dc279bfa0b03fd931c22e242ab3691",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JBTokens": {
+      "address": "0x1f80d8f057ee36b4c2656d107e4e4558b71ba7d9",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JBDirectory": {
+      "address": "0x5aff29060e023e6fb87be5596652b33c65af535b",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JBSplits": {
+      "address": "0x28b3d11fcb8d2ad0a143c5b193cd9f2e4d43f4c3",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JBFundAccessLimits": {
+      "address": "0xc93360158f187fc8fc8f1062a1b31d06f185dbab",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JBPermissions": {
+      "address": "0xf92ac1ab5a00033e35a3975739124f61928c36b0",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JBPrices": {
+      "address": "0xad45e4627f068d1e6b21e5301870d807543a8401",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JBFeelessAddresses": {
+      "address": "0x657d0e588fca6f8c49394c9ca8a1cf6505b10314",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JBHeldFees": {
+      "address": "0x62e77076b6e902e7aec8b2925acc9b46058e3d38",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JBOmnichainDeployer": {
+      "address": "0xb853758a70a6b4216c09f1d071ea2344aba0a34f",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "REVDeployer": {
+      "address": "0xb552eb94284f94b833837d4b2cbb237128415d4e",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "REVOwner": {
+      "address": "0x2ba4705ad0332cdfb299b452068438bcba3faaf3",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "REVLoans": {
+      "address": "0x056265c31157748818f0910d1859acd2f7d427de",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "CTDeployer": {
+      "address": "0xf21b8717cb50e497e90f375ec532557dd9022655",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JB721TiersHookDeployer": {
+      "address": "0xb7b8ec35e2dd84afff04ee769c6189e7a4d44a78",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JB721TiersHookProjectDeployer": {
+      "address": "0x3ffdc94e7f1de4b74c52158ec9dd3b965585f451",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JB721TiersHookStore": {
+      "address": "0x69913acf79dbba170d9efafe605ee62b42164f9c",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JBRouterTerminal": {
+      "address": "0x0fbcbb3d10c8f524840d74ef81c1a9f161c418d7",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111]
+    },
+    "JBRouterTerminalRegistry": {
+      "address": "0xe0427f250fdb0379c8e98e884ee4570521208cbc",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JBSuckerRegistry": {
+      "address": "0x7903a854ae91eaf635430d120a1a434085cef297",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    },
+    "JBBuybackHook": {
+      "address": "0x77bee1ad2ac0ace98a9b5b58d75685c8b4d94948",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111]
+    },
+    "JBBuybackHookRegistry": {
+      "address": "0x72f55a54cd53410a5ff175508a5a384227081788",
+      "deployedOn": [1, 10, 8453, 42161, 84532, 421614, 11155111, 11155420]
+    }
+  },
+  "suckerDeployers": {
+    "ccip": [
+      {
+        "pair": "ETH_OP",
+        "address": "0x41d28bedd5b0fbf65424b48c0e1de92d5c882fc7",
+        "routes": [
+          { "chainId": 1, "remoteChainId": 10, "manifest": "JBCCIPSuckerDeployer__OP.json" },
+          { "chainId": 10, "remoteChainId": 1, "manifest": "JBCCIPSuckerDeployer__ETH.json" },
+          { "chainId": 11155111, "remoteChainId": 11155420, "manifest": "JBCCIPSuckerDeployer__OP_SEP.json" },
+          { "chainId": 11155420, "remoteChainId": 11155111, "manifest": "JBCCIPSuckerDeployer__ETH_SEP.json" }
+        ]
+      },
+      {
+        "pair": "ETH_ARB",
+        "address": "0x36a2e30029d87c46f77f71b7b6b97fec8a760660",
+        "routes": [
+          { "chainId": 1, "remoteChainId": 42161, "manifest": "JBCCIPSuckerDeployer__ARB.json" },
+          { "chainId": 42161, "remoteChainId": 1, "manifest": "JBCCIPSuckerDeployer__ETH.json" },
+          { "chainId": 11155111, "remoteChainId": 421614, "manifest": "JBCCIPSuckerDeployer__ARB_SEP.json" },
+          { "chainId": 421614, "remoteChainId": 11155111, "manifest": "JBCCIPSuckerDeployer__ETH_SEP.json" }
+        ]
+      },
+      {
+        "pair": "ETH_BASE",
+        "address": "0x3955fec11fe15f0be4dfa2b0153feef55d55e1ee",
+        "routes": [
+          { "chainId": 1, "remoteChainId": 8453, "manifest": "JBCCIPSuckerDeployer__BASE.json" },
+          { "chainId": 8453, "remoteChainId": 1, "manifest": "JBCCIPSuckerDeployer__ETH.json" },
+          { "chainId": 11155111, "remoteChainId": 84532, "manifest": "JBCCIPSuckerDeployer__BASE_SEP.json" },
+          { "chainId": 84532, "remoteChainId": 11155111, "manifest": "JBCCIPSuckerDeployer__ETH_SEP.json" }
+        ]
+      },
+      {
+        "pair": "OP_ARB",
+        "address": "0x1d58d56fbdb753de44737be926c33b79cf009afa",
+        "routes": [
+          { "chainId": 10, "remoteChainId": 42161, "manifest": "JBCCIPSuckerDeployer__ARB.json" },
+          { "chainId": 42161, "remoteChainId": 10, "manifest": "JBCCIPSuckerDeployer__OP.json" },
+          { "chainId": 11155420, "remoteChainId": 421614, "manifest": "JBCCIPSuckerDeployer__ARB_SEP.json" },
+          { "chainId": 421614, "remoteChainId": 11155420, "manifest": "JBCCIPSuckerDeployer__OP_SEP.json" }
+        ]
+      },
+      {
+        "pair": "OP_BASE",
+        "address": "0x8f6f0a70939997310309d7ab66b1b199faafe7f0",
+        "routes": [
+          { "chainId": 10, "remoteChainId": 8453, "manifest": "JBCCIPSuckerDeployer__BASE.json" },
+          { "chainId": 8453, "remoteChainId": 10, "manifest": "JBCCIPSuckerDeployer__OP.json" },
+          { "chainId": 11155420, "remoteChainId": 84532, "manifest": "JBCCIPSuckerDeployer__BASE_SEP.json" },
+          { "chainId": 84532, "remoteChainId": 11155420, "manifest": "JBCCIPSuckerDeployer__OP_SEP.json" }
+        ]
+      },
+      {
+        "pair": "ARB_BASE",
+        "address": "0x2845f919af9ed7d8dab188d42114bd590340a242",
+        "routes": [
+          { "chainId": 42161, "remoteChainId": 8453, "manifest": "JBCCIPSuckerDeployer__BASE.json" },
+          { "chainId": 8453, "remoteChainId": 42161, "manifest": "JBCCIPSuckerDeployer__ARB.json" },
+          { "chainId": 421614, "remoteChainId": 84532, "manifest": "JBCCIPSuckerDeployer__BASE_SEP.json" },
+          { "chainId": 84532, "remoteChainId": 421614, "manifest": "JBCCIPSuckerDeployer__ARB_SEP.json" }
+        ]
+      }
+    ],
+    "native": [
+      {
+        "pair": "ETH_OP",
+        "address": "0x298a775c030adcedb641a89d9047ec9972674e1a",
+        "routes": [
+          { "chainId": 1, "remoteChainId": 10, "manifest": "JBOptimismSuckerDeployer.json" },
+          { "chainId": 10, "remoteChainId": 1, "manifest": "JBOptimismSuckerDeployer.json" },
+          { "chainId": 11155111, "remoteChainId": 11155420, "manifest": "JBOptimismSuckerDeployer.json" },
+          { "chainId": 11155420, "remoteChainId": 11155111, "manifest": "JBOptimismSuckerDeployer.json" }
+        ]
+      },
+      {
+        "pair": "ETH_ARB",
+        "address": "0xa12ebfca3d4e0810e4ed174e4c08277c26917acb",
+        "routes": [
+          { "chainId": 1, "remoteChainId": 42161, "manifest": "JBArbitrumSuckerDeployer.json" },
+          { "chainId": 42161, "remoteChainId": 1, "manifest": "JBArbitrumSuckerDeployer.json" },
+          { "chainId": 11155111, "remoteChainId": 421614, "manifest": "JBArbitrumSuckerDeployer.json" },
+          { "chainId": 421614, "remoteChainId": 11155111, "manifest": "JBArbitrumSuckerDeployer.json" }
+        ]
+      },
+      {
+        "pair": "ETH_BASE",
+        "address": "0x54140331902de5c3445eb0c26e15099a5a9d59e6",
+        "routes": [
+          { "chainId": 1, "remoteChainId": 8453, "manifest": "JBBaseSuckerDeployer.json" },
+          { "chainId": 8453, "remoteChainId": 1, "manifest": "JBBaseSuckerDeployer.json" },
+          { "chainId": 11155111, "remoteChainId": 84532, "manifest": "JBBaseSuckerDeployer.json" },
+          { "chainId": 84532, "remoteChainId": 11155111, "manifest": "JBBaseSuckerDeployer.json" }
+        ]
+      }
+    ]
+  },
+  "knownAbsences": [
+    {
+      "chainId": 11155420,
+      "contract": "JBRouterTerminal",
+      "reason": "No deployment manifest in the pinned deploy-all-v6 snapshot"
+    },
+    {
+      "chainId": 11155420,
+      "contract": "JBBuybackHook",
+      "reason": "No deployment manifest in the pinned deploy-all-v6 snapshot"
+    }
+  ]
+}

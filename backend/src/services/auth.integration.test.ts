@@ -11,20 +11,24 @@
  * These tests require a running database connection.
  */
 
-import { assertEquals, assertExists, assertNotEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
-import { query, queryOne, execute } from '../db/index.ts';
+import {
+  assertEquals,
+  assertExists,
+  assertNotEquals,
+} from 'https://deno.land/std@0.224.0/assert/mod.ts';
+import { execute, query, queryOne } from '../db/index.ts';
 import {
   createOtpCode,
-  verifyOtpCode,
+  createSession,
+  deleteAllUserSessions,
+  deleteSession,
   findOrCreateUser,
   findUserByEmail,
   findUserById,
-  markEmailVerified,
-  createSession,
   findValidSession,
-  deleteSession,
-  deleteAllUserSessions,
+  markEmailVerified,
   updateUserPrivacyMode,
+  verifyOtpCode,
 } from './auth.ts';
 import { SKIP_DB_TESTS } from '../test/helpers.ts';
 
@@ -40,28 +44,28 @@ async function cleanupTestData(): Promise<void> {
   // Get test user IDs
   const users = await query<{ id: string }>(
     `SELECT id FROM users WHERE email = ANY($1)`,
-    [[TEST_EMAIL_1, TEST_EMAIL_2, TEST_EMAIL_3]]
+    [[TEST_EMAIL_1, TEST_EMAIL_2, TEST_EMAIL_3]],
   );
-  const userIds = users.map(u => u.id);
+  const userIds = users.map((u) => u.id);
 
   if (userIds.length > 0) {
     // Clean up sessions
     await execute(
       `DELETE FROM sessions WHERE user_id = ANY($1)`,
-      [userIds]
+      [userIds],
     );
   }
 
   // Clean up OTP codes
   await execute(
     `DELETE FROM otp_codes WHERE email = ANY($1)`,
-    [[TEST_EMAIL_1, TEST_EMAIL_2, TEST_EMAIL_3]]
+    [[TEST_EMAIL_1, TEST_EMAIL_2, TEST_EMAIL_3]],
   );
 
   // Clean up users
   await execute(
     `DELETE FROM users WHERE email = ANY($1)`,
-    [[TEST_EMAIL_1, TEST_EMAIL_2, TEST_EMAIL_3]]
+    [[TEST_EMAIL_1, TEST_EMAIL_2, TEST_EMAIL_3]],
   );
 }
 
@@ -87,7 +91,7 @@ Deno.test({
     // Verify code is stored in database
     const stored = await queryOne<{ code: string; used: boolean }>(
       `SELECT code, used FROM otp_codes WHERE email = $1 AND used = FALSE`,
-      [TEST_EMAIL_1]
+      [TEST_EMAIL_1],
     );
 
     assertExists(stored);
@@ -119,14 +123,14 @@ Deno.test({
     // First code should be marked as used
     const firstCode = await queryOne<{ used: boolean }>(
       `SELECT used FROM otp_codes WHERE email = $1 AND code = $2`,
-      [TEST_EMAIL_1, code1]
+      [TEST_EMAIL_1, code1],
     );
     assertEquals(firstCode?.used, true, 'First code should be invalidated');
 
     // Second code should be valid
     const secondCode = await queryOne<{ used: boolean }>(
       `SELECT used FROM otp_codes WHERE email = $1 AND code = $2`,
-      [TEST_EMAIL_1, code2]
+      [TEST_EMAIL_1, code2],
     );
     assertEquals(secondCode?.used, false, 'Second code should be valid');
 
@@ -152,7 +156,7 @@ Deno.test({
     // Code should be marked as used
     const stored = await queryOne<{ used: boolean }>(
       `SELECT used FROM otp_codes WHERE email = $1 AND code = $2`,
-      [TEST_EMAIL_1, code]
+      [TEST_EMAIL_1, code],
     );
     assertEquals(stored?.used, true, 'Code should be marked as used after verification');
 
@@ -343,7 +347,7 @@ Deno.test({
     // Session should be in database
     const stored = await queryOne<{ user_id: string }>(
       `SELECT user_id FROM sessions WHERE id = $1`,
-      [session.id]
+      [session.id],
     );
     assertEquals(stored?.user_id, user.id);
 

@@ -6,9 +6,8 @@
  * For external wallets, users manage their own keys.
  */
 
-import { query, queryOne, execute } from '../db/index.ts';
+import { execute, query, queryOne } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
-import * as jose from 'jose';
 
 // ============================================================================
 // Types
@@ -109,7 +108,7 @@ async function deriveServerKey(salt: Uint8Array): Promise<CryptoKey> {
     masterKey.buffer as ArrayBuffer,
     'HKDF',
     false,
-    ['deriveKey']
+    ['deriveKey'],
   );
 
   return crypto.subtle.deriveKey(
@@ -122,7 +121,7 @@ async function deriveServerKey(salt: Uint8Array): Promise<CryptoKey> {
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
     false,
-    ['encrypt', 'decrypt']
+    ['encrypt', 'decrypt'],
   );
 }
 
@@ -142,7 +141,7 @@ export async function generateKeypair(): Promise<Keypair> {
       namedCurve: 'P-256',
     },
     true,
-    ['deriveBits']
+    ['deriveBits'],
   );
 
   const publicKeyBuffer = await crypto.subtle.exportKey('raw', keyPair.publicKey);
@@ -163,7 +162,7 @@ export async function generateKeypair(): Promise<Keypair> {
  */
 export async function encryptWithKey(
   plaintext: string,
-  keyBytes: Uint8Array
+  keyBytes: Uint8Array,
 ): Promise<string> {
   const nonce = generateNonce();
   const key = await crypto.subtle.importKey(
@@ -171,13 +170,13 @@ export async function encryptWithKey(
     keyBytes.buffer as ArrayBuffer,
     { name: 'AES-GCM' },
     false,
-    ['encrypt']
+    ['encrypt'],
   );
 
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv: nonce.buffer as ArrayBuffer },
     key,
-    new TextEncoder().encode(plaintext).buffer as ArrayBuffer
+    new TextEncoder().encode(plaintext).buffer as ArrayBuffer,
   );
 
   // Prepend nonce to ciphertext
@@ -193,7 +192,7 @@ export async function encryptWithKey(
  */
 export async function decryptWithKey(
   encryptedBase64: string,
-  keyBytes: Uint8Array
+  keyBytes: Uint8Array,
 ): Promise<string> {
   const combined = fromBase64(encryptedBase64);
   const nonce = combined.slice(0, NONCE_LENGTH);
@@ -204,13 +203,13 @@ export async function decryptWithKey(
     keyBytes.buffer as ArrayBuffer,
     { name: 'AES-GCM' },
     false,
-    ['decrypt']
+    ['decrypt'],
   );
 
   const plaintext = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv: nonce.buffer as ArrayBuffer },
     key,
-    ciphertext.buffer as ArrayBuffer
+    ciphertext.buffer as ArrayBuffer,
   );
 
   return new TextDecoder().decode(plaintext);
@@ -230,7 +229,7 @@ export async function encryptPrivateKey(privateKeyBase64: string): Promise<strin
   const ciphertext = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv: salt.buffer as ArrayBuffer }, // Use salt as IV for simplicity
     serverKey,
-    fromBase64(privateKeyBase64).buffer as ArrayBuffer
+    fromBase64(privateKeyBase64).buffer as ArrayBuffer,
   );
 
   // Prepend salt to ciphertext
@@ -254,7 +253,7 @@ export async function decryptPrivateKey(encryptedBase64: string): Promise<string
   const plaintext = await crypto.subtle.decrypt(
     { name: 'AES-GCM', iv: salt.buffer as ArrayBuffer },
     serverKey,
-    ciphertext.buffer as ArrayBuffer
+    ciphertext.buffer as ArrayBuffer,
   );
 
   return toBase64(new Uint8Array(plaintext));
@@ -275,14 +274,14 @@ export async function createUserKeypair(userId: string): Promise<EncryptedKeypai
   await execute(
     `UPDATE user_keypairs SET is_active = FALSE, revoked_at = NOW()
      WHERE user_id = $1 AND is_active = TRUE`,
-    [userId]
+    [userId],
   );
 
   // Store new keypair
   await execute(
     `INSERT INTO user_keypairs (user_id, public_key, encrypted_private_key, algorithm)
      VALUES ($1, $2, $3, $4)`,
-    [userId, keypair.publicKey, encryptedPrivateKey, ALGORITHM]
+    [userId, keypair.publicKey, encryptedPrivateKey, ALGORITHM],
   );
 
   return {
@@ -297,7 +296,7 @@ export async function createUserKeypair(userId: string): Promise<EncryptedKeypai
 export async function getUserKeypair(userId: string): Promise<EncryptedKeypair | null> {
   const keypair = await queryOne<DbUserKeypair>(
     `SELECT * FROM user_keypairs WHERE user_id = $1 AND is_active = TRUE`,
-    [userId]
+    [userId],
   );
 
   if (!keypair) return null;
@@ -338,7 +337,7 @@ export async function storeGroupKeyForMember(
   chatId: string,
   memberAddress: string,
   groupKey: GroupKey,
-  memberPublicKey: string
+  memberPublicKey: string,
 ): Promise<void> {
   // Encrypt the group key with the member's public key
   // For simplicity, we'll use a hybrid approach: encrypt with a derived key
@@ -353,7 +352,7 @@ export async function storeGroupKeyForMember(
   const encryptedKey = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv: salt.buffer as ArrayBuffer },
     derivedKey,
-    fromBase64(groupKey.key).buffer as ArrayBuffer
+    fromBase64(groupKey.key).buffer as ArrayBuffer,
   );
 
   const encryptedKeyBase64 = toBase64(new Uint8Array(encryptedKey));
@@ -363,7 +362,7 @@ export async function storeGroupKeyForMember(
      VALUES ($1, $2, $3, $4)
      ON CONFLICT (chat_id, member_address, key_version)
      DO UPDATE SET encrypted_key = $3`,
-    [chatId, memberAddress, encryptedKeyBase64, groupKey.version]
+    [chatId, memberAddress, encryptedKeyBase64, groupKey.version],
   );
 }
 
@@ -373,14 +372,14 @@ export async function storeGroupKeyForMember(
 export async function getGroupKeyForMember(
   chatId: string,
   memberAddress: string,
-  memberPrivateKey: string
+  _memberPrivateKey: string,
 ): Promise<GroupKey | null> {
   const keyRecord = await queryOne<DbChatKey>(
     `SELECT * FROM multi_chat_keys
      WHERE chat_id = $1 AND member_address = $2 AND revoked_at IS NULL
      ORDER BY key_version DESC
      LIMIT 1`,
-    [chatId, memberAddress]
+    [chatId, memberAddress],
   );
 
   if (!keyRecord) return null;
@@ -401,7 +400,7 @@ export async function getGroupKeyForMember(
     const decryptedKey = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: salt.buffer as ArrayBuffer },
       derivedKey,
-      encryptedKeyBytes.buffer as ArrayBuffer
+      encryptedKeyBytes.buffer as ArrayBuffer,
     );
 
     return {
@@ -421,7 +420,7 @@ export async function rotateGroupKey(chatId: string): Promise<GroupKey> {
   const currentKey = await queryOne<{ max_version: number }>(
     `SELECT COALESCE(MAX(key_version), 0) as max_version
      FROM multi_chat_keys WHERE chat_id = $1`,
-    [chatId]
+    [chatId],
   );
 
   const newVersion = (currentKey?.max_version ?? 0) + 1;
@@ -432,7 +431,7 @@ export async function rotateGroupKey(chatId: string): Promise<GroupKey> {
   await execute(
     `UPDATE multi_chat_keys SET revoked_at = NOW()
      WHERE chat_id = $1 AND revoked_at IS NULL`,
-    [chatId]
+    [chatId],
   );
 
   return newKey;
@@ -447,7 +446,7 @@ export async function rotateGroupKey(chatId: string): Promise<GroupKey> {
  */
 export async function encryptMessage(
   plaintext: string,
-  groupKeyBase64: string
+  groupKeyBase64: string,
 ): Promise<string> {
   const keyBytes = fromBase64(groupKeyBase64);
   return encryptWithKey(plaintext, keyBytes);
@@ -458,7 +457,7 @@ export async function encryptMessage(
  */
 export async function decryptMessage(
   encryptedBase64: string,
-  groupKeyBase64: string
+  groupKeyBase64: string,
 ): Promise<string> {
   const keyBytes = fromBase64(groupKeyBase64);
   return decryptWithKey(encryptedBase64, keyBytes);
@@ -477,7 +476,7 @@ const SIGNING_KEY_ALGORITHM = 'secp256k1';
 export async function storeSigningKey(userId: string, signingKey: string): Promise<void> {
   // Remove 0x prefix if present and convert to base64 for consistent storage
   const keyHex = signingKey.replace(/^0x/, '');
-  const keyBytes = new Uint8Array(keyHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+  const keyBytes = new Uint8Array(keyHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)));
   const keyBase64 = toBase64(keyBytes);
 
   const encryptedKey = await encryptPrivateKey(keyBase64);
@@ -486,7 +485,7 @@ export async function storeSigningKey(userId: string, signingKey: string): Promi
   await execute(
     `UPDATE user_keypairs SET is_active = FALSE, revoked_at = NOW()
      WHERE user_id = $1 AND algorithm = $2 AND is_active = TRUE`,
-    [userId, SIGNING_KEY_ALGORITHM]
+    [userId, SIGNING_KEY_ALGORITHM],
   );
 
   // Store new signing key (public_key stores the address derived from the key)
@@ -496,7 +495,7 @@ export async function storeSigningKey(userId: string, signingKey: string): Promi
   await execute(
     `INSERT INTO user_keypairs (user_id, public_key, encrypted_private_key, algorithm)
      VALUES ($1, $2, $3, $4)`,
-    [userId, account.address, encryptedKey, SIGNING_KEY_ALGORITHM]
+    [userId, account.address, encryptedKey, SIGNING_KEY_ALGORITHM],
   );
 }
 
@@ -507,14 +506,14 @@ export async function storeSigningKey(userId: string, signingKey: string): Promi
 export async function getSigningKey(userId: string): Promise<`0x${string}` | null> {
   const keypair = await queryOne<DbUserKeypair>(
     `SELECT * FROM user_keypairs WHERE user_id = $1 AND algorithm = $2 AND is_active = TRUE`,
-    [userId, SIGNING_KEY_ALGORITHM]
+    [userId, SIGNING_KEY_ALGORITHM],
   );
 
   if (!keypair) return null;
 
   const keyBase64 = await decryptPrivateKey(keypair.encrypted_private_key);
   const keyBytes = fromBase64(keyBase64);
-  const keyHex = Array.from(keyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  const keyHex = Array.from(keyBytes).map((b) => b.toString(16).padStart(2, '0')).join('');
 
   return `0x${keyHex}`;
 }
@@ -525,7 +524,7 @@ export async function getSigningKey(userId: string): Promise<`0x${string}` | nul
 export async function hasSigningKey(userId: string): Promise<boolean> {
   const keypair = await queryOne<{ id: string }>(
     `SELECT id FROM user_keypairs WHERE user_id = $1 AND algorithm = $2 AND is_active = TRUE`,
-    [userId, SIGNING_KEY_ALGORITHM]
+    [userId, SIGNING_KEY_ALGORITHM],
   );
   return !!keypair;
 }
@@ -542,7 +541,7 @@ async function getPublicKeyForAddress(address: string): Promise<string | null> {
     `SELECT public_key FROM multi_chat_members
      WHERE member_address = $1 AND public_key IS NOT NULL
      LIMIT 1`,
-    [address]
+    [address],
   );
 
   return member?.public_key ?? null;
@@ -553,12 +552,12 @@ async function getPublicKeyForAddress(address: string): Promise<string | null> {
  */
 export async function distributeGroupKeyToMembers(
   chatId: string,
-  groupKey: GroupKey
+  groupKey: GroupKey,
 ): Promise<void> {
   const members = await query<{ member_address: string; public_key: string | null }>(
     `SELECT member_address, public_key FROM multi_chat_members
      WHERE chat_id = $1 AND is_active = TRUE AND public_key IS NOT NULL`,
-    [chatId]
+    [chatId],
   );
 
   for (const member of members) {
@@ -567,7 +566,7 @@ export async function distributeGroupKeyToMembers(
         chatId,
         member.member_address,
         groupKey,
-        member.public_key
+        member.public_key,
       );
     }
   }

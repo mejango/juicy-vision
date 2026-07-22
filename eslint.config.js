@@ -40,17 +40,13 @@ export default tseslint.config(
     },
     rules: {
       ...reactHooks.configs.recommended.rules,
-      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
-      // Correctness rules (rules-of-hooks, no-case-declarations, no-fallthrough, …)
-      // stay as errors and gate CI. The rules below flag pre-existing, app-wide
-      // stylistic debt — surfaced as warnings so lint passes today and the debt
-      // can be burned down incrementally rather than in one mass refactor.
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      '@typescript-eslint/no-explicit-any': 'warn',
-      'react-hooks/exhaustive-deps': 'warn',
-      'no-empty': 'warn',
+      'react-refresh/only-export-components': ['error', { allowConstantExport: true }],
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-explicit-any': 'error',
+      'react-hooks/exhaustive-deps': 'error',
+      'no-empty': 'error',
       // Dynamic require() is used deliberately in a few spots to break import cycles.
-      '@typescript-eslint/no-require-imports': 'warn',
+      '@typescript-eslint/no-require-imports': 'error',
     },
   },
   // Test + setup files: vitest globals.
@@ -58,6 +54,40 @@ export default tseslint.config(
     files: ['src/**/*.{test,spec}.{ts,tsx}', 'src/**/setupTests.ts', 'src/test/**'],
     languageOptions: {
       globals: { ...globals.node, vi: 'readonly', describe: 'readonly', it: 'readonly', expect: 'readonly', beforeEach: 'readonly', afterEach: 'readonly', beforeAll: 'readonly', afterAll: 'readonly' },
+    },
+    rules: {
+      // Test doubles intentionally bridge browser/provider APIs with partial
+      // shapes; production source remains strictly typed.
+      '@typescript-eslint/no-explicit-any': 'off',
+      'react-refresh/only-export-components': 'off',
+    },
+  },
+  // These established UI modules intentionally colocate pure display helpers
+  // with components. This only affects development hot-reload heuristics, not
+  // runtime correctness; keep the exception explicit and file-scoped.
+  {
+    files: [
+      'src/components/chat/ParticipantAvatars.tsx',
+      'src/components/dynamic/charts/IssuanceScheduleChart.tsx',
+      'src/components/dynamic/charts/shared.tsx',
+      'src/components/dynamic/create-flow/StepBasics.tsx',
+      'src/components/dynamic/create-flow/StepDeploy.tsx',
+      'src/components/dynamic/create-flow/StepFlavor.tsx',
+      'src/components/dynamic/create-flow/StepRulesets.tsx',
+      'src/components/dynamic/create-flow/StepStages.tsx',
+      'src/components/dynamic/create-flow/controls.tsx',
+      'src/components/project/OverviewTab.tsx',
+      'src/components/project/ProjectTabs.tsx',
+      'src/components/project/backoffice/BuybackRouterCard.tsx',
+      'src/components/project/backoffice/shared.tsx',
+      'src/components/payment/DeployERC20Modal.tsx',
+      'src/components/payment/ManageTiersModal.tsx',
+      'src/components/payment/QueueRulesetModal.tsx',
+      'src/components/payment/SendReservedTokensModal.tsx',
+      'src/components/payment/SetSplitsModal.tsx',
+    ],
+    rules: {
+      'react-refresh/only-export-components': 'off',
     },
   },
 )

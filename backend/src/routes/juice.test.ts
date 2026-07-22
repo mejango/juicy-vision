@@ -74,7 +74,7 @@ Deno.test('Juice Routes - Spend Schema', async (t) => {
   });
 
   await t.step('memo is optional', () => {
-    const { memo, ...withoutMemo } = validSpend;
+    const { memo: _memo, ...withoutMemo } = validSpend;
     const result = SpendSchema.safeParse(withoutMemo);
     assertEquals(result.success, true);
   });
@@ -107,7 +107,7 @@ Deno.test('Juice Routes - Spend Schema', async (t) => {
   await t.step('address without 0x fails', () => {
     const result = SpendSchema.safeParse({
       ...validSpend,
-      beneficiaryAddress: '1234567890123456789012345678901234567890'
+      beneficiaryAddress: '1234567890123456789012345678901234567890',
     });
     assertEquals(result.success, false);
   });
@@ -142,7 +142,7 @@ Deno.test('Juice Routes - Cash Out Schema', async (t) => {
   });
 
   await t.step('chainId is optional', () => {
-    const { chainId, ...withoutChain } = validCashOut;
+    const { chainId: _chainId, ...withoutChain } = validCashOut;
     const result = CashOutSchema.safeParse(withoutChain);
     assertEquals(result.success, true);
   });
@@ -438,32 +438,32 @@ Deno.test('Juice Routes - Transaction List Response', async (t) => {
   });
 
   await t.step('purchase has positive amount', () => {
-    const purchase = mockResponse.data.find(t => t.type === 'purchase');
+    const purchase = mockResponse.data.find((t) => t.type === 'purchase');
     assertExists(purchase);
     assertEquals(purchase.amount > 0, true);
   });
 
   await t.step('spend has negative amount', () => {
-    const spend = mockResponse.data.find(t => t.type === 'spend');
+    const spend = mockResponse.data.find((t) => t.type === 'spend');
     assertExists(spend);
     assertEquals(spend.amount < 0, true);
   });
 
   await t.step('cash_out has negative amount', () => {
-    const cashOut = mockResponse.data.find(t => t.type === 'cash_out');
+    const cashOut = mockResponse.data.find((t) => t.type === 'cash_out');
     assertExists(cashOut);
     assertEquals(cashOut.amount < 0, true);
   });
 
   await t.step('spend includes project info', () => {
-    const spend = mockResponse.data.find(t => t.type === 'spend');
+    const spend = mockResponse.data.find((t) => t.type === 'spend');
     assertExists(spend);
     assertEquals(spend.projectId, 1);
     assertEquals(spend.chainId, 1);
   });
 
   await t.step('purchase has no project info', () => {
-    const purchase = mockResponse.data.find(t => t.type === 'purchase');
+    const purchase = mockResponse.data.find((t) => t.type === 'purchase');
     assertExists(purchase);
     assertEquals(purchase.projectId, null);
   });

@@ -1,8 +1,11 @@
-import { expect, test } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+import { expect, test } from './fixtures/local-only';
 
 const VIEWPORTS = [
-  { name: 'desktop', width: 1440, height: 900 },
-  { name: 'mobile', width: 390, height: 844 },
+  { name: 'desktop', width: 1280, height: 900, contrastMax: 0 },
+  { name: 'tablet', width: 768, height: 1024, contrastMax: 0 },
+  { name: 'mobile', width: 390, height: 844, contrastMax: 0 },
+  { name: 'narrow', width: 320, height: 568, contrastMax: 0 },
 ] as const;
 
 for (const viewport of VIEWPORTS) {
@@ -75,6 +78,30 @@ for (const viewport of VIEWPORTS) {
     await expect(dialog.getByText('Backstage Pass')).toBeVisible();
     await expect(dialog.getByText('×2')).toBeVisible();
     await expect(dialog.getByText(/approve\(0x130f5d/)).toBeVisible();
+
+    const axe = await new AxeBuilder({ page })
+      .include('[role="dialog"]')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+      .analyze();
+    const blockingA11y = axe.violations.filter(
+      ({ id, impact }) =>
+        id !== 'color-contrast' && (impact === 'critical' || impact === 'serious'),
+    );
+    const contrastViolation = axe.violations.find(({ id }) => id === 'color-contrast');
+    const contrastNodes = contrastViolation?.nodes.length ?? 0;
+    const contrastDetails = contrastViolation?.nodes
+      .map(node => `${node.target.join(' ')}: ${node.failureSummary ?? node.html}`)
+      .join('\n') ?? '';
+    expect(
+      contrastNodes,
+      `payment review has color-contrast violations${contrastDetails ? `:\n${contrastDetails}` : ''}`,
+    ).toBeLessThanOrEqual(
+      viewport.contrastMax,
+    );
+    expect(
+      blockingA11y,
+      blockingA11y.map(violation => `${violation.id}: ${violation.help}`).join('\n'),
+    ).toEqual([]);
 
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(dialog).not.toBeVisible();

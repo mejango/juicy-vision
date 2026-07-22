@@ -2817,7 +2817,7 @@ const CHIP_CLASSES: Record<string, { dark: string; light: string }> = {
     light: 'bg-purple-50 border-purple-400/50 text-purple-700 hover:bg-purple-100 hover:border-purple-500',
   },
   popular: {
-    dark: 'bg-juice-cyan/20 border-juice-cyan/40 text-juice-cyan hover:bg-juice-cyan/35 hover:border-juice-cyan',
+    dark: 'bg-juice-cyan/10 border-juice-cyan/40 text-juice-cyan hover:bg-juice-cyan/20 hover:border-juice-cyan',
     light: 'bg-juice-cyan/10 border-juice-cyan/50 text-teal-700 hover:bg-juice-cyan/20 hover:border-teal-500',
   },
   pro: {
@@ -2842,7 +2842,7 @@ const CHIP_CLASSES: Record<string, { dark: string; light: string }> = {
 const BADGE_META: Record<BadgeType, { cls: string; tKey: string; label: string }> = {
   id: { cls: 'text-[10px] uppercase tracking-wide font-semibold text-yellow-400', tKey: 'badges.id', label: 'id' },
   bold: { cls: 'text-[10px] uppercase tracking-wide font-semibold text-purple-400', tKey: 'badges.bold', label: 'bold' },
-  popular: { cls: 'text-[10px] uppercase tracking-wide text-juice-cyan/70', tKey: 'badges.popular', label: 'popular' },
+  popular: { cls: 'text-[10px] uppercase tracking-wide font-semibold text-juice-cyan', tKey: 'badges.popular', label: 'popular' },
   pro: { cls: 'text-[10px] uppercase tracking-wide font-semibold text-yellow-400', tKey: 'badges.pro', label: 'pro' },
   demo: { cls: 'text-[10px] uppercase tracking-wide font-semibold text-pink-400', tKey: 'badges.demo', label: 'demo' },
   fun: { cls: 'text-[10px] uppercase tracking-wide font-semibold text-green-400', tKey: 'badges.fun', label: 'fun' },
@@ -2943,7 +2943,6 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
   // Shuffled base list - random on each page load
   const shuffledBase = useMemo(() => {
     return shuffle([...welcomeSuggestions, ...traitLabels])
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Empty deps = shuffle once on mount
 
   // Filter suggestions based on selected traits

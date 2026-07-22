@@ -1,5 +1,5 @@
-import { query, queryOne, execute } from '../db/index.ts';
-import type { ChatSession, ChatMessage, Event, Correction, PrivacyMode } from '../types/index.ts';
+import { execute, query, queryOne } from '../db/index.ts';
+import type { Correction, PrivacyMode } from '../types/index.ts';
 import { PrivacyModes } from '../types/index.ts';
 
 // ============================================================================
@@ -28,7 +28,7 @@ export async function createChatSession(
   userId: string | null,
   privacyMode: PrivacyMode,
   mode: 'self_custody' | 'managed',
-  entryPoint?: string
+  entryPoint?: string,
 ): Promise<string> {
   const settings = PrivacyModes[privacyMode];
 
@@ -41,7 +41,7 @@ export async function createChatSession(
     `INSERT INTO chat_sessions (user_id, privacy_mode, mode, entry_point)
      VALUES ($1, $2, $3, $4)
      RETURNING id`,
-    [settings.stripIdentity ? null : userId, privacyMode, mode, entryPoint]
+    [settings.stripIdentity ? null : userId, privacyMode, mode, entryPoint],
   );
 
   return result[0].id;
@@ -55,7 +55,7 @@ export async function updateChatSessionOutcome(
     connectedWallet: boolean;
     errorEncountered: boolean;
     userAbandoned: boolean;
-  }>
+  }>,
 ): Promise<void> {
   const updates: string[] = [];
   const values: unknown[] = [];
@@ -87,20 +87,20 @@ export async function updateChatSessionOutcome(
   values.push(sessionId);
   await execute(
     `UPDATE chat_sessions SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
-    values
+    values,
   );
 }
 
 export async function endChatSession(
   sessionId: string,
   rating?: number,
-  feedback?: string
+  feedback?: string,
 ): Promise<void> {
   await execute(
     `UPDATE chat_sessions
      SET ended_at = NOW(), session_rating = $1, session_feedback = $2
      WHERE id = $3`,
-    [rating, feedback, sessionId]
+    [rating, feedback, sessionId],
   );
 }
 
@@ -125,12 +125,12 @@ export async function storeChatMessage(
   sessionId: string,
   role: 'user' | 'assistant' | 'system',
   content: string,
-  toolCalls?: unknown[]
+  toolCalls?: unknown[],
 ): Promise<string> {
   // Check session privacy mode
   const session = await queryOne<DbChatSession>(
     'SELECT privacy_mode FROM chat_sessions WHERE id = $1',
-    [sessionId]
+    [sessionId],
   );
 
   if (!session) {
@@ -147,7 +147,7 @@ export async function storeChatMessage(
     `INSERT INTO chat_messages (session_id, role, content, tool_calls)
      VALUES ($1, $2, $3, $4)
      RETURNING id`,
-    [sessionId, role, content, toolCalls ? JSON.stringify(toolCalls) : null]
+    [sessionId, role, content, toolCalls ? JSON.stringify(toolCalls) : null],
   );
 
   return result[0].id;
@@ -160,7 +160,7 @@ export async function updateMessageFeedback(
     reported?: boolean;
     reportReason?: string;
     userCorrection?: string;
-  }
+  },
 ): Promise<void> {
   const updates: string[] = [];
   const values: unknown[] = [];
@@ -185,13 +185,13 @@ export async function updateMessageFeedback(
     // Also create a correction record for AI review
     const message = await queryOne<DbChatMessage>(
       'SELECT * FROM chat_messages WHERE id = $1',
-      [messageId]
+      [messageId],
     );
     if (message) {
       await execute(
         `INSERT INTO corrections (message_id, session_id, original_content, user_correction)
          VALUES ($1, $2, $3, $4)`,
-        [messageId, message.session_id, message.content, feedback.userCorrection]
+        [messageId, message.session_id, message.content, feedback.userCorrection],
       );
     }
   }
@@ -201,7 +201,7 @@ export async function updateMessageFeedback(
   values.push(messageId);
   await execute(
     `UPDATE chat_messages SET ${updates.join(', ')} WHERE id = $${paramIndex}`,
-    values
+    values,
   );
 }
 
@@ -214,7 +214,7 @@ export async function storeEvent(
   userId: string | null,
   eventType: string,
   eventData: Record<string, unknown>,
-  privacyMode: PrivacyMode
+  privacyMode: PrivacyMode,
 ): Promise<void> {
   const settings = PrivacyModes[privacyMode];
 
@@ -230,7 +230,7 @@ export async function storeEvent(
       settings.stripIdentity ? null : userId,
       eventType,
       JSON.stringify(eventData),
-    ]
+    ],
   );
 }
 
@@ -242,11 +242,11 @@ export async function storeEvents(
     eventType: string;
     eventData: Record<string, unknown>;
     privacyMode: PrivacyMode;
-  }>
+  }>,
 ): Promise<void> {
   // Filter out ghost mode events
   const eventsToStore = events.filter(
-    (e) => PrivacyModes[e.privacyMode].storeAnalytics
+    (e) => PrivacyModes[e.privacyMode].storeAnalytics,
   );
 
   if (eventsToStore.length === 0) return;
@@ -259,20 +259,20 @@ export async function storeEvents(
   for (const event of eventsToStore) {
     const settings = PrivacyModes[event.privacyMode];
     placeholders.push(
-      `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`
+      `($${paramIndex++}, $${paramIndex++}, $${paramIndex++}, $${paramIndex++})`,
     );
     values.push(
       event.sessionId,
       settings.stripIdentity ? null : event.userId,
       event.eventType,
-      JSON.stringify(event.eventData)
+      JSON.stringify(event.eventData),
     );
   }
 
   await execute(
     `INSERT INTO events (session_id, user_id, event_type, event_data)
      VALUES ${placeholders.join(', ')}`,
-    values
+    values,
   );
 }
 
@@ -294,14 +294,14 @@ interface DbCorrection {
 
 export async function getPendingCorrections(
   limit: number = 50,
-  offset: number = 0
+  offset: number = 0,
 ): Promise<Correction[]> {
   const results = await query<DbCorrection>(
     `SELECT * FROM corrections
      WHERE status = 'pending'
      ORDER BY created_at ASC
      LIMIT $1 OFFSET $2`,
-    [limit, offset]
+    [limit, offset],
   );
 
   return results.map((r) => ({
@@ -320,13 +320,13 @@ export async function getPendingCorrections(
 export async function reviewCorrection(
   correctionId: string,
   status: 'approved' | 'rejected',
-  reviewNotes?: string
+  reviewNotes?: string,
 ): Promise<void> {
   await execute(
     `UPDATE corrections
      SET status = $1, review_notes = $2, reviewed_at = NOW()
      WHERE id = $3`,
-    [status, reviewNotes, correctionId]
+    [status, reviewNotes, correctionId],
   );
 }
 
@@ -345,7 +345,7 @@ export interface TrainingConversation {
 
 export async function exportTrainingData(
   quality: 'good' | 'bad',
-  limit: number = 1000
+  limit: number = 1000,
 ): Promise<TrainingConversation[]> {
   const view = quality === 'good' ? 'training_good_conversations' : 'training_bad_conversations';
 
@@ -357,7 +357,7 @@ export async function exportTrainingData(
     session_feedback: string | null;
   }>(
     `SELECT * FROM ${view} LIMIT $1`,
-    [limit]
+    [limit],
   );
 
   return results.map((r) => ({

@@ -6,20 +6,20 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { requireAuth, optionalAuth } from '../middleware/auth.ts';
-import { rateLimitMiddleware, rateLimitByUser } from '../services/rateLimit.ts';
+import { requireAuth } from '../middleware/auth.ts';
+import { rateLimitMiddleware } from '../services/rateLimit.ts';
 import {
-  createRegistrationChallenge,
-  createAuthenticationChallenge,
-  verifyRegistration,
-  verifyAuthentication,
-  getUserPasskeys,
-  deletePasskey,
-  renamePasskey,
-  createSignupChallenge,
-  verifySignupRegistration,
-  type RegistrationResponse,
   type AuthenticationResponse,
+  createAuthenticationChallenge,
+  createRegistrationChallenge,
+  createSignupChallenge,
+  deletePasskey,
+  getUserPasskeys,
+  type RegistrationResponse,
+  renamePasskey,
+  verifyAuthentication,
+  verifyRegistration,
+  verifySignupRegistration,
 } from '../services/passkey.ts';
 import { createSession, findUserById } from '../services/auth.ts';
 
@@ -70,7 +70,7 @@ passkeyRouter.post(
       const passkey = await verifyRegistration(
         user.id,
         credential as RegistrationResponse,
-        displayName
+        displayName,
       );
 
       return c.json({
@@ -86,7 +86,7 @@ passkeyRouter.post(
       const message = error instanceof Error ? error.message : 'Registration failed';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -131,7 +131,7 @@ passkeyRouter.post(
       // Verify registration and create user
       const { userId, credential: passkey } = await verifySignupRegistration(
         credential as RegistrationResponse,
-        displayName
+        displayName,
       );
 
       // Get the created user
@@ -167,7 +167,7 @@ passkeyRouter.post(
       const message = error instanceof Error ? error.message : 'Signup failed';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -175,10 +175,6 @@ passkeyRouter.post(
 // ============================================================================
 
 // GET /passkey/authenticate/options - Get authentication options
-const AuthOptionsSchema = z.object({
-  email: z.string().email().optional(),
-});
-
 passkeyRouter.get('/authenticate/options', rateLimitMiddleware('passkeyAuth'), async (c) => {
   const email = c.req.query('email');
 
@@ -245,7 +241,7 @@ passkeyRouter.post(
       const message = error instanceof Error ? error.message : 'Authentication failed';
       return c.json({ success: false, error: message }, 401);
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -261,7 +257,7 @@ passkeyRouter.get('/list', requireAuth, async (c) => {
 
     return c.json({
       success: true,
-      data: passkeys.map(p => ({
+      data: passkeys.map((p) => ({
         id: p.id,
         displayName: p.displayName,
         deviceType: p.deviceType,
@@ -310,14 +306,14 @@ passkeyRouter.patch(
       const message = error instanceof Error ? error.message : 'Failed to rename passkey';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // ============================================================================
 // PRF Wallet Mapping (for client-side derived wallets)
 // ============================================================================
 
-import { query, queryOne, execute } from '../db/index.ts';
+import { execute, query, queryOne } from '../db/index.ts';
 import { recoverMessageAddress } from 'viem';
 
 // POST /passkey/wallet - Register a credential with its derived wallet address
@@ -354,9 +350,11 @@ passkeyRouter.post(
       }
 
       // Check if this credential already exists
-      const existing = await queryOne<{ wallet_address: string; primary_wallet_address: string | null }>(
+      const existing = await queryOne<
+        { wallet_address: string; primary_wallet_address: string | null }
+      >(
         'SELECT wallet_address, primary_wallet_address FROM passkey_wallets WHERE credential_id = $1',
-        [credentialId]
+        [credentialId],
       );
 
       if (existing) {
@@ -373,7 +371,7 @@ passkeyRouter.post(
         // Update last_used_at
         await execute(
           'UPDATE passkey_wallets SET last_used_at = NOW() WHERE credential_id = $1',
-          [credentialId]
+          [credentialId],
         );
 
         return c.json({
@@ -389,7 +387,7 @@ passkeyRouter.post(
       // New credential - register it
       await execute(
         'INSERT INTO passkey_wallets (credential_id, wallet_address, device_name, device_type) VALUES ($1, $2, $3, $4)',
-        [credentialId, walletAddress.toLowerCase(), deviceName || null, deviceType || null]
+        [credentialId, walletAddress.toLowerCase(), deviceName || null, deviceType || null],
       );
 
       return c.json({
@@ -405,7 +403,7 @@ passkeyRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to register wallet';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // GET /passkey/wallet/:credentialId - Look up wallet for a credential
@@ -421,7 +419,7 @@ passkeyRouter.get('/wallet/:credentialId', rateLimitMiddleware('passkeyAuth'), a
       created_at: Date;
     }>(
       'SELECT wallet_address, primary_wallet_address, device_name, created_at FROM passkey_wallets WHERE credential_id = $1',
-      [credentialId]
+      [credentialId],
     );
 
     if (!result) {
@@ -434,7 +432,7 @@ passkeyRouter.get('/wallet/:credentialId', rateLimitMiddleware('passkeyAuth'), a
     // Update last_used_at
     await execute(
       'UPDATE passkey_wallets SET last_used_at = NOW() WHERE credential_id = $1',
-      [credentialId]
+      [credentialId],
     );
 
     return c.json({
@@ -480,20 +478,26 @@ passkeyRouter.post(
       // Check if credential already exists
       const existing = await queryOne<{ id: string }>(
         'SELECT id FROM passkey_wallets WHERE credential_id = $1',
-        [credentialId]
+        [credentialId],
       );
 
       if (existing) {
         // Update existing to link to primary
         await execute(
           'UPDATE passkey_wallets SET primary_wallet_address = $1, last_used_at = NOW() WHERE credential_id = $2',
-          [primaryWalletAddress, credentialId]
+          [primaryWalletAddress, credentialId],
         );
       } else {
         // Insert new linked credential
         await execute(
           'INSERT INTO passkey_wallets (credential_id, wallet_address, primary_wallet_address, device_name, device_type) VALUES ($1, $2, $3, $4, $5)',
-          [credentialId, derivedWalletAddress.toLowerCase(), primaryWalletAddress, deviceName || null, deviceType || null]
+          [
+            credentialId,
+            derivedWalletAddress.toLowerCase(),
+            primaryWalletAddress,
+            deviceName || null,
+            deviceType || null,
+          ],
         );
       }
 
@@ -510,7 +514,7 @@ passkeyRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to link wallet';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // GET /passkey/wallet/devices - List all devices linked to the authenticated wallet
@@ -528,14 +532,14 @@ passkeyRouter.get('/wallet/devices', requireWalletAuth, async (c) => {
       last_used_at: Date | null;
     }>(
       'SELECT credential_id, wallet_address, device_name, device_type, created_at, last_used_at FROM passkey_wallets WHERE wallet_address = $1 OR primary_wallet_address = $1 ORDER BY created_at ASC',
-      [walletAddress]
+      [walletAddress],
     );
 
     return c.json({
       success: true,
       data: {
         primaryWalletAddress: walletAddress,
-        devices: devices.map(row => ({
+        devices: devices.map((row) => ({
           credentialId: row.credential_id,
           derivedWalletAddress: row.wallet_address,
           deviceName: row.device_name,

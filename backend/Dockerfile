@@ -1,34 +1,36 @@
-FROM denoland/deno:latest
-
-# Install Docker CLI for Forge execution (optional - see FORGE_DOCKER_ENABLED)
-USER root
-RUN apt-get update && apt-get install -y \
-    docker.io \
-    && rm -rf /var/lib/apt/lists/*
+# Official multi-platform Deno image, pinned to the reviewed manifest digest.
+FROM denoland/deno:2.6.5@sha256:72970f0e7c937999d0b138fd6384e0eef732187dcd3003788e673ee2ae34f9d9 AS cache
 
 WORKDIR /app/backend
-
-# Cache dependencies first
-COPY backend/deno.json .
-RUN deno cache --reload npm:hono@4 npm:zod@3 npm:jose@5 npm:viem@2 npm:@anthropic-ai/sdk@0.39 npm:postgres@3
-
-# Copy source
-COPY backend/ .
-COPY shared/ /app/shared/
-# Keep the repository-relative ABI imports used by transactionPolicy intact.
-# These generated ABIs are the protocol source of truth shared with the frontend.
-COPY src/constants/abis/jbOmnichainDeployer.ts src/constants/abis/revDeployer.ts /app/src/constants/abis/
-
-# Cache main entry
-RUN deno cache main.ts
-
-# Create temp directory for Forge jobs
-RUN mkdir -p /tmp/forge && chown deno:deno /tmp/forge
+COPY --chown=deno:deno backend/ ./
+COPY --chown=deno:deno shared/ /app/shared/
+# transactionPolicy imports these contract-derived ABIs from the repository root.
+COPY --chown=deno:deno src/constants/abis/jbOmnichainDeployer.ts src/constants/abis/revDeployer.ts /app/src/constants/abis/
 
 USER deno
+RUN deno cache --frozen main.ts run_migrate.ts
+RUN deno check --frozen main.ts run_migrate.ts scripts/validate-config.ts
 
+FROM denoland/deno:2.6.5@sha256:72970f0e7c937999d0b138fd6384e0eef732187dcd3003788e673ee2ae34f9d9
+
+ARG BUILD_SHA=source-unknown
+ENV DENO_ENV=production \
+    FORGE_DOCKER_ENABLED=false \
+    SEMGREP_ENABLED=false \
+    APP_REVISION=${BUILD_SHA} \
+    PORT=8080
+LABEL org.opencontainers.image.revision=${BUILD_SHA}
+WORKDIR /app/backend
+
+COPY --from=cache --chown=deno:deno /deno-dir /deno-dir
+COPY --from=cache --chown=deno:deno /app /app
+
+USER deno
 EXPOSE 8080
-ENV PORT=8080
-ENV DENO_ENV=production
+HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
+  CMD ["deno", "eval", "--allow-net=127.0.0.1:8080", "const r=await fetch('http://127.0.0.1:8080/livez');if(!r.ok)Deno.exit(1)"]
 
-CMD ["run", "--allow-net", "--allow-env", "--allow-read", "--allow-write=/tmp", "--allow-run=docker", "main.ts"]
+# Migrations are an explicit one-shot: `deno task migrate`. The API container
+# has no Docker socket, subprocess, or filesystem-write capability.
+ENTRYPOINT ["deno"]
+CMD ["run", "--frozen", "--allow-net", "--allow-env", "--allow-read", "main.ts"]

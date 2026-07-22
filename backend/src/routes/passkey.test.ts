@@ -1,7 +1,6 @@
 import { assertEquals, assertExists } from 'std/assert/mod.ts';
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { zValidator } from '@hono/zod-validator';
 
 // Test schema validation for passkey routes
 Deno.test('Passkey Route - Register Verify Schema', async (t) => {
@@ -388,14 +387,14 @@ Deno.test('Passkey Route - Delete Passkey', async (t) => {
     if (!authHeader || authHeader !== 'Bearer valid-token') {
       return c.json({ success: false, error: 'Unauthorized' }, 401);
     }
-    // @ts-ignore
+    // @ts-ignore: deliberately exercise an invalid credential response shape
     c.set('userId', 'user-123');
     await next();
   });
 
   app.delete('/:id', (c) => {
     const credentialId = c.req.param('id');
-    // @ts-ignore
+    // @ts-ignore: deliberately exercise an invalid credential response shape
     const userId = c.get('userId') as string;
 
     const passkeys = userPasskeys.get(userId) || [];

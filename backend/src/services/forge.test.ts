@@ -1,10 +1,5 @@
-import { assertEquals, assert } from 'std/assert/mod.ts';
-import {
-  validateJobInput,
-  isAllowedRpcMethod,
-  getRpcUrl,
-  type ForgeJobInput,
-} from './forge.ts';
+import { assert, assertEquals } from 'std/assert/mod.ts';
+import { type ForgeJobInput, getRpcUrl, isAllowedRpcMethod, validateJobInput } from './forge.ts';
 
 // ============================================================================
 // Input Validation Tests

@@ -7,6 +7,36 @@ import { cleanup } from '@testing-library/react'
 // merely because the developer-only .env file is absent.
 vi.stubEnv('VITE_TESTNET_MODE', 'true')
 
+// No unit/component test may depend on a third-party service being reachable.
+// Tests that exercise HTTP replace this default with a route-specific mock.
+function blockedNetworkConstructor(transport: string) {
+  return class {
+    constructor(url?: string | URL) {
+      throw new Error(
+        `Unexpected ${transport} connection in a deterministic unit test: ${String(url ?? 'unknown URL')}. Stub the transport explicitly for this test.`,
+      )
+    }
+  }
+}
+
+function installFailClosedNetwork(): void {
+  vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+    const url = input instanceof Request ? input.url : String(input)
+    return new Response(JSON.stringify({ error: `External fetch blocked in tests: ${url}` }), {
+      status: 503,
+      headers: { 'content-type': 'application/json' },
+    })
+  }))
+  vi.stubGlobal('XMLHttpRequest', blockedNetworkConstructor('XMLHttpRequest'))
+  vi.stubGlobal('WebSocket', blockedNetworkConstructor('WebSocket'))
+  vi.stubGlobal('EventSource', blockedNetworkConstructor('EventSource'))
+}
+
+// Protect module-import side effects, then reinstall before every case. Suites
+// which use vi.unstubAllGlobals() must never expose the following test to the
+// host's real fetch implementation.
+installFailClosedNetwork()
+
 // Cleanup after each test
 afterEach(() => {
   cleanup()
@@ -39,6 +69,7 @@ Object.defineProperty(window, 'localStorage', {
 
 // Clear localStorage before each test
 beforeEach(() => {
+  installFailClosedNetwork()
   localStorageMock.clear()
 })
 

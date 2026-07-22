@@ -9,6 +9,7 @@
  */
 
 import { execute, queryOne } from '../db/index.ts';
+import { getConfig } from '../utils/config.ts';
 
 interface RateLimitConfig {
   /** Maximum number of requests allowed in the window */
@@ -17,7 +18,7 @@ interface RateLimitConfig {
   windowSeconds: number;
 }
 
-interface RateLimitResult {
+export interface RateLimitResult {
   /** Whether the request is allowed */
   allowed: boolean;
   /** Number of requests remaining in the window */
@@ -33,8 +34,9 @@ interface RateLimitContext {
     header(name: string): string | undefined;
   };
   get(key: string): unknown;
+  env?: unknown;
   header(name: string, value: string): void;
-  json(body: unknown, status: 429): Response;
+  json(body: unknown, status: 429 | 503): Response;
 }
 
 // Predefined rate limit configurations for different endpoints
@@ -75,12 +77,43 @@ export const RATE_LIMITS = {
 
   // AI operations
   aiInvoke: { limit: 20, windowSeconds: 60 }, // 20 AI calls/min
+  imageGenerate: { limit: 5, windowSeconds: 3600 }, // 5 generated images/hour
 
   // AI Tool-specific limits (per user, per hour) - abuse prevention
   toolPinToIpfs: { limit: 10, windowSeconds: 3600 }, // 10 IPFS pins/hour
 } as const;
 
 export type RateLimitKey = keyof typeof RATE_LIMITS;
+
+const COST_BEARING_RATE_LIMITS = new Set<RateLimitKey>([
+  'aiInvoke',
+  'imageGenerate',
+  'juicePurchase',
+  'juiceSpend',
+  'juiceCashOut',
+  'terminalPay',
+  'toolPinToIpfs',
+]);
+
+export function shouldFailRateLimitClosed(
+  key: RateLimitKey,
+  environment: 'development' | 'production',
+): boolean {
+  return environment === 'production' && COST_BEARING_RATE_LIMITS.has(key);
+}
+
+export function getClientIdentifier(
+  c: Pick<RateLimitContext, 'req' | 'env'>,
+  trustProxy = getConfig().trustProxy,
+): string {
+  if (trustProxy) {
+    const forwarded = c.req.header('X-Forwarded-For')?.split(',')[0]?.trim();
+    const connecting = c.req.header('CF-Connecting-IP')?.trim();
+    if (connecting || forwarded) return connecting || forwarded || 'unknown';
+  }
+  const remoteAddress = (c.env as { remoteAddr?: { hostname?: string } } | undefined)?.remoteAddr;
+  return remoteAddress?.hostname || 'unknown';
+}
 
 /**
  * Check and increment rate limit for a given identifier
@@ -124,10 +157,7 @@ export async function checkRateLimit(
       [fullKey, windowStart],
     );
 
-    if (!result) {
-      // Should never happen with RETURNING, but handle gracefully
-      return { allowed: true, remaining: config.limit - 1, resetAt, current: 1 };
-    }
+    if (!result) throw new Error('Rate-limit database returned no row');
 
     const current = result.count;
     const allowed = current <= config.limit;
@@ -135,10 +165,9 @@ export async function checkRateLimit(
 
     return { allowed, remaining, resetAt, current };
   } catch (error) {
-    // On database error, fail open (allow the request)
-    // This prevents rate limiting from breaking the app if DB is down
-    console.error('[RateLimit] Database error, failing open:', error);
-    return { allowed: true, remaining: config.limit, resetAt, current: 0 };
+    const failClosed = shouldFailRateLimitClosed(key, getConfig().env);
+    console.error(`[RateLimit] Database error, failing ${failClosed ? 'closed' : 'open'}:`, error);
+    return { allowed: !failClosed, remaining: failClosed ? 0 : config.limit, resetAt, current: 0 };
   }
 }
 
@@ -151,9 +180,7 @@ export async function checkRateLimit(
  */
 export function rateLimitMiddleware(
   key: RateLimitKey,
-  getIdentifier: (c: RateLimitContext) => string = (c) =>
-    c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() || c.req.header('CF-Connecting-IP') ||
-    'unknown',
+  getIdentifier: (c: RateLimitContext) => string = getClientIdentifier,
 ) {
   return async (c: RateLimitContext, next: () => Promise<void>) => {
     const identifier = getIdentifier(c);
@@ -165,13 +192,14 @@ export function rateLimitMiddleware(
     c.header('X-RateLimit-Reset', result.resetAt.toString());
 
     if (!result.allowed) {
+      const unavailable = result.current === 0 && result.remaining === 0;
       return c.json(
         {
           success: false,
-          error: 'Rate limit exceeded',
+          error: unavailable ? 'Rate limiting temporarily unavailable' : 'Rate limit exceeded',
           retryAfter: result.resetAt - Math.floor(Date.now() / 1000),
         },
-        429,
+        unavailable ? 503 : 429,
       );
     }
 
@@ -185,8 +213,7 @@ export function rateLimitMiddleware(
 export function rateLimitByWallet(key: RateLimitKey) {
   return rateLimitMiddleware(key, (c) => {
     const walletSession = c.get('walletSession') as { address?: string } | undefined;
-    return walletSession?.address || c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() ||
-      'unknown';
+    return walletSession?.address || getClientIdentifier(c);
   });
 }
 
@@ -196,7 +223,7 @@ export function rateLimitByWallet(key: RateLimitKey) {
 export function rateLimitByUser(key: RateLimitKey) {
   return rateLimitMiddleware(key, (c) => {
     const user = c.get('user') as { id?: string } | undefined;
-    return user?.id || c.req.header('X-Forwarded-For')?.split(',')[0]?.trim() || 'unknown';
+    return user?.id || getClientIdentifier(c);
   });
 }
 

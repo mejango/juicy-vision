@@ -2,27 +2,27 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { streamSSE } from 'hono/streaming';
-import { optionalAuth, requireAuth } from '../middleware/auth.ts';
+import { requireAuth } from '../middleware/auth.ts';
 import {
+  bulkUpdateFiles,
   createProject,
-  getProject,
-  listProjects,
-  updateProject,
+  deleteFile,
   deleteProject,
+  getProject,
   getProjectFiles,
   getProjectWithFiles,
-  upsertFile,
-  deleteFile,
-  bulkUpdateFiles,
-  markAsDeployed,
   type HookProjectType,
+  listProjects,
+  markAsDeployed,
+  updateProject,
+  upsertFile,
 } from '../services/hookProjects.ts';
 import {
-  submitJob,
+  type ForgeJobInput,
   getJob,
   getJobOutput,
+  submitJob,
   validateJobInput,
-  type ForgeJobInput,
 } from '../services/forge.ts';
 import {
   analyzeProject,
@@ -74,11 +74,6 @@ const SubmitJobSchema = z.object({
   scriptPath: z.string().max(255).optional(),
 });
 
-const DeploySchema = z.object({
-  chainIds: z.array(z.number().int().positive()).min(1).max(10),
-  constructorArgs: z.array(z.unknown()).optional(),
-});
-
 // ============================================================================
 // Helper to get user address from auth context
 // ============================================================================
@@ -120,7 +115,7 @@ hooksRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to create project';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // GET /hooks/projects - List user's hook projects
@@ -140,7 +135,7 @@ hooksRouter.get(
       const message = error instanceof Error ? error.message : 'Failed to list projects';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // GET /hooks/projects/:id - Get a specific project with files
@@ -166,7 +161,7 @@ hooksRouter.get(
       const message = error instanceof Error ? error.message : 'Failed to get project';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // PATCH /hooks/projects/:id - Update a project
@@ -194,7 +189,7 @@ hooksRouter.patch(
       const message = error instanceof Error ? error.message : 'Failed to update project';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // DELETE /hooks/projects/:id - Delete a project
@@ -220,7 +215,7 @@ hooksRouter.delete(
       const message = error instanceof Error ? error.message : 'Failed to delete project';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -256,7 +251,7 @@ hooksRouter.put(
       const message = error instanceof Error ? error.message : 'Failed to update files';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // PUT /hooks/projects/:id/files/:path - Update a single file
@@ -295,7 +290,7 @@ hooksRouter.put(
       const message = error instanceof Error ? error.message : 'Failed to update file';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // DELETE /hooks/projects/:id/files/:path - Delete a file
@@ -334,7 +329,7 @@ hooksRouter.delete(
       const message = error instanceof Error ? error.message : 'Failed to delete file';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -390,7 +385,7 @@ hooksRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to submit job';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );
 
 // GET /hooks/forge/status/:id - Get job status
@@ -416,7 +411,7 @@ hooksRouter.get(
       const message = error instanceof Error ? error.message : 'Failed to get job status';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // GET /hooks/forge/stream/:id - Stream job output via SSE
@@ -479,7 +474,7 @@ hooksRouter.get(
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
     });
-  }
+  },
 );
 
 // ============================================================================
@@ -512,7 +507,7 @@ hooksRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to analyze project';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // GET /hooks/projects/:id/security - Get latest security analysis
@@ -540,7 +535,7 @@ hooksRouter.get(
       const message = error instanceof Error ? error.message : 'Failed to get security analysis';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // ============================================================================
@@ -570,19 +565,27 @@ hooksRouter.post(
 
       return c.json({ success: true, data: check });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to check deployment security';
+      const message = error instanceof Error
+        ? error.message
+        : 'Failed to check deployment security';
       return c.json({ success: false, error: message }, 500);
     }
-  }
+  },
 );
 
 // POST /hooks/projects/:id/deploy - Mark project as deployed
 hooksRouter.post(
   '/projects/:id/deploy',
   requireAuth,
-  zValidator('json', z.object({
-    deployedAddresses: z.record(z.string().regex(/^\d+$/), z.string().regex(/^0x[a-fA-F0-9]{40}$/)),
-  })),
+  zValidator(
+    'json',
+    z.object({
+      deployedAddresses: z.record(
+        z.string().regex(/^\d+$/),
+        z.string().regex(/^0x[a-fA-F0-9]{40}$/),
+      ),
+    }),
+  ),
   async (c) => {
     const userAddress = getUserAddress(c);
     if (!userAddress) {
@@ -609,5 +612,5 @@ hooksRouter.post(
       const message = error instanceof Error ? error.message : 'Failed to mark as deployed';
       return c.json({ success: false, error: message }, 400);
     }
-  }
+  },
 );

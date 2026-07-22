@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useAccount, useSignMessage } from 'wagmi'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore, useAuthStore } from '../../stores'
-import { signInWithWallet, hasValidWalletSession, getWalletSession } from '../../services/siwe'
+import { signInWithWalletClient, hasValidWalletSession, getWalletSession } from '../../services/siwe'
 import { useEnsNameResolved } from '../../hooks/useEnsName'
 import { forgetPasskeyWallet } from '../../services/passkeyWallet'
 import { useAnchoredPopoverStyle } from '../ui/useAnchoredPopoverStyle'
@@ -135,14 +135,7 @@ export default function SaveModal({ isOpen, onClose, onSaved, onPasskeySuccess, 
     setError(null)
 
     try {
-      await signInWithWallet(
-        address,
-        chainId,
-        async (message: string) => {
-          const signature = await signMessageAsync({ message })
-          return signature
-        }
-      )
+      await signInWithWalletClient(address, chainId, signMessageAsync)
 
       setSuccess(true)
       onSaved?.()

@@ -72,6 +72,13 @@ interface ChainTxState {
   error?: string
 }
 
+export function submitReviewedTierOperation(
+  guarded: Pick<ReturnType<typeof useGuardedTx>, 'run'>,
+  request: Parameters<ReturnType<typeof useGuardedTx>['run']>[0],
+): Promise<`0x${string}`> {
+  return guarded.run(request)
+}
+
 export default function ManageTiersModal({
   isOpen,
   onClose,
@@ -241,7 +248,7 @@ export default function ManageTiersModal({
         updateChainState(chainState.chainId, { status: 'authorizing' })
 
         const decoded = decodeFunctionData({ abi: JB_721_TIERS_HOOK_ABI, data })
-        hash = await guarded.run({
+        hash = await submitReviewedTierOperation(guarded, {
           chainId: chainState.chainId,
           to: finalHook,
           data,

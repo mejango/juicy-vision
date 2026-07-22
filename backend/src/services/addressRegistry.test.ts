@@ -1,8 +1,8 @@
 import { assertEquals, assertRejects } from 'std/assert/mod.ts';
 import type { Address, PublicClient } from 'viem';
 import {
-  requireRecognizedClone,
   requireRecognized721CloneIdentity,
+  requireRecognizedClone,
   requireRecognizedLpSplitHookClone,
 } from './addressRegistry.ts';
 
@@ -10,12 +10,13 @@ import {
 const requireRecognized721Clone = (
   client: Pick<PublicClient, 'readContract'>,
   hook: Address,
-) => requireRecognizedClone({
-  client,
-  instance: hook,
-  allowedKinds: ['721-hook', 'defifa-hook'],
-  label: '721 hook',
-});
+) =>
+  requireRecognizedClone({
+    client,
+    instance: hook,
+    allowedKinds: ['721-hook', 'defifa-hook'],
+    label: '721 hook',
+  });
 
 const INSTANCE = '0x1111111111111111111111111111111111111111' as Address;
 const REGISTRY = '0x581bfd1ead279e0a27b736e49494db3a7d85993c' as Address;

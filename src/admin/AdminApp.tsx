@@ -45,11 +45,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     return <AdminLogin />
   }
 
-  // Not an admin - show access denied
-  // TODO: Re-enable admin check after testing
-  // if (!user.isAdmin) {
-  //   return <AccessDenied />
-  // }
+  // Server authorization is authoritative; this guard avoids exposing controls
+  // that the current user cannot use.
+  if (!user.isAdmin) {
+    return <AccessDenied />
+  }
 
   return <>{children}</>
 }
@@ -121,6 +121,37 @@ function AdminLogin() {
         </p>
       </div>
     </div>
+  )
+}
+
+function AccessDenied() {
+  const { theme } = useThemeStore()
+  const { logout } = useAuthStore()
+  const isDark = theme === 'dark'
+
+  return (
+    <main className={`min-h-screen flex items-center justify-center p-6 ${
+      isDark ? 'bg-zinc-950 text-white' : 'bg-gray-50 text-gray-900'
+    }`}>
+      <section className={`w-full max-w-md border p-8 text-center ${
+        isDark ? 'border-zinc-800 bg-zinc-900' : 'border-gray-200 bg-white'
+      }`}>
+        <h1 className="text-xl font-bold">Admin access required</h1>
+        <p className={`mt-3 text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+          This account is signed in, but it does not have administrator privileges.
+        </p>
+        <button
+          type="button"
+          onClick={() => void logout()}
+          className="mt-6 w-full bg-juice-orange py-3 text-sm font-medium text-juice-dark"
+        >
+          Sign out
+        </button>
+        <a className="mt-4 inline-block text-sm underline" href="/">
+          Return to Juicy Vision
+        </a>
+      </section>
+    </main>
   )
 }
 

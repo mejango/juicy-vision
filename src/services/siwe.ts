@@ -175,3 +175,16 @@ export async function signInWithWallet(
 
   return session
 }
+
+/**
+ * Adapter for wagmi's object-shaped signer. Keeping this boundary centralized
+ * prevents individual components from subtly changing the SIWE message they
+ * sign while still letting the wallet provider own the signature prompt.
+ */
+export function signInWithWalletClient(
+  address: string,
+  chainId: number,
+  signMessageAsync: (request: { message: string }) => Promise<string>,
+): Promise<WalletSession> {
+  return signInWithWallet(address, chainId, (message) => signMessageAsync({ message }))
+}

@@ -5,7 +5,9 @@
  */
 
 import { Hono } from 'hono';
-import { detectGeoFromIP, recordUserRegion, getRegionStats } from '../services/geo.ts';
+import { detectGeoFromIP, getRegionStats, recordUserRegion } from '../services/geo.ts';
+import { requireAdmin, requireAuth } from '../middleware/auth.ts';
+import { getClientIdentifier } from '../services/rateLimit.ts';
 
 export const localeRouter = new Hono();
 
@@ -15,24 +17,7 @@ export const localeRouter = new Hono();
  */
 localeRouter.get('/detect', async (c) => {
   // Get client IP from headers (handles proxies) or connection
-  const forwardedFor = c.req.header('x-forwarded-for');
-  const realIP = c.req.header('x-real-ip');
-  const cfConnectingIP = c.req.header('cf-connecting-ip'); // Cloudflare
-
-  let ip = cfConnectingIP || realIP || forwardedFor?.split(',')[0]?.trim();
-
-  // Fallback to connection info if available
-  if (!ip) {
-    const connInfo = (c.env as Record<string, unknown>)?.remoteAddr;
-    if (connInfo && typeof connInfo === 'object' && 'hostname' in connInfo) {
-      ip = (connInfo as { hostname: string }).hostname;
-    }
-  }
-
-  // Default for development
-  if (!ip) {
-    ip = '127.0.0.1';
-  }
+  const ip = getClientIdentifier(c);
 
   const geoInfo = await detectGeoFromIP(ip);
 
@@ -68,11 +53,7 @@ localeRouter.post('/record', async (c) => {
   const { languageUsed, userId } = body;
 
   // Get client IP
-  const forwardedFor = c.req.header('x-forwarded-for');
-  const realIP = c.req.header('x-real-ip');
-  const cfConnectingIP = c.req.header('cf-connecting-ip');
-
-  let ip = cfConnectingIP || realIP || forwardedFor?.split(',')[0]?.trim() || '127.0.0.1';
+  const ip = getClientIdentifier(c);
 
   const geoInfo = await detectGeoFromIP(ip);
 
@@ -85,9 +66,9 @@ localeRouter.post('/record', async (c) => {
 
 /**
  * GET /stats
- * Get region statistics (admin only - add auth check in production)
+ * Get region statistics (admin only)
  */
-localeRouter.get('/stats', async (c) => {
+localeRouter.get('/stats', requireAuth, requireAdmin, async (c) => {
   try {
     const stats = await getRegionStats();
 

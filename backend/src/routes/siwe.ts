@@ -10,7 +10,7 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { execute, queryOne } from '../db/index.ts';
-import { verifyMessage } from 'npm:viem';
+import { verifyMessage } from 'viem';
 import { getPseudoAddress } from '../utils/crypto.ts';
 
 export const siweRouter = new Hono();
@@ -74,7 +74,7 @@ siweRouter.post(
       success: true,
       data: { nonce },
     });
-  }
+  },
 );
 
 const VerifyRequestSchema = z.object({
@@ -139,7 +139,7 @@ siweRouter.post(
          nonce = EXCLUDED.nonce,
          anonymous_session_id = COALESCE(EXCLUDED.anonymous_session_id, wallet_sessions.anonymous_session_id),
          expires_at = EXCLUDED.expires_at`,
-      [token, normalizedAddress, message, signature, storedNonce.nonce, sessionId, expiresAt]
+      [token, normalizedAddress, message, signature, storedNonce.nonce, sessionId, expiresAt],
     );
 
     // If there was an anonymous session, migrate its data to this wallet
@@ -152,14 +152,14 @@ siweRouter.post(
         `UPDATE multi_chat_members
          SET member_address = $1
          WHERE member_address = $2`,
-        [normalizedAddress, pseudoAddress]
+        [normalizedAddress, pseudoAddress],
       );
 
       await execute(
         `UPDATE multi_chats
          SET founder_address = $1
          WHERE founder_address = $2`,
-        [normalizedAddress, pseudoAddress]
+        [normalizedAddress, pseudoAddress],
       );
     }
 
@@ -171,7 +171,7 @@ siweRouter.post(
         expiresAt: expiresAt.toISOString(),
       },
     });
-  }
+  },
 );
 
 /**
@@ -184,7 +184,7 @@ siweRouter.post('/logout', async (c) => {
   if (token) {
     await execute(
       `DELETE FROM wallet_sessions WHERE session_token = $1`,
-      [token]
+      [token],
     );
   }
 
@@ -208,7 +208,7 @@ siweRouter.get('/session', async (c) => {
   }>(
     `SELECT wallet_address, expires_at FROM wallet_sessions
      WHERE session_token = $1 AND expires_at > NOW()`,
-    [token]
+    [token],
   );
 
   if (!session) {

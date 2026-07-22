@@ -4,9 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useAccount, useConnect, useDisconnect, useSignMessage } from 'wagmi'
 import { useThemeStore, useAuthStore, useSettingsStore } from '../../stores'
 import { useManagedWallet, useEnsNameResolved, useJuiceBalance, useSafeApp } from '../../hooks'
-import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../../constants'
-import { CHAINS, ALL_CHAIN_IDS } from '../../constants'
-import { hasValidWalletSession, signInWithWallet, clearWalletSession } from '../../services/siwe'
+import { hasValidWalletSession, signInWithWalletClient, clearWalletSession } from '../../services/siwe'
 import {
   EmbeddedCheckoutProvider,
   EmbeddedCheckout,
@@ -751,14 +749,7 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsuff
     setSignInError(null)
 
     try {
-      await signInWithWallet(
-        address,
-        chainId,
-        async (message: string) => {
-          const signature = await signMessageAsync({ message })
-          return signature
-        }
-      )
+      await signInWithWalletClient(address, chainId, signMessageAsync)
       setJustSignedIn(true)
     } catch (err) {
       setSignInError(err instanceof Error ? err.message : 'Sign in failed')
@@ -1439,14 +1430,7 @@ function JuicyIdView({ onBack }: { onBack: () => void }) {
       if (isWalletConnected && walletAddress && chainId && !hasValidWalletSession()) {
         setSigningIn(true)
         try {
-          await signInWithWallet(
-            walletAddress,
-            chainId,
-            async (message: string) => {
-              const signature = await signMessageAsync({ message })
-              return signature
-            }
-          )
+          await signInWithWalletClient(walletAddress, chainId, signMessageAsync)
           // Refresh wallet session after sign-in
           walletSession = getWalletSession()
         } catch {
@@ -1488,7 +1472,7 @@ function JuicyIdView({ onBack }: { onBack: () => void }) {
       setIdentityLoading(false)
       setSigningIn(false)
     }
-  }, [selectedFruit, identityUsername, getApiHeaders, onBack, isWalletConnected, walletAddress, chainId, signMessageAsync])
+  }, [selectedFruit, identityUsername, getApiHeaders, onBack, isWalletConnected, walletAddress, chainId, signMessageAsync, setIdentity, setIdentityError, setIdentityLoading])
 
   // Check availability on change
   useEffect(() => {
@@ -1510,7 +1494,7 @@ function JuicyIdView({ onBack }: { onBack: () => void }) {
       }
     }, 300)
     return () => clearTimeout(timer)
-  }, [identityUsername, selectedFruit, identity, checkAvailability])
+  }, [identityUsername, selectedFruit, identity, checkAvailability, setIdentityAvailable])
 
   // Get current emoji and address for display
   const walletSession = getWalletSession()
@@ -1707,7 +1691,7 @@ function SettingsView({ onBack }: { onBack: () => void }) {
     } catch (err) {
       console.error('Failed to load identity:', err)
     }
-  }, [getApiHeaders])
+  }, [getApiHeaders, setIdentity, setIdentityUsername])
 
   // Save identity (will prompt sign-in if not authenticated)
   const saveIdentity = useCallback(async (overrideEmoji?: string, overrideUsername?: string) => {
@@ -1759,7 +1743,7 @@ function SettingsView({ onBack }: { onBack: () => void }) {
     } finally {
       setIdentityLoading(false)
     }
-  }, [selectedFruit, identityUsername, getApiHeaders, isLoggedIn])
+  }, [selectedFruit, identityUsername, getApiHeaders, isLoggedIn, setIdentity, setIdentityError, setIdentityLoading])
 
   // Load passkeys and identity on mount
   useEffect(() => {
@@ -1779,7 +1763,7 @@ function SettingsView({ onBack }: { onBack: () => void }) {
     }
     window.addEventListener('juice:identity-changed', handleIdentityChange as EventListener)
     return () => window.removeEventListener('juice:identity-changed', handleIdentityChange as EventListener)
-  }, [isLoggedIn, loadPasskeys, loadIdentity])
+  }, [isLoggedIn, loadPasskeys, loadIdentity, setIdentity, setIdentityUsername])
 
   // Auto-save pending identity after sign-in
   useEffect(() => {
@@ -1817,7 +1801,7 @@ function SettingsView({ onBack }: { onBack: () => void }) {
     }, 300)
 
     return () => clearTimeout(timer)
-  }, [identityUsername, selectedFruit, identity, checkAvailability])
+  }, [identityUsername, selectedFruit, identity, checkAvailability, setIdentityAvailable])
 
   // Email OTP handlers
   const handleRequestCode = async (e: React.FormEvent) => {

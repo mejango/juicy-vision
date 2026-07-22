@@ -13,7 +13,10 @@ const { call, getProjectController, getSafetyPublicClient } = vi.hoisted(() => {
 vi.mock('../../utils/paymentTerminal', () => ({ getProjectController }))
 vi.mock('../../utils/transactionSafety', () => ({ getSafetyPublicClient }))
 
-import { preflightControllerTransactions } from './useOmnichainTransaction'
+import {
+  preflightControllerTransactions,
+  submitManagedControllerBundle,
+} from './useOmnichainTransaction'
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as Address
 const CONTROLLER = '0x2222222222222222222222222222222222222222' as Address
@@ -77,5 +80,15 @@ describe('preflightControllerTransactions', () => {
       account: ACCOUNT,
     })).rejects.toThrow('does not match the reviewed chains')
     expect(getProjectController).not.toHaveBeenCalled()
+  })
+})
+
+describe('managed controller Relayr submission', () => {
+  it('submits the exact preflighted destination set through the managed account', async () => {
+    const submit = vi.fn().mockResolvedValue({ bundleId: 'controller-bundle' })
+    const transactions = [{ chainId: 1, target: CONTROLLER, data: '0x12345678', value: '7' }]
+    await expect(submitManagedControllerBundle(transactions, ACCOUNT, ACCOUNT, submit))
+      .resolves.toEqual({ bundleId: 'controller-bundle' })
+    expect(submit).toHaveBeenCalledWith(transactions, ACCOUNT, ACCOUNT)
   })
 })

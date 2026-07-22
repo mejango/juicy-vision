@@ -1,7 +1,7 @@
 import * as jose from 'jose';
-import { query, queryOne, execute } from '../db/index.ts';
+import { execute, query, queryOne } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
-import type { User, Session, PrivacyMode } from '../types/index.ts';
+import type { PrivacyMode, Session, User } from '../types/index.ts';
 
 interface DbUser {
   id: string;
@@ -54,7 +54,7 @@ export async function createOtpCode(email: string): Promise<string> {
   // Invalidate any existing codes for this email
   await execute(
     'UPDATE otp_codes SET used = TRUE WHERE email = $1 AND used = FALSE',
-    [email]
+    [email],
   );
 
   const code = generateOtpCode();
@@ -63,7 +63,7 @@ export async function createOtpCode(email: string): Promise<string> {
   await execute(
     `INSERT INTO otp_codes (email, code, expires_at)
      VALUES ($1, $2, $3)`,
-    [email.toLowerCase(), code, expiresAt]
+    [email.toLowerCase(), code, expiresAt],
   );
 
   return code;
@@ -101,7 +101,7 @@ export async function verifyOtpCode(email: string, code: string): Promise<boolea
      WHERE email = $1 AND used = FALSE AND expires_at > NOW()
      ORDER BY created_at DESC
      LIMIT 1`,
-    [email.toLowerCase()]
+    [email.toLowerCase()],
   );
 
   // SECURITY: Use timing-safe comparison to prevent timing attacks
@@ -142,7 +142,9 @@ export async function generateToken(userId: string, sessionId: string): Promise<
     .sign(secret);
 }
 
-export async function verifyToken(token: string): Promise<{ userId: string; sessionId: string } | null> {
+export async function verifyToken(
+  token: string,
+): Promise<{ userId: string; sessionId: string } | null> {
   const config = getConfig();
   const secret = new TextEncoder().encode(config.jwtSecret);
 
@@ -170,7 +172,7 @@ export async function findOrCreateUser(email: string): Promise<User> {
   if (!user) {
     // Get next custodial address index
     const maxIndexResult = await queryOne<{ max: number | null }>(
-      'SELECT MAX(custodial_address_index) as max FROM users'
+      'SELECT MAX(custodial_address_index) as max FROM users',
     );
     const nextIndex = (maxIndexResult?.max ?? -1) + 1;
 
@@ -179,7 +181,7 @@ export async function findOrCreateUser(email: string): Promise<User> {
       `INSERT INTO users (email, custodial_address_index)
        VALUES ($1, $2)
        RETURNING *`,
-      [normalizedEmail, nextIndex]
+      [normalizedEmail, nextIndex],
     );
 
     const dbUser = result[0];
@@ -201,7 +203,7 @@ export async function findOrCreateUser(email: string): Promise<User> {
 export async function findUserByEmail(email: string): Promise<User | null> {
   const user = await queryOne<DbUser>(
     'SELECT * FROM users WHERE email = $1',
-    [email.toLowerCase()]
+    [email.toLowerCase()],
   );
 
   if (!user) return null;
@@ -221,7 +223,7 @@ export async function findUserByEmail(email: string): Promise<User | null> {
 export async function findUserById(id: string): Promise<User | null> {
   const user = await queryOne<DbUser>(
     'SELECT * FROM users WHERE id = $1',
-    [id]
+    [id],
   );
 
   if (!user) return null;
@@ -241,14 +243,17 @@ export async function findUserById(id: string): Promise<User | null> {
 export async function markEmailVerified(userId: string): Promise<void> {
   await execute(
     'UPDATE users SET email_verified = TRUE WHERE id = $1',
-    [userId]
+    [userId],
   );
 }
 
-export async function updateUserPrivacyMode(userId: string, privacyMode: PrivacyMode): Promise<void> {
+export async function updateUserPrivacyMode(
+  userId: string,
+  privacyMode: PrivacyMode,
+): Promise<void> {
   await execute(
     'UPDATE users SET privacy_mode = $1 WHERE id = $2',
-    [privacyMode, userId]
+    [privacyMode, userId],
   );
 }
 
@@ -264,7 +269,7 @@ export async function createSession(userId: string): Promise<{ session: Session;
     `INSERT INTO sessions (user_id, expires_at)
      VALUES ($1, $2)
      RETURNING *`,
-    [userId, expiresAt]
+    [userId, expiresAt],
   );
 
   const session = result[0];
@@ -284,7 +289,7 @@ export async function createSession(userId: string): Promise<{ session: Session;
 export async function findValidSession(sessionId: string): Promise<Session | null> {
   const session = await queryOne<DbSession>(
     'SELECT * FROM sessions WHERE id = $1 AND expires_at > NOW()',
-    [sessionId]
+    [sessionId],
   );
 
   if (!session) return null;
@@ -337,7 +342,7 @@ export async function requestOtp(email: string): Promise<{ code?: string; expire
 // Step 2: Verify OTP and login
 export async function verifyOtpAndLogin(
   email: string,
-  code: string
+  code: string,
 ): Promise<{ user: User; token: string }> {
   const isValid = await verifyOtpCode(email, code);
   if (!isValid) {
@@ -363,7 +368,9 @@ export async function logout(sessionId: string): Promise<void> {
   await deleteSession(sessionId);
 }
 
-export async function validateSession(token: string): Promise<{ user: User; session: Session } | null> {
+export async function validateSession(
+  token: string,
+): Promise<{ user: User; session: Session } | null> {
   const payload = await verifyToken(token);
   if (!payload) return null;
 

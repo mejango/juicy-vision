@@ -199,7 +199,7 @@ export default function DeployRevnetModal({
     } catch (err) {
       setCreationFeeError(err instanceof Error ? err.message : 'Project creation fee unavailable')
     }
-  }, [splitOperator, chainIds, stageConfigurations, name, ticker, tagline, projectUri, autoDeploySuckers, deployTiersHookConfig, deploy, isManagedMode, managedAddress, operatorMatchesManagedAccount, creationFeesWei, assertCurrentAccount])
+  }, [splitOperator, chainIds, stageConfigurations, name, ticker, tagline, projectUri, suckerBridge, autoDeploySuckers, deployTiersHookConfig, deploy, isManagedMode, managedAddress, operatorMatchesManagedAccount, creationFeesWei, assertCurrentAccount, setCreationFeesWei, setCreationFeeError])
 
   const handleClose = useCallback(() => {
     resetRevnet()

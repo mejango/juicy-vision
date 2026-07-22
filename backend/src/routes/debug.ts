@@ -6,13 +6,13 @@
  */
 
 import { Hono } from 'hono';
-import { getStats, getChatConnections } from '../services/websocket.ts';
+import { getChatConnections, getStats } from '../services/websocket.ts';
 import { getConfig } from '../utils/config.ts';
 import {
-  getMetricsSummary,
-  getRecentToolUsage,
-  getRecentInvocations,
   getChatToolUsage,
+  getMetricsSummary,
+  getRecentInvocations,
+  getRecentToolUsage,
 } from '../services/aiMetrics.ts';
 
 export const debugRouter = new Hono();
@@ -24,7 +24,14 @@ export const debugRouter = new Hono();
 interface DebugEvent {
   id: string;
   timestamp: number;
-  type: 'ws_connect' | 'ws_disconnect' | 'ws_message' | 'api_call' | 'db_query' | 'error' | 'system';
+  type:
+    | 'ws_connect'
+    | 'ws_disconnect'
+    | 'ws_message'
+    | 'api_call'
+    | 'db_query'
+    | 'error'
+    | 'system';
   category: 'websocket' | 'api' | 'database' | 'system';
   data: Record<string, unknown>;
 }
@@ -43,7 +50,7 @@ const sseClients = new Set<WritableStreamDefaultWriter>();
 export function logDebugEvent(
   type: DebugEvent['type'],
   category: DebugEvent['category'],
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
 ): void {
   const config = getConfig();
   if (config.env !== 'development') return;
@@ -66,7 +73,7 @@ export function logDebugEvent(
   for (const writer of sseClients) {
     try {
       writer.write(new TextEncoder().encode(message));
-    } catch (err) {
+    } catch {
       // Client disconnected
       sseClients.delete(writer);
     }
@@ -383,13 +390,15 @@ debugRouter.get('/stream', async (c) => {
   sseClients.add(writer);
 
   // Send initial connection event
-  const initEvent = `data: ${JSON.stringify({
-    id: 'init',
-    timestamp: Date.now(),
-    type: 'system',
-    category: 'system',
-    data: { message: 'Connected to debug stream' },
-  })}\n\n`;
+  const initEvent = `data: ${
+    JSON.stringify({
+      id: 'init',
+      timestamp: Date.now(),
+      type: 'system',
+      category: 'system',
+      data: { message: 'Connected to debug stream' },
+    })
+  }\n\n`;
   writer.write(new TextEncoder().encode(initEvent));
 
   // Cleanup on disconnect
@@ -435,7 +444,7 @@ debugRouter.post('/reset-db', async (c) => {
   if (config.env !== 'development') {
     return c.json({
       success: false,
-      error: 'Database reset is ONLY available in development mode'
+      error: 'Database reset is ONLY available in development mode',
     }, 403);
   }
 
@@ -458,13 +467,13 @@ debugRouter.post('/reset-db', async (c) => {
 
       logDebugEvent('system', 'database', {
         action: 'reset_db',
-        tables_cleared: rows.map(r => r.tablename)
+        tables_cleared: rows.map((r) => r.tablename),
       });
 
       return c.json({
         success: true,
         message: 'Database reset complete',
-        tables_cleared: rows.map(r => r.tablename)
+        tables_cleared: rows.map((r) => r.tablename),
       });
     } finally {
       conn.release();
@@ -473,7 +482,7 @@ debugRouter.post('/reset-db', async (c) => {
     console.error('Database reset failed:', error);
     return c.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     }, 500);
   }
 });
@@ -545,7 +554,7 @@ debugRouter.post('/seed-test-users', async (c) => {
   if (config.env !== 'development') {
     return c.json({
       success: false,
-      error: 'Test user seeding is ONLY available in development mode'
+      error: 'Test user seeding is ONLY available in development mode',
     }, 403);
   }
 
@@ -559,37 +568,46 @@ debugRouter.post('/seed-test-users', async (c) => {
 
       for (const user of E2E_TEST_USERS) {
         // Upsert user
-        await conn.queryObject(`
+        await conn.queryObject(
+          `
           INSERT INTO users (id, email, email_verified, privacy_mode, custodial_address_index)
           VALUES ($1, $2, true, $3, $4)
           ON CONFLICT (email) DO UPDATE SET
             email_verified = true,
             privacy_mode = $3,
             updated_at = NOW()
-        `, [
-          user.id,
-          user.email,
-          user.privacyMode,
-          1000 + E2E_TEST_USERS.indexOf(user),
-        ]);
+        `,
+          [
+            user.id,
+            user.email,
+            user.privacyMode,
+            1000 + E2E_TEST_USERS.indexOf(user),
+          ],
+        );
 
         // Clear old sessions
-        await conn.queryObject(`
+        await conn.queryObject(
+          `
           DELETE FROM sessions WHERE user_id = $1
-        `, [user.id]);
+        `,
+          [user.id],
+        );
 
         // Create fresh session (30 days)
-        await conn.queryObject(`
+        await conn.queryObject(
+          `
           INSERT INTO sessions (user_id, expires_at)
           VALUES ($1, NOW() + INTERVAL '30 days')
-        `, [user.id]);
+        `,
+          [user.id],
+        );
 
         seededUsers.push({ email: user.email, id: user.id });
       }
 
       logDebugEvent('system', 'database', {
         action: 'seed_test_users',
-        users: seededUsers.map(u => u.email),
+        users: seededUsers.map((u) => u.email),
       });
 
       return c.json({
@@ -604,7 +622,7 @@ debugRouter.post('/seed-test-users', async (c) => {
     console.error('Failed to seed test users:', error);
     return c.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     }, 500);
   }
 });
@@ -616,7 +634,7 @@ debugRouter.post('/seed-full-test-data', async (c) => {
   if (config.env !== 'development') {
     return c.json({
       success: false,
-      error: 'Test data seeding is ONLY available in development mode'
+      error: 'Test data seeding is ONLY available in development mode',
     }, 403);
   }
 
@@ -630,45 +648,62 @@ debugRouter.post('/seed-full-test-data', async (c) => {
     try {
       // 1. Seed test users
       for (const user of E2E_TEST_USERS) {
-        await conn.queryObject(`
+        await conn.queryObject(
+          `
           INSERT INTO users (id, email, email_verified, privacy_mode, custodial_address_index)
           VALUES ($1, $2, true, $3, $4)
           ON CONFLICT (email) DO UPDATE SET
             email_verified = true,
             privacy_mode = $3,
             updated_at = NOW()
-        `, [user.id, user.email, user.privacyMode, 1000 + E2E_TEST_USERS.indexOf(user)]);
+        `,
+          [user.id, user.email, user.privacyMode, 1000 + E2E_TEST_USERS.indexOf(user)],
+        );
       }
       results.users = E2E_TEST_USERS.length;
 
       // 2. Additional test users
       const additionalUsers = [
-        { id: '55555555-5555-5555-5555-555555555555', email: 'e2e-new@test.juicy.vision', privacyMode: 'open_book' },
-        { id: '66666666-6666-6666-6666-666666666666', email: 'e2e-owner@test.juicy.vision', privacyMode: 'open_book' },
+        {
+          id: '55555555-5555-5555-5555-555555555555',
+          email: 'e2e-new@test.juicy.vision',
+          privacyMode: 'open_book',
+        },
+        {
+          id: '66666666-6666-6666-6666-666666666666',
+          email: 'e2e-owner@test.juicy.vision',
+          privacyMode: 'open_book',
+        },
       ];
       for (const user of additionalUsers) {
-        await conn.queryObject(`
+        await conn.queryObject(
+          `
           INSERT INTO users (id, email, email_verified, privacy_mode, custodial_address_index)
           VALUES ($1, $2, true, $3, $4)
           ON CONFLICT (email) DO UPDATE SET
             email_verified = true,
             updated_at = NOW()
-        `, [user.id, user.email, user.privacyMode, 1004 + additionalUsers.indexOf(user)]);
+        `,
+          [user.id, user.email, user.privacyMode, 1004 + additionalUsers.indexOf(user)],
+        );
       }
       results.users += additionalUsers.length;
 
       // 3. Create sessions for all users
       const allUserIds = [
-        ...E2E_TEST_USERS.map(u => u.id),
-        ...additionalUsers.map(u => u.id),
+        ...E2E_TEST_USERS.map((u) => u.id),
+        ...additionalUsers.map((u) => u.id),
       ];
 
       for (const userId of allUserIds) {
         await conn.queryObject(`DELETE FROM sessions WHERE user_id = $1`, [userId]);
-        await conn.queryObject(`
+        await conn.queryObject(
+          `
           INSERT INTO sessions (user_id, expires_at)
           VALUES ($1, NOW() + INTERVAL '30 days')
-        `, [userId]);
+        `,
+          [userId],
+        );
       }
       results.sessions = allUserIds.length;
 
@@ -718,7 +753,7 @@ debugRouter.post('/seed-full-test-data', async (c) => {
     console.error('Failed to seed test data:', error);
     return c.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     }, 500);
   }
 });
@@ -730,7 +765,7 @@ debugRouter.get('/test-users', async (c) => {
   if (config.env !== 'development') {
     return c.json({
       success: false,
-      error: 'Test user info is ONLY available in development mode'
+      error: 'Test user info is ONLY available in development mode',
     }, 403);
   }
 
@@ -763,7 +798,7 @@ debugRouter.get('/test-users', async (c) => {
 
       return c.json({
         success: true,
-        data: rows.map(u => ({
+        data: rows.map((u) => ({
           id: u.id,
           email: u.email,
           emailVerified: u.email_verified,
@@ -779,7 +814,7 @@ debugRouter.get('/test-users', async (c) => {
     console.error('Failed to get test users:', error);
     return c.json({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     }, 500);
   }
 });

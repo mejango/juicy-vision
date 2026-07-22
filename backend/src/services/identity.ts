@@ -6,7 +6,7 @@
  * Username + emoji combo must be unique (case-insensitive on username).
  */
 
-import { query, queryOne, execute } from '../db/index.ts';
+import { execute, query, queryOne } from '../db/index.ts';
 import { updateUserEmoji } from './chat.ts';
 import { broadcastMemberUpdate } from './websocket.ts';
 
@@ -15,7 +15,9 @@ import { broadcastMemberUpdate } from './websocket.ts';
 // ============================================================================
 
 // Cache the linked addresses module to avoid repeated dynamic imports
-let linkedAddressesModule: { getPrimaryAddress: (address: string) => Promise<string | null> } | null = null;
+let linkedAddressesModule:
+  | { getPrimaryAddress: (address: string) => Promise<string | null> }
+  | null = null;
 
 async function getLinkedAddressesModule() {
   if (!linkedAddressesModule) {
@@ -76,8 +78,22 @@ const USERNAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]{2,19}$/;
 
 // Valid fruit/juice emojis (same as FRUIT_EMOJIS in frontend)
 export const VALID_EMOJIS = [
-  '🍊', '🍋', '🍎', '🍇', '🍓', '🍒', '🍑', '🍉',
-  '🍈', '🍍', '🥝', '🥭', '🍐', '🍌', '🧃', '🥤',
+  '🍊',
+  '🍋',
+  '🍎',
+  '🍇',
+  '🍓',
+  '🍒',
+  '🍑',
+  '🍉',
+  '🍈',
+  '🍍',
+  '🥝',
+  '🥭',
+  '🍐',
+  '🍌',
+  '🧃',
+  '🥤',
 ];
 
 export function validateUsername(username: string): { valid: boolean; error?: string } {
@@ -91,7 +107,10 @@ export function validateUsername(username: string): { valid: boolean; error?: st
     return { valid: false, error: 'Username must be at most 20 characters' };
   }
   if (!USERNAME_REGEX.test(username)) {
-    return { valid: false, error: 'Username must start with a letter and contain only letters, numbers, and underscores' };
+    return {
+      valid: false,
+      error: 'Username must start with a letter and contain only letters, numbers, and underscores',
+    };
   }
   return { valid: true };
 }
@@ -140,7 +159,7 @@ function dbToHistoryEntry(db: DbJuicyIdentityHistory): JuicyIdentityHistory {
 export async function getIdentityByAddress(address: string): Promise<JuicyIdentity | null> {
   const db = await queryOne<DbJuicyIdentity>(
     `SELECT * FROM juicy_identities WHERE LOWER(address) = LOWER($1)`,
-    [address]
+    [address],
   );
   return db ? dbToIdentity(db) : null;
 }
@@ -178,7 +197,7 @@ export async function getIdentityByAddressResolved(address: string): Promise<Jui
 export async function resolveIdentity(emoji: string, username: string): Promise<string | null> {
   const db = await queryOne<{ address: string }>(
     `SELECT address FROM juicy_identities WHERE emoji = $1 AND username_lower = $2`,
-    [emoji, username.toLowerCase()]
+    [emoji, username.toLowerCase()],
   );
   return db?.address ?? null;
 }
@@ -189,7 +208,7 @@ export async function resolveIdentity(emoji: string, username: string): Promise<
 export async function isIdentityAvailable(
   emoji: string,
   username: string,
-  excludeAddress?: string
+  excludeAddress?: string,
 ): Promise<boolean> {
   const params: (string | undefined)[] = [emoji, username.toLowerCase()];
   let query_str = `SELECT address FROM juicy_identities WHERE emoji = $1 AND username_lower = $2`;
@@ -209,7 +228,7 @@ export async function isIdentityAvailable(
 export async function setIdentity(
   address: string,
   emoji: string,
-  username: string
+  username: string,
 ): Promise<JuicyIdentity> {
   // Validate inputs
   const emojiValidation = validateEmoji(emoji);
@@ -232,14 +251,15 @@ export async function setIdentity(
 
   // Check if this is an update (existing identity)
   const existing = await getIdentityByAddress(address);
-  const hasChanged = existing && (existing.emoji !== emoji || existing.username.toLowerCase() !== usernameLower);
+  const hasChanged = existing &&
+    (existing.emoji !== emoji || existing.username.toLowerCase() !== usernameLower);
 
   // Record history if updating and something changed
   if (existing && hasChanged) {
     await execute(
       `INSERT INTO juicy_identity_history (address, emoji, username, started_at, ended_at, change_type)
        VALUES ($1, $2, $3, $4, NOW(), 'updated')`,
-      [address, existing.emoji, existing.username, existing.createdAt]
+      [address, existing.emoji, existing.username, existing.createdAt],
     );
   }
 
@@ -253,7 +273,7 @@ export async function setIdentity(
        username_lower = EXCLUDED.username_lower,
        updated_at = NOW()
      RETURNING *`,
-    [address, emoji, username, usernameLower]
+    [address, emoji, username, usernameLower],
   );
 
   if (!result) {
@@ -279,13 +299,13 @@ export async function deleteIdentity(address: string): Promise<void> {
     await execute(
       `INSERT INTO juicy_identity_history (address, emoji, username, started_at, ended_at, change_type)
        VALUES ($1, $2, $3, $4, NOW(), 'deleted')`,
-      [address, existing.emoji, existing.username, existing.createdAt]
+      [address, existing.emoji, existing.username, existing.createdAt],
     );
   }
 
   await execute(
     `DELETE FROM juicy_identities WHERE LOWER(address) = LOWER($1)`,
-    [address]
+    [address],
   );
 }
 
@@ -297,7 +317,7 @@ export async function getIdentityHistory(address: string): Promise<JuicyIdentity
     `SELECT * FROM juicy_identity_history
      WHERE LOWER(address) = LOWER($1)
      ORDER BY ended_at DESC`,
-    [address]
+    [address],
   );
   return results.map(dbToHistoryEntry);
 }
@@ -311,7 +331,7 @@ export async function searchIdentities(searchQuery: string, limit = 10): Promise
      WHERE username_lower LIKE $1
      ORDER BY username_lower ASC
      LIMIT $2`,
-    [`${searchQuery.toLowerCase()}%`, limit]
+    [`${searchQuery.toLowerCase()}%`, limit],
   );
   return results.map(dbToIdentity);
 }
@@ -354,4 +374,3 @@ export function parseIdentityString(input: string): { emoji: string; username: s
 
   return null;
 }
-

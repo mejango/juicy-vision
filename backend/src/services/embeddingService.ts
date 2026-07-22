@@ -68,7 +68,7 @@ export async function generateEmbedding(
   options: {
     model?: string;
     useCache?: boolean;
-  } = {}
+  } = {},
 ): Promise<EmbeddingResult> {
   const config = getConfig();
   const model = options.model || DEFAULT_EMBEDDING_MODEL;
@@ -138,7 +138,7 @@ export async function generateBatchEmbeddings(
   options: {
     model?: string;
     useCache?: boolean;
-  } = {}
+  } = {},
 ): Promise<BatchEmbeddingResult> {
   const config = getConfig();
   const model = options.model || DEFAULT_EMBEDDING_MODEL;
@@ -248,7 +248,4 @@ export function formatEmbeddingForPostgres(embedding: number[]): string {
 // Exports
 // ============================================================================
 
-export {
-  DEFAULT_EMBEDDING_MODEL,
-  EMBEDDING_DIMENSIONS,
-};
+export { DEFAULT_EMBEDDING_MODEL, EMBEDDING_DIMENSIONS };

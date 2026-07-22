@@ -10,20 +10,15 @@ import { z } from 'zod';
 import { optionalAuth } from '../middleware/auth.ts';
 import { requireWalletOrAuth } from '../middleware/walletSession.ts';
 import {
+  createChatEvent,
   createInvite,
   getInviteByCode,
   getInvitesForChat,
   isInviteValid,
-  useInvite,
   revokeInvite,
-  createChatEvent,
+  useInvite,
 } from '../services/invite.ts';
-import {
-  getChatById,
-  getMember,
-  addMemberViaInvite,
-  checkPermission,
-} from '../services/chat.ts';
+import { addMemberViaInvite, checkPermission, getChatById, getMember } from '../services/chat.ts';
 import { broadcastToChat } from '../services/websocket.ts';
 
 export const inviteRouter = new Hono();
@@ -67,8 +62,7 @@ inviteRouter.post(
     }
 
     // Only founders and admins can create invites, or members with canInviteOthers
-    const canInvite =
-      member.role === 'founder' ||
+    const canInvite = member.role === 'founder' ||
       member.role === 'admin' ||
       member.canInviteOthers;
 
@@ -77,17 +71,25 @@ inviteRouter.post(
     }
 
     // Can't grant canPassOnRoles if you don't have that permission (unless founder/admin)
-    if (body.canPassOnRoles && member.role !== 'founder' && member.role !== 'admin' && !member.canPassOnRoles) {
+    if (
+      body.canPassOnRoles && member.role !== 'founder' && member.role !== 'admin' &&
+      !member.canPassOnRoles
+    ) {
       return c.json({ success: false, error: 'Cannot grant role assignment permission' }, 403);
     }
 
     // Can't grant canPauseAi if you don't have that permission (unless founder/admin)
-    if (body.canPauseAi && member.role !== 'founder' && member.role !== 'admin' && !member.canPauseAi) {
+    if (
+      body.canPauseAi && member.role !== 'founder' && member.role !== 'admin' && !member.canPauseAi
+    ) {
       return c.json({ success: false, error: 'Cannot grant AI pause permission' }, 403);
     }
 
     // Can't grant canGrantPauseAi if you don't have that permission (unless founder/admin)
-    if (body.canGrantPauseAi && member.role !== 'founder' && member.role !== 'admin' && !member.canPauseAi) {
+    if (
+      body.canGrantPauseAi && member.role !== 'founder' && member.role !== 'admin' &&
+      !member.canPauseAi
+    ) {
       return c.json({ success: false, error: 'Cannot grant AI pause grant permission' }, 403);
     }
 
@@ -118,7 +120,7 @@ inviteRouter.post(
           canInvokeAi: invite.canInvokeAi,
           canPauseAi: invite.canPauseAi,
           canGrantPauseAi: invite.canGrantPauseAi,
-        }
+        },
       );
 
       // Broadcast event to chat
@@ -150,7 +152,7 @@ inviteRouter.post(
       console.error('[Invite] Failed to create:', error);
       return c.json({ success: false, error: 'Failed to create invite' }, 500);
     }
-  }
+  },
 );
 
 /**
@@ -172,7 +174,7 @@ inviteRouter.get(
 
     const invites = await getInvitesForChat(chatId);
     return c.json({ success: true, data: invites });
-  }
+  },
 );
 
 /**
@@ -195,7 +197,7 @@ inviteRouter.delete(
 
     await revokeInvite(inviteId);
     return c.json({ success: true });
-  }
+  },
 );
 
 /**
@@ -308,7 +310,7 @@ inviteRouter.post(
         {
           viaInvite: true,
           inviteCode: code,
-        }
+        },
       );
 
       // Broadcast join event
@@ -353,9 +355,13 @@ inviteRouter.post(
           canPassOnRoles: invite.canPassOnRoles,
         },
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const databaseError = error as { code?: string; message?: string };
       // Handle duplicate key error (race condition - user already joined)
-      if (error?.code === '23505' || error?.message?.includes('Already a member') || error?.message?.includes('duplicate key')) {
+      if (
+        databaseError.code === '23505' || databaseError.message?.includes('Already a member') ||
+        databaseError.message?.includes('duplicate key')
+      ) {
         const chat = await getChatById(invite.chatId);
         return c.json({
           success: true,
@@ -369,7 +375,7 @@ inviteRouter.post(
       console.error('[Invite] Failed to join:', error);
       return c.json({ success: false, error: 'Failed to join chat' }, 500);
     }
-  }
+  },
 );
 
 /**
@@ -400,5 +406,5 @@ inviteRouter.get(
     const events = await getChatEvents(chatId, limit);
 
     return c.json({ success: true, data: events });
-  }
+  },
 );
