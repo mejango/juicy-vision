@@ -21,6 +21,7 @@ import {
   fetchCashOutTaxSnapshots,
   calculateFloorPrice,
   fetchAllRulesets,
+  fetchIndexedAmmPriceHistory,
   isRevnetProject,
   type SuckerGroupMoment,
   type CashOutTaxSnapshot,
@@ -119,6 +120,8 @@ export default function TokenPriceChart({
   const [discoveredPool, setDiscoveredPool] = useState<PoolInfo | null>(null)
   const [tokenAddress, setTokenAddress] = useState<string | null>(null)
   const [accountingToken, setAccountingToken] = useState(resolveAccountingToken())
+  const [accountingCurrency, setAccountingCurrency] = useState(1)
+  const [indexedPoolAvailable, setIndexedPoolAvailable] = useState(false)
 
   // Toggle state for series visibility
   const [showIssuance, setShowIssuance] = useState(true)
@@ -151,6 +154,7 @@ export default function TokenPriceChart({
           throw new Error('Cash-out price unavailable for this accounting configuration')
         }
         setAccountingToken(resolveAccountingToken(currentBalance.currency, currentBalance.decimals))
+        setAccountingCurrency(currentBalance.currency)
 
         const current = project.currentRuleset
         if (isRevnetProject(project) && current.baseCurrency === currentBalance.currency) {
@@ -247,7 +251,8 @@ export default function TokenPriceChart({
 
   const isUsdBased = accountingToken.isUsd
   const expectedPoolQuote = accountingToken.isUsd ? 'USDC' : 'WETH'
-  const poolMatchesAccounting = discoveredPool?.quoteToken === expectedPoolQuote
+  const legacyPoolMatchesAccounting = discoveredPool?.quoteToken === expectedPoolQuote
+  const poolMatchesAccounting = indexedPoolAvailable || legacyPoolMatchesAccounting
 
   // Load pool price data when pool is available (explicit or discovered)
   useEffect(() => {
@@ -255,12 +260,24 @@ export default function TokenPriceChart({
       const effectivePoolAddress = discoveredPool?.address
       const effectiveTokenAddress = tokenAddress
 
-      if (!effectivePoolAddress || !effectiveTokenAddress || !poolMatchesAccounting) {
-        setPoolPriceData([])
-        return
-      }
-
       try {
+        const indexed = await fetchIndexedAmmPriceHistory({
+          projectId,
+          chainId: parseInt(chainId),
+          currency: accountingCurrency,
+          terminalDecimals: accountingToken.decimals,
+        })
+        if (indexed.hasPool) {
+          setIndexedPoolAvailable(true)
+          setPoolPriceData(indexed.points)
+          return
+        }
+
+        setIndexedPoolAvailable(false)
+        if (!effectivePoolAddress || !effectiveTokenAddress || !legacyPoolMatchesAccounting) {
+          setPoolPriceData([])
+          return
+        }
         const startTimestamp = getPoolRangeStartTimestamp(range, projectStart)
         const useHourly = shouldUseHourlyData(range)
 
@@ -275,13 +292,41 @@ export default function TokenPriceChart({
 
         setPoolPriceData(priceData)
       } catch (err) {
-        console.error('Failed to load pool price data:', err)
-        setPoolPriceData([])
+        // New Bendystraw fields may be unavailable during a coordinated
+        // deploy. Preserve the existing V3 history as a temporary fallback.
+        setIndexedPoolAvailable(false)
+        if (!effectivePoolAddress || !effectiveTokenAddress || !legacyPoolMatchesAccounting) {
+          console.error('Failed to load pool price data:', err)
+          setPoolPriceData([])
+          return
+        }
+        const startTimestamp = getPoolRangeStartTimestamp(range, projectStart)
+        const useHourly = shouldUseHourlyData(range)
+        const priceData = await fetchPoolPriceHistory(
+          effectivePoolAddress,
+          effectiveTokenAddress,
+          parseInt(chainId),
+          startTimestamp,
+          useHourly,
+          theGraphApiKey || DEFAULT_THEGRAPH_API_KEY,
+        )
+        setPoolPriceData(priceData)
       }
     }
 
     loadPoolData()
-  }, [discoveredPool, tokenAddress, chainId, range, projectStart, theGraphApiKey, poolMatchesAccounting])
+  }, [
+    accountingToken.decimals,
+    accountingCurrency,
+    chainId,
+    discoveredPool,
+    legacyPoolMatchesAccounting,
+    projectId,
+    projectStart,
+    range,
+    theGraphApiKey,
+    tokenAddress,
+  ])
 
   // Prepare chart data
   const chartData = useMemo(() => {
@@ -292,12 +337,14 @@ export default function TokenPriceChart({
     // Sort rulesets chronologically
     const sortedRulesets = [...rulesets].sort((a, b) => a.start - b.start)
 
-    // Create data points map keyed by day
+    // Preserve intraday trades for the short ranges; longer views aggregate
+    // into daily buckets to keep the chart compact.
     const dataByDay = new Map<number, DataPoint>()
     const DAY_SECONDS = 86400
+    const BUCKET_SECONDS = shouldUseHourlyData(range) ? 3600 : DAY_SECONDS
 
-    // Normalize timestamp to day boundary
-    const toDayBoundary = (ts: number) => Math.floor(ts / DAY_SECONDS) * DAY_SECONDS
+    const toBucketBoundary = (ts: number) =>
+      Math.floor(ts / BUCKET_SECONDS) * BUCKET_SECONDS
 
     // For USD-based projects (USDC pools), don't convert - show raw values
     // The pool price is already in USDC, and for USDC-terminal projects,
@@ -305,10 +352,10 @@ export default function TokenPriceChart({
     // This keeps all three lines on the same scale
 
     // Generate issuance price data at daily intervals
-    const interval = DAY_SECONDS
+    const interval = BUCKET_SECONDS
     if (sortedRulesets.length > 0) {
       for (let t = rangeStart; t <= rangeEnd; t += interval) {
-        const dayTs = toDayBoundary(t)
+        const dayTs = toBucketBoundary(t)
         const price = calculatePriceAtTimestamp(t, sortedRulesets)
 
         if (price !== undefined && isFinite(price)) {
@@ -325,7 +372,7 @@ export default function TokenPriceChart({
 
     if (moments.length > 0 && taxSnapshots.length > 0) {
       for (const moment of moments) {
-        const dayTs = toDayBoundary(moment.timestamp)
+        const dayTs = toBucketBoundary(moment.timestamp)
         if (dayTs < rangeStart) continue
 
         const balance = BigInt(moment.balance)
@@ -346,8 +393,19 @@ export default function TokenPriceChart({
     }
 
     // Add pool price data (already in correct denomination - USD for USDC pools, ETH for ETH pools)
-    for (const poolPoint of poolPriceData) {
-      const dayTs = toDayBoundary(poolPoint.timestamp)
+    const orderedPoolPoints = [...poolPriceData].sort((a, b) => a.timestamp - b.timestamp)
+    const priorPoolPoints = orderedPoolPoints.filter(
+      point => point.timestamp < rangeStart,
+    )
+    const previousPoolPoint = priorPoolPoints[priorPoolPoints.length - 1]
+    if (previousPoolPoint) {
+      const seedTs = toBucketBoundary(rangeStart)
+      const existing = dataByDay.get(seedTs) || { timestamp: seedTs }
+      existing.poolPrice = previousPoolPoint.price
+      dataByDay.set(seedTs, existing)
+    }
+    for (const poolPoint of orderedPoolPoints) {
+      const dayTs = toBucketBoundary(poolPoint.timestamp)
       if (dayTs < rangeStart) continue
 
       const existing = dataByDay.get(dayTs) || { timestamp: dayTs }
