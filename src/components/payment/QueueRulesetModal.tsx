@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
+import { useAccount, useWalletClient } from 'wagmi'
 import { encodeFunctionData, createPublicClient, http, isAddress, type Address } from 'viem'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
-import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { useWalletBalances, useManagedWallet } from '../../hooks'
+import { useGuardedTx } from '../../hooks/useGuardedTx'
 import { GasBalanceStatus } from './GasBalanceStatus'
 import { useOmnichainQueueRuleset } from '../../hooks/relayr'
 import { type JBRulesetConfig } from '../../services/relayr'
@@ -12,7 +13,7 @@ import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { verifyQueueRulesetParams } from '../../utils/transactionVerification'
-import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
+import { simulateTransaction } from '../../utils/transactionSafety'
 import { CHAINS as CHAIN_INFO, RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
 import { JB_CONTROLLER_ABI } from '../../constants/abis/jbController'
 import {
@@ -74,15 +75,15 @@ export default function QueueRulesetModal({
   const isDark = theme === 'dark'
   const { address } = useAccount()
   const { data: walletClient } = useWalletClient()
-  const { switchChainAsync } = useSwitchChain()
-  const { addTransaction, updateTransaction } = useTransactionStore()
+  const guarded = useGuardedTx()
+  const { addTransaction } = useTransactionStore()
   const { totalEth, perChain, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
 
   // Managed mode support
   const { mode, isAuthenticated } = useAuthStore()
   const isManagedMode = mode === 'managed' && isAuthenticated()
   const { address: managedAddress } = useManagedWallet()
-  const reviewedActiveAddress = isManagedMode ? managedAddress : address
+  const reviewedActiveAddress = guarded.activeAddress
   const { assertCurrentAccount } = useReviewedTransactionAccount(
     isOpen,
     reviewedActiveAddress,
@@ -126,7 +127,7 @@ export default function QueueRulesetModal({
     },
   })
 
-  const hasGasBalance = isManagedMode || (balancesAvailable && (useOmnichain
+  const hasGasBalance = isManagedMode || guarded.isSafeMode || (balancesAvailable && (useOmnichain
     ? perChain.some(balance => balance.eth > 0n)
     : chainRulesetData.every(chainData =>
         (perChain.find(balance => balance.chainId === chainData.chainId)?.eth ?? 0n) > 0n
@@ -387,7 +388,9 @@ export default function QueueRulesetModal({
 
   // Queue ruleset on a single chain (legacy mode)
   const queueOnChain = useCallback(async (chainData: ChainRulesetData) => {
-    if (isManagedMode) {
+    if (guarded.isSafeMode) {
+      if (!guarded.activeAddress) throw new Error('Safe not connected')
+    } else if (isManagedMode) {
       if (!managedAddress) {
         throw new Error('Managed wallet not available')
       }
@@ -403,7 +406,7 @@ export default function QueueRulesetModal({
     }
 
     try {
-      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+      if (!guarded.isSafeMode) assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
       const queueTarget = await validateFreshChainConfiguration(chainData)
 
       const rulesetArgs = buildRulesetArgs(chainData.chainId)
@@ -418,7 +421,7 @@ export default function QueueRulesetModal({
         ],
       })
 
-      const activeAddress = (isManagedMode ? managedAddress : address) as Address | undefined
+      const activeAddress = guarded.activeAddress as Address | undefined
       if (!activeAddress || !isAddress(activeAddress)) throw new Error('Active wallet address is invalid')
       await simulateTransaction({
         chainId: chainData.chainId,
@@ -435,39 +438,31 @@ export default function QueueRulesetModal({
         status: 'pending',
       })
 
-      let hash: string
+      const callArgs = [BigInt(chainData.projectId), rulesetArgs, memo] as const
+      const hash = await guarded.run({
+        chainId: chainData.chainId,
+        to: queueTarget,
+        data: callData,
+        activityId: txId,
+        review: {
+          title: 'Review ruleset queue',
+          label: `Queue the reviewed ruleset for project #${chainData.projectId}`,
+          contractName: 'JBController',
+          abi: JB_CONTROLLER_ABI,
+          functionName: 'queueRulesetsOf',
+          args: callArgs,
+        },
+        reverify: async () => {
+          const finalQueueTarget = await validateFreshChainConfiguration(chainData)
+          if (finalQueueTarget.toLowerCase() !== queueTarget.toLowerCase()) {
+            throw new Error(`The project queue route changed on chain ${chainData.chainId}`)
+          }
+        },
+        onPhase: phase => updateChainState(chainData.chainId, {
+          status: phase === 'signing' ? 'signing' : 'submitted',
+        }),
+      })
 
-      if (isManagedMode) {
-        assertCurrentAccount()
-        updateChainState(chainData.chainId, { status: 'submitted' })
-        hash = await executeManagedTransaction(chainData.chainId, queueTarget, callData, '0')
-      } else {
-        updateChainState(chainData.chainId, { status: 'signing' })
-        await switchChainAsync({ chainId: chainData.chainId })
-        if (await walletClient!.getChainId() !== chainData.chainId) {
-          throw new Error(`Wallet did not switch to chain ${chainData.chainId}`)
-        }
-        const finalQueueTarget = await validateFreshChainConfiguration(chainData)
-        if (finalQueueTarget.toLowerCase() !== queueTarget.toLowerCase()) {
-          throw new Error(`The project queue route changed on chain ${chainData.chainId}`)
-        }
-        await simulateTransaction({
-          chainId: chainData.chainId,
-          account: activeAddress,
-          to: finalQueueTarget,
-          data: callData,
-        })
-        assertCurrentAccount(walletClient!.account?.address)
-        hash = await walletClient!.sendTransaction({
-          to: finalQueueTarget,
-          data: callData,
-          value: 0n,
-        })
-        updateChainState(chainData.chainId, { status: 'submitted', txHash: hash })
-      }
-
-      updateTransaction(txId, { hash, status: 'submitted' })
-      if (!isManagedMode) await waitForSuccessfulTransaction(chainData.chainId, hash as `0x${string}`)
       updateChainState(chainData.chainId, { status: 'confirmed', txHash: hash })
 
       return hash
@@ -475,15 +470,15 @@ export default function QueueRulesetModal({
       updateChainState(chainData.chainId, { status: 'failed', error: txErrorMessage(err, 'Transaction failed') })
       throw err
     }
-  }, [walletClient, address, memo, buildRulesetArgs, addTransaction, updateTransaction, updateChainState, switchChainAsync, isManagedMode, managedAddress, validateFreshChainConfiguration, assertCurrentAccount])
+  }, [walletClient, address, memo, buildRulesetArgs, addTransaction, updateChainState, isManagedMode, managedAddress, validateFreshChainConfiguration, assertCurrentAccount, guarded])
 
   // Start the queuing process
   const handleStart = useCallback(async () => {
-    const activeAddress = isManagedMode ? managedAddress : address
+    const activeAddress = guarded.activeAddress
     if (!activeAddress || chainRulesetData.length === 0) return
 
     try {
-      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+      if (!guarded.isSafeMode) assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'The reviewed account could not be verified'
       setControllerError(message)
@@ -542,7 +537,7 @@ export default function QueueRulesetModal({
       }
       setCurrentChainIndex(-1)
     }
-  }, [walletClient, address, chainRulesetData, queueOnChain, isManagedMode, managedAddress, useOmnichain, isOmnichain, queue, rulesetConfigsByChain, memo, synchronizedStartTime, validateFreshChainConfiguration, onError, assertCurrentAccount])
+  }, [walletClient, chainRulesetData, queueOnChain, isManagedMode, useOmnichain, isOmnichain, queue, rulesetConfigsByChain, memo, synchronizedStartTime, validateFreshChainConfiguration, onError, assertCurrentAccount, guarded])
 
   const handleClose = useCallback(() => {
     resetOmnichain()

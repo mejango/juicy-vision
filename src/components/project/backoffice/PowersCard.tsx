@@ -121,6 +121,12 @@ function PowerModal({
         chainId,
         to: request.to,
         data: request.data,
+        review: {
+          title: `Review ${power.label.toLowerCase()}`,
+          label: `${power.actionLabel} for project #${pid.toString()}`,
+          contractName: power.contract,
+          ...request.review,
+        },
         // Reviewed-state re-verification: the ruleset may have rolled over
         // since review — abort when this power's flag is off on this chain.
         reverify: async () => {

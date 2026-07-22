@@ -211,7 +211,7 @@ export default function LaunchProjectModal({
     } catch (err) {
       setCreationFeeError(err instanceof Error ? err.message : 'Project creation fee unavailable')
     }
-  }, [effectiveOwner, hasBothOptions, ownerChoice, forceSelfCustody, chainIds, projectUri, rulesetConfig, rulesetConfigs, terminalConfigurations, chainConfigs, suckerBridge, memo, deployTiersHookConfig, launch, creationFeesWei, reviewedMode, connectedAddress, assertCurrentAccount])
+  }, [effectiveOwner, hasBothOptions, ownerChoice, forceSelfCustody, chainIds, projectUri, rulesetConfig, rulesetConfigs, terminalConfigurations, chainConfigs, suckerBridge, memo, deployTiersHookConfig, launch, creationFeesWei, setCreationFeesWei, setCreationFeeError, reviewedMode, connectedAddress, assertCurrentAccount])
 
   const handleClose = useCallback(() => {
     reset()

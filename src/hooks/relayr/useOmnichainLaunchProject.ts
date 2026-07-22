@@ -28,6 +28,8 @@ import {
 } from '../../constants/abis'
 import { JB_OMNICHAIN_DEPLOYER } from '../../constants'
 import { getSafetyPublicClient } from '../../utils/transactionSafety'
+import { requireTransactionReview } from '../../utils/transactionReview'
+import { isSafeAppActive } from '../../services/safeApp'
 
 // Relayr app ID for sponsored bundles
 const RELAYR_APP_ID = import.meta.env.VITE_RELAYR_APP_ID || 'juicy-vision'
@@ -345,6 +347,13 @@ export function useOmnichainLaunchProject(
     // Managed mode is used when: in managed mode AND not forced to self-custody
     const useServerSigning = isManagedMode && !forceSelfCustody
 
+    if (!useServerSigning && isSafeAppActive()) {
+      bundle._setError(
+        'A Safe cannot authorize Relayr ERC-2771 requests as an EOA. Use a managed account for this Relayr launch, or leave Safe and connect the EOA that will own the project.',
+      )
+      return
+    }
+
     // For managed mode, use managed wallet as owner if not specified
     const projectOwner = owner || (useServerSigning ? managedAddress : undefined)
     if (!projectOwner || !isAddress(projectOwner)) {
@@ -529,6 +538,25 @@ export function useOmnichainLaunchProject(
             message: messageData,
           }
 
+          await requireTransactionReview({
+            kind: 'authorization',
+            title: `Review Relayr signature on chain ${tx.chain}`,
+            description: 'This EIP-712 signature authorizes the Juicebox trusted forwarder to execute the exact project-launch call below. Signing is not execution; Relayr submits and tracks it afterward.',
+            confirmLabel: 'Agree & sign Relayr request',
+            authorization: {
+              type: 'ERC-2771 ForwardRequest',
+              ...typedData,
+            },
+            calls: [{
+              chainId: tx.chain,
+              from: projectOwner as Address,
+              to: tx.target as Address,
+              data: tx.data as Hex,
+              value: BigInt(tx.value || '0'),
+              label: 'Launch project on this destination chain',
+              contractName: 'JBOmnichainDeployer',
+            }],
+          })
           assertSigningOwnerUnchanged()
           const signature = await signTypedDataAsync(typedData)
           assertSigningOwnerUnchanged()

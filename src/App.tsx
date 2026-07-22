@@ -25,6 +25,8 @@ import { getSessionPseudoAddress, getCachedPseudoAddress } from './services/sess
 import { getWalletSession } from './services/siwe'
 import { useEnsNameResolved } from './hooks'
 import { PaymentReviewModal } from './components/payment'
+import TransactionReviewModal from './components/payment/TransactionReviewModal'
+import TransactionStatusCenter from './components/payment/TransactionStatusCenter'
 import NetworkModeSelect from './components/common/NetworkModeSelect'
 
 const queryClient = new QueryClient({
@@ -596,7 +598,13 @@ function ActivitySidebar({ onProjectClick }: { onProjectClick: (query: string) =
 // Component that activates transaction execution listener
 function TransactionExecutor() {
   useTransactionExecutor()
-  return <PaymentReviewModal />
+  return (
+    <>
+      <PaymentReviewModal />
+      <TransactionReviewModal />
+      <TransactionStatusCenter />
+    </>
+  )
 }
 
 // Welcome layout with simplified dock pinning
@@ -784,7 +792,6 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   if (isMobile) {
     return (
       <div className={`h-screen overflow-hidden flex flex-col ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
-        <TransactionExecutor />
         {/* Mobile header - only show when in chat mode */}
         {inChatMode && (
           <div className="flex-shrink-0">
@@ -824,7 +831,6 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   return (
     <div className={`h-screen overflow-hidden flex ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
       {/* Transaction executor - listens for pay events */}
-      <TransactionExecutor />
 
       {/* Left border - always visible (4px to match border-4) */}
       <div className="w-[4px] bg-juice-orange shrink-0" />
@@ -890,6 +896,7 @@ function MainApp() {
       <QueryErrorPanel />
       <AppProviders>
         <BrowserRouter>
+          <TransactionExecutor />
           <Suspense fallback={<RouteFallback />}>
             <Routes>
               <Route path="/pay/:sessionId" element={<PaymentPage />} />

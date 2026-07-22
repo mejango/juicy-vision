@@ -175,6 +175,12 @@ function SetPermissionsModal({
         chainId,
         to: request.to,
         data: request.data,
+        review: {
+          title: 'Review operator permissions',
+          label: `Replace ${shortAddress(operator)}'s project permissions with ${ids.length} selected permission${ids.length === 1 ? '' : 's'}`,
+          contractName: 'JBPermissions',
+          ...request.review,
+        },
         // Reviewed-state re-verification: abort when the operator's CURRENT
         // set drifted from the preloaded snapshot (someone else changed it —
         // this tx would silently clobber theirs), or the owner changed.

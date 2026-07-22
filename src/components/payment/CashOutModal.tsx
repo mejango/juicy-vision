@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
-import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
+import { useAccount, useWalletClient } from 'wagmi'
 import { parseUnits, formatUnits, encodeFunctionData, createPublicClient, http, type Hex, type Address, type Chain, type PublicClient } from 'viem'
 import { buildCashOutTx } from '@bananapus/nana-sdk-core/v6'
 import { type JBChainId } from '@bananapus/nana-sdk-core'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
-import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { useWalletBalances, useManagedWallet } from '../../hooks'
+import { useGuardedTx } from '../../hooks/useGuardedTx'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 import { txErrorMessage } from '../../utils/txErrors'
 import { GasBalanceStatus } from './GasBalanceStatus'
@@ -16,7 +17,7 @@ import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { verifyCashOutParams } from '../../utils/transactionVerification'
 import { getPaymentTerminal } from '../../utils/paymentTerminal'
-import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
+import { simulateTransaction } from '../../utils/transactionSafety'
 import { assertCurrentProjectCashOutConfigurationTrusted, requireRecognizedRuntimeHook } from '../../utils/projectTrust'
 import { resolveCashOutPreviewOutcome, TERMINAL_PREVIEW_CASH_OUT_ABI, type CashOutPreviewOutcome } from '../../utils/terminalPreview'
 
@@ -157,7 +158,6 @@ export default function CashOutModal({
   const isDark = theme === 'dark'
   const { address } = useAccount()
   const { data: walletClient } = useWalletClient()
-  const { switchChainAsync } = useSwitchChain()
   const { addTransaction, updateTransaction } = useTransactionStore()
   const { perChain, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
 
@@ -165,6 +165,7 @@ export default function CashOutModal({
   const { mode, isAuthenticated } = useAuthStore()
   const isManagedMode = mode === 'managed' && isAuthenticated()
   const { address: managedAddress } = useManagedWallet()
+  const guarded = useGuardedTx()
 
   const [status, setStatus] = useState<CashOutStatus>('preview')
   const [txHash, setTxHash] = useState<string | null>(null)
@@ -197,7 +198,7 @@ export default function CashOutModal({
   }, [tokenAmount])
   const tokenNum = cashOutCount !== null ? Number(formatUnits(cashOutCount, 18)) : 0
   const chainGasBalance = perChain.find((balance) => balance.chainId === chainId)?.eth ?? 0n
-  const hasGasBalance = isManagedMode || (balancesAvailable && chainGasBalance > 0n)
+  const hasGasBalance = isManagedMode || guarded.isSafeMode || (balancesAvailable && chainGasBalance > 0n)
 
   const minReclaimed = previewOutcome?.terminalMinimum ?? 0n
   const previewReturnFloat = previewOutcome ? Number(formatUnits(previewOutcome.expectedReturn, reclaimTokenDecimals)) : null
@@ -206,7 +207,7 @@ export default function CashOutModal({
   const returnDecimals = reclaimTokenDecimals <= 6 ? 2 : 4
 
   // Verify transaction parameters
-  const activeAddress = isManagedMode ? managedAddress : address
+  const activeAddress = guarded.activeAddress
   const { assertCurrentAccount } = useReviewedTransactionAccount(isOpen, activeAddress, isManagedMode ? 'managed' : 'self_custody')
   const verificationResult = useMemo(() => {
     const holderAddress = activeAddress || '0x0000000000000000000000000000000000000000'
@@ -343,8 +344,10 @@ export default function CashOutModal({
 
   const handleConfirm = useCallback(async () => {
     // Check wallet connection based on mode
-    const activeAddress = isManagedMode ? managedAddress : address
-    if (isManagedMode) {
+    const activeAddress = guarded.activeAddress
+    if (guarded.isSafeMode) {
+      if (!activeAddress) throw new Error('Safe not connected')
+    } else if (isManagedMode) {
       if (!managedAddress) {
         setError('Managed wallet not available')
         return
@@ -381,7 +384,7 @@ export default function CashOutModal({
     setSubmitting(true)
 
     try {
-      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+      if (!guarded.isSafeMode) assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
       if (cashOutCount === null) throw new Error('Enter a valid token amount')
       const rpcUrl = RPC_ENDPOINTS[chainId]?.[0]
       if (!rpcUrl) throw new Error(`No RPC endpoint for chain ${chainId}`)
@@ -428,6 +431,11 @@ export default function CashOutModal({
         return {
           target: freshTerminal.address,
           data,
+          review: {
+            abi: cashOutTx.abi,
+            functionName: cashOutTx.functionName,
+            args: cashOutTx.args,
+          },
           outcome: reviewed.outcome,
           quoteFingerprint: [
             reviewed.preview[0].id.toString(),
@@ -461,37 +469,35 @@ export default function CashOutModal({
         status: 'pending',
       })
 
-      let hash: string
-
-      if (isManagedMode) {
-        // Execute via backend for managed mode
-        assertCurrentAccount()
-        setStatus('pending')
-        hash = await executeManagedTransaction(chainId, prepared.target, prepared.data, '0')
-      } else {
-        // Execute via wallet for self-custody mode
-        setStatus('signing')
-        await switchChainAsync({ chainId })
-        if ((await walletClient!.getChainId()) !== chainId) {
-          throw new Error(`Wallet did not switch to chain ${chainId}`)
-        }
-        const finalPrepared = await prepareCashOut()
-        if (finalPrepared.target.toLowerCase() !== prepared.target.toLowerCase() || finalPrepared.quoteFingerprint !== prepared.quoteFingerprint) {
-          throw new Error('The cash out quote changed. Close this review and try again.')
-        }
-        assertCurrentAccount(walletClient!.account?.address)
-        hash = await walletClient!.sendTransaction({
-          to: finalPrepared.target,
-          data: finalPrepared.data,
-          value: 0n,
-        })
-        setStatus('pending')
-      }
+      const hash = await guarded.run({
+        chainId,
+        to: prepared.target,
+        data: prepared.data,
+        activityId: txId,
+        review: {
+          title: 'Review cash out',
+          label: `Cash out ${tokenAmount} project tokens for the reviewed minimum`,
+          contractName: 'JBMultiTerminal',
+          ...prepared.review,
+        },
+        reverify: async () => {
+          const finalPrepared = await prepareCashOut()
+          if (
+            finalPrepared.target.toLowerCase() !== prepared.target.toLowerCase() ||
+            finalPrepared.quoteFingerprint !== prepared.quoteFingerprint ||
+            finalPrepared.data.toLowerCase() !== prepared.data.toLowerCase()
+          ) {
+            throw new Error('The cash out quote changed. Close this review and try again.')
+          }
+        },
+        onPhase: phase => setStatus(phase === 'signing' ? 'signing' : 'pending'),
+        onSubmitted: submittedHash => {
+          setTxHash(submittedHash)
+          onSubmitted?.(submittedHash)
+        },
+      })
 
       setTxHash(hash)
-      updateTransaction(txId, { hash, status: 'submitted' })
-      onSubmitted?.(hash)
-      if (!isManagedMode) await waitForSuccessfulTransaction(chainId, hash as `0x${string}`)
       updateTransaction(txId, { hash, status: 'confirmed' })
       setStatus('confirmed')
     } catch (err) {
@@ -511,7 +517,6 @@ export default function CashOutModal({
     cashOutCount,
     addTransaction,
     updateTransaction,
-    switchChainAsync,
     isManagedMode,
     managedAddress,
     terminalAddress,
@@ -519,6 +524,7 @@ export default function CashOutModal({
     onSubmitted,
     assertCurrentAccount,
     previewOutcome,
+    guarded,
   ])
 
   if (!isOpen) return null

@@ -224,6 +224,12 @@ function BuybackRouterModal({
         chainId,
         to: request.to,
         data: request.data,
+        review: {
+          title: `Review ${action.title.toLowerCase()}`,
+          label: `${action.title} for project #${pid.toString()}`,
+          contractName: action.kind === 'setTerminal' ? 'JBRouterTerminalRegistry' : 'JBBuybackHookRegistry',
+          ...request.review,
+        },
         // Reviewed-state re-verification: abort when the registry value shown
         // at review changed underneath (or, for pool init, the hook is gone).
         reverify: async () => {

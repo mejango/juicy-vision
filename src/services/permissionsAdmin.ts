@@ -13,7 +13,7 @@
  *     buyback/router registries, all executed via the shared guarded runner.
  */
 
-import { encodeFunctionData, parseUnits, type Address } from 'viem'
+import { encodeFunctionData, parseUnits, type Abi, type Address } from 'viem'
 import {
   jbPermissionsAbi,
   jbProjectsAbi,
@@ -37,6 +37,13 @@ import {
 // ─── Contract addresses ──────────────────────────────────────────────────────
 
 type V6ContractName = keyof (typeof jbContractAddress)['6']
+
+export interface AdminTxRequest {
+  chainId: number
+  to: Address
+  data: `0x${string}`
+  review: { abi: Abi; functionName: string; args: readonly unknown[] }
+}
 
 /** Resolve a V6 contract address from the SDK's canonical address book. */
 export function v6ContractAddress(name: V6ContractName, chainId: number): Address {
@@ -180,7 +187,7 @@ export function buildSetPermissionsRequest(args: {
   operator: Address
   projectId: bigint
   permissionIds: number[]
-}): { chainId: number; to: Address; data: `0x${string}` } {
+}): AdminTxRequest {
   const request = buildSetPermissionsTx({
     chainId: args.chainId as JBChainId,
     account: args.account,
@@ -192,6 +199,7 @@ export function buildSetPermissionsRequest(args: {
     chainId: args.chainId,
     to: request.address,
     data: encodeFunctionData({ abi: request.abi, functionName: request.functionName, args: request.args }),
+    review: { abi: request.abi, functionName: request.functionName, args: request.args },
   }
 }
 
@@ -347,15 +355,17 @@ export function buildTransferOwnershipRequest(args: {
   owner: Address
   to: Address
   projectId: bigint
-}): { chainId: number; to: Address; data: `0x${string}` } {
+}): AdminTxRequest {
+  const callArgs = [args.owner, args.to, args.projectId] as const
   return {
     chainId: args.chainId,
     to: v6ContractAddress('JBProjects', args.chainId),
     data: encodeFunctionData({
       abi: jbProjectsAbi,
       functionName: 'transferFrom',
-      args: [args.owner, args.to, args.projectId],
+      args: callArgs,
     }),
+    review: { abi: jbProjectsAbi, functionName: 'transferFrom', args: callArgs },
   }
 }
 
@@ -364,15 +374,17 @@ export function buildSetOperatorRequest(args: {
   chainId: number
   to: Address
   projectId: bigint
-}): { chainId: number; to: Address; data: `0x${string}` } {
+}): AdminTxRequest {
+  const callArgs = [args.projectId, args.to] as const
   return {
     chainId: args.chainId,
     to: v6ContractAddress('REVOwner', args.chainId),
     data: encodeFunctionData({
       abi: revOwnerAbi,
       functionName: 'setOperatorOf',
-      args: [args.projectId, args.to],
+      args: callArgs,
     }),
+    review: { abi: revOwnerAbi, functionName: 'setOperatorOf', args: callArgs },
   }
 }
 
@@ -568,7 +580,7 @@ function requireAddress(raw: string | boolean | undefined, label: string): Addre
 export function buildOwnerPowerRequest(
   power: OwnerPowerDef,
   args: { chainId: number; projectId: bigint; values: OwnerPowerValues },
-): { chainId: number; to: Address; data: `0x${string}` } {
+): AdminTxRequest {
   const { chainId, projectId, values } = args
   const to = v6ContractAddress(power.contract, chainId)
   const addressOrInfra = (field: OwnerPowerField): Address => {
@@ -589,7 +601,16 @@ export function buildOwnerPowerRequest(
         functionName: 'mintTokensOf',
         args: [projectId, tokenCount, beneficiary, '', !!values.useReservedPercent],
       })
-      return { chainId, to, data }
+      return {
+        chainId,
+        to,
+        data,
+        review: {
+          abi: jbControllerAbi,
+          functionName: 'mintTokensOf',
+          args: [projectId, tokenCount, beneficiary, '', !!values.useReservedPercent],
+        },
+      }
     }
     case 'setController': {
       const controller = addressOrInfra(power.fields[0])
@@ -598,7 +619,7 @@ export function buildOwnerPowerRequest(
         functionName: 'setControllerOf',
         args: [projectId, controller],
       })
-      return { chainId, to, data }
+      return { chainId, to, data, review: { abi: jbDirectoryAbi, functionName: 'setControllerOf', args: [projectId, controller] } }
     }
     case 'setTerminals': {
       const raw = typeof values.terminals === 'string' ? values.terminals.trim() : ''
@@ -610,7 +631,7 @@ export function buildOwnerPowerRequest(
         functionName: 'setTerminalsOf',
         args: [projectId, list],
       })
-      return { chainId, to, data }
+      return { chainId, to, data, review: { abi: jbDirectoryAbi, functionName: 'setTerminalsOf', args: [projectId, list] } }
     }
     case 'migrateBalance': {
       const token = requireAddress(values.token, 'Token')
@@ -620,7 +641,7 @@ export function buildOwnerPowerRequest(
         functionName: 'migrateBalanceOf',
         args: [projectId, token, destination],
       })
-      return { chainId, to, data }
+      return { chainId, to, data, review: { abi: jbMultiTerminalAbi, functionName: 'migrateBalanceOf', args: [projectId, token, destination] } }
     }
     case 'addPriceFeed': {
       const pricing = BigInt(String(values.pricingCurrency ?? '').trim() || '0')
@@ -632,7 +653,7 @@ export function buildOwnerPowerRequest(
         functionName: 'addPriceFeedFor',
         args: [projectId, pricing, unit, feed],
       })
-      return { chainId, to, data }
+      return { chainId, to, data, review: { abi: jbControllerAbi, functionName: 'addPriceFeedFor', args: [projectId, pricing, unit, feed] } }
     }
     case 'setToken': {
       const token = requireAddress(values.token, 'Token')
@@ -641,7 +662,7 @@ export function buildOwnerPowerRequest(
         functionName: 'setTokenFor',
         args: [projectId, token],
       })
-      return { chainId, to, data }
+      return { chainId, to, data, review: { abi: jbControllerAbi, functionName: 'setTokenFor', args: [projectId, token] } }
     }
   }
 }
@@ -678,15 +699,17 @@ export function buildSetBuybackHookRequest(args: {
   chainId: number
   projectId: bigint
   hook: Address
-}): { chainId: number; to: Address; data: `0x${string}` } {
+}): AdminTxRequest {
+  const callArgs = [args.projectId, args.hook] as const
   return {
     chainId: args.chainId,
     to: v6ContractAddress('JBBuybackHookRegistry', args.chainId),
     data: encodeFunctionData({
       abi: jbBuybackHookRegistryAbi,
       functionName: 'setHookFor',
-      args: [args.projectId, args.hook],
+      args: callArgs,
     }),
+    review: { abi: jbBuybackHookRegistryAbi, functionName: 'setHookFor', args: callArgs },
   }
 }
 
@@ -694,15 +717,17 @@ export function buildSetRouterTerminalRequest(args: {
   chainId: number
   projectId: bigint
   terminal: Address
-}): { chainId: number; to: Address; data: `0x${string}` } {
+}): AdminTxRequest {
+  const callArgs = [args.projectId, args.terminal] as const
   return {
     chainId: args.chainId,
     to: v6ContractAddress('JBRouterTerminalRegistry', args.chainId),
     data: encodeFunctionData({
       abi: jbRouterTerminalRegistryAbi,
       functionName: 'setTerminalFor',
-      args: [args.projectId, args.terminal],
+      args: callArgs,
     }),
+    review: { abi: jbRouterTerminalRegistryAbi, functionName: 'setTerminalFor', args: callArgs },
   }
 }
 
@@ -714,15 +739,17 @@ export function buildInitializeBuybackPoolRequest(args: {
   twapWindow: bigint
   terminalToken: Address
   sqrtPriceX96: bigint
-}): { chainId: number; to: Address; data: `0x${string}` } {
+}): AdminTxRequest {
+  const callArgs = [args.projectId, args.fee, args.tickSpacing, args.twapWindow, args.terminalToken, args.sqrtPriceX96] as const
   return {
     chainId: args.chainId,
     to: v6ContractAddress('JBBuybackHookRegistry', args.chainId),
     data: encodeFunctionData({
       abi: jbBuybackHookRegistryAbi,
       functionName: 'initializePoolFor',
-      args: [args.projectId, args.fee, args.tickSpacing, args.twapWindow, args.terminalToken, args.sqrtPriceX96],
+      args: callArgs,
     }),
+    review: { abi: jbBuybackHookRegistryAbi, functionName: 'initializePoolFor', args: callArgs },
   }
 }
 

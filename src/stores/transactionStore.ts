@@ -10,7 +10,15 @@ export type PaymentStage =
   | 'confirming'    // Waiting for transaction to be mined
   | 'queueing'      // Queuing Pay Credits payment for admin processing
 
-export type TransactionStatus = 'pending' | 'submitted' | 'confirmed' | 'failed' | 'cancelled' | 'queued'
+export type TransactionStatus =
+  | 'pending'
+  | 'safe-proposed'
+  | 'relayr-pending'
+  | 'submitted'
+  | 'confirmed'
+  | 'failed'
+  | 'cancelled'
+  | 'queued'
 
 export type TransactionType =
   | 'pay'
@@ -25,15 +33,37 @@ export type TransactionType =
   | 'queueRuleset'
   | 'deployERC20'
   | 'mint-nft'
+  | 'contractCall'
+  | 'relayr'
+
+export interface TransactionChainState {
+  chainId: number
+  status: 'pending' | 'submitted' | 'confirmed' | 'failed'
+  txHash?: string
+  error?: string
+}
 
 export interface Transaction {
   id: string
   type: TransactionType
   projectId?: string
+  /** External merchant payment session, when this transaction settles one. */
+  sessionId?: string
   chainId: number
   amount?: string
   token?: string
+  /** Address that signs/sends, or the Safe address that executes. */
+  account?: string
+  /** User-facing description of an otherwise generic contract call. */
+  label?: string
   hash?: string
+  /** Safe queue identifier. This is deliberately separate from the mined hash. */
+  safeTxHash?: string
+  /** Relayr bundle identifier used to recover/poll a cross-chain operation. */
+  bundleUuid?: string
+  /** Exact-call fingerprint used to prevent accidental duplicate submissions. */
+  callKey?: string
+  chainStates?: TransactionChainState[]
   status: TransactionStatus
   stage?: PaymentStage  // Current stage for granular progress display
   error?: string
@@ -101,7 +131,11 @@ export const useTransactionStore = create<TransactionState>()(
 
       getPendingTransactions: () => {
         return get().transactions.filter(
-          (tx) => tx.status === 'pending' || tx.status === 'submitted'
+          (tx) =>
+            tx.status === 'pending' ||
+            tx.status === 'safe-proposed' ||
+            tx.status === 'relayr-pending' ||
+            tx.status === 'submitted'
         )
       },
 

@@ -10,7 +10,7 @@
  * call falls back to the chain, and a chain read failure yields isSafe:false.
  */
 
-import { encodeFunctionData, getAddress, type Address } from 'viem'
+import { encodeFunctionData, getAddress, type Abi, type Address } from 'viem'
 import { publicClientFor } from './projectTx'
 
 const ZERO = '0x0000000000000000000000000000000000000000'
@@ -214,15 +214,17 @@ export async function fetchSafeCreation(safe: Address): Promise<SafeCreation | n
 export function buildDeploySafeRequest(
   chainId: number,
   creation: SafeCreation,
-): { chainId: number; to: Address; data: `0x${string}` } {
+): { chainId: number; to: Address; data: `0x${string}`; review: { abi: Abi; functionName: string; args: readonly unknown[] } } {
+  const args = [cs(creation.singleton), creation.initializer, creation.saltNonce] as const
   return {
     chainId,
     to: cs(creation.factory),
     data: encodeFunctionData({
       abi: PROXY_FACTORY_ABI,
       functionName: 'createProxyWithNonce',
-      args: [cs(creation.singleton), creation.initializer, creation.saltNonce],
+      args,
     }),
+    review: { abi: PROXY_FACTORY_ABI, functionName: 'createProxyWithNonce', args },
   }
 }
 

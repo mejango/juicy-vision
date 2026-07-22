@@ -59,6 +59,7 @@ describe('PaymentReviewModal', () => {
     expect(screen.getByText(/approve\(0x130f5d/)).toBeInTheDocument()
     expect(screen.getByTestId('technical-details')).toHaveTextContent(`${review.terminal} · pay`)
 
+    fireEvent.click(screen.getByRole('checkbox'))
     fireEvent.click(screen.getByRole('button', { name: 'Continue to wallet' }))
     await expect(result).resolves.toBe(true)
   })

@@ -11,7 +11,7 @@ import { useAccount, useConnect, useWalletClient, useSwitchChain } from 'wagmi'
 import { createPublicClient, encodeFunctionData, erc20Abi, formatUnits, http, type Address, type Hex } from 'viem'
 import { NATIVE_TOKEN, type JBChainId } from '@bananapus/nana-sdk-core'
 import { buildPayTx } from '@bananapus/nana-sdk-core/v6'
-import { useThemeStore, useAuthStore } from '../../stores'
+import { useThemeStore, useAuthStore, useTransactionStore } from '../../stores'
 import Button from '../../components/ui/Button'
 import { getChainName } from '../../components/dynamic/charts/utils'
 import { RPC_ENDPOINTS, USDC_ADDRESSES, VIEM_CHAINS, type SupportedChainId } from '../../constants'
@@ -24,6 +24,15 @@ import {
 import { requestPaymentReview, type PaymentReview } from '../../utils/paymentReview'
 import { resolvePayPreviewOutcome, TERMINAL_PREVIEW_PAY_ABI } from '../../utils/terminalPreview'
 import { txErrorMessage } from '../../utils/txErrors'
+import { useSafeApp } from '../../hooks/useSafeApp'
+import { submitTrackedTokenApproval } from '../../services/trackedTokenApproval'
+import {
+  encodeApprovalTx,
+  getActiveSafeInfo,
+  proposeSafeTransactions,
+  waitForSafeExecution,
+  type SafeTx,
+} from '../../services/safeApp'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
@@ -58,6 +67,8 @@ export default function PaymentPage() {
   const { connect, connectors, isPending: isConnecting } = useConnect()
   const { data: walletClient } = useWalletClient()
   const { switchChainAsync } = useSwitchChain()
+  const { safeInfo } = useSafeApp()
+  const transactions = useTransactionStore(state => state.transactions)
 
   // State for wallet connector selection
   const [showWalletOptions, setShowWalletOptions] = useState(false)
@@ -68,6 +79,14 @@ export default function PaymentPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [pendingWalletTxHash, setPendingWalletTxHash] = useState<Hex | null>(null)
+
+  useEffect(() => {
+    if (!sessionId) return
+    const activity = transactions.find(transaction => transaction.sessionId === sessionId)
+    if (activity?.hash && (activity.status === 'submitted' || activity.status === 'confirmed')) {
+      setPendingWalletTxHash(activity.hash as Hex)
+    }
+  }, [sessionId, transactions])
 
   // Auth state for email login
   const [email, setEmail] = useState('')
@@ -302,7 +321,8 @@ export default function PaymentPage() {
   const handlePayWithWallet = useCallback(async () => {
     if (!session) return
 
-    if (!isConnected || !walletAddress) {
+    const payerAddress = safeInfo?.safeAddress ?? walletAddress
+    if (!payerAddress || (!safeInfo && !isConnected)) {
       setShowWalletOptions(true)
       return
     }
@@ -312,6 +332,7 @@ export default function PaymentPage() {
 
     let submittedTxHash: Hex | null = null
     let transactionReverted = false
+    let activityId: string | null = null
     try {
       // Get payment parameters
       const paramsRes = await fetch(`${API_BASE}/terminal/session/${session.id}/pay/wallet`)
@@ -351,11 +372,11 @@ export default function PaymentPage() {
           projectId: BigInt(projectId),
         })
         const trustedPreview = await publicClient.readContract({
-          account: walletAddress,
+          account: payerAddress,
           address: terminal,
           abi: TERMINAL_PREVIEW_PAY_ABI,
           functionName: 'previewPayFor',
-          args: [BigInt(projectId), paymentToken, amount, walletAddress, '0x'],
+          args: [BigInt(projectId), paymentToken, amount, payerAddress, '0x'],
         })
         for (const specification of trustedPreview[3]) {
           if (!specification.noop) {
@@ -370,7 +391,7 @@ export default function PaymentPage() {
         return { preview: trustedPreview, route: discoveredTerminal.type }
       }
 
-      if (!walletClient?.account || walletClient.account.address.toLowerCase() !== walletAddress.toLowerCase()) {
+      if (!safeInfo && (!walletClient?.account || walletClient.account.address.toLowerCase() !== payerAddress.toLowerCase())) {
         throw new Error('Wallet not ready')
       }
 
@@ -384,9 +405,14 @@ export default function PaymentPage() {
       const minReturnedTokens = reviewedOutcome.minReturnedTokens
 
       let reviewedAllowance = 0n
-      const nativeBalance = await publicClient.getBalance({ address: walletAddress })
-      if (isNativeToken ? nativeBalance <= amount : nativeBalance === 0n) {
-        throw new Error(isNativeToken ? 'Insufficient ETH balance and gas' : 'Insufficient ETH for gas')
+      const nativeBalance = await publicClient.getBalance({ address: payerAddress })
+      const lacksNativeFunds = isNativeToken
+        ? safeInfo ? nativeBalance < amount : nativeBalance <= amount
+        : !safeInfo && nativeBalance === 0n
+      if (lacksNativeFunds) {
+        throw new Error(isNativeToken
+          ? safeInfo ? 'The Safe has insufficient ETH for this payment' : 'Insufficient ETH balance and gas'
+          : 'Insufficient ETH for gas')
       }
       if (!isNativeToken) {
         const [balance, allowance] = await Promise.all([
@@ -394,13 +420,13 @@ export default function PaymentPage() {
             address: paymentToken,
             abi: erc20Abi,
             functionName: 'balanceOf',
-            args: [walletAddress],
+            args: [payerAddress],
           }),
           publicClient.readContract({
             address: paymentToken,
             abi: erc20Abi,
             functionName: 'allowance',
-            args: [walletAddress, terminal],
+            args: [payerAddress, terminal],
           }),
         ])
         if (balance < amount) throw new Error('Insufficient USDC balance')
@@ -422,7 +448,7 @@ export default function PaymentPage() {
         projectId: BigInt(projectId),
         token: paymentToken,
         amount,
-        beneficiary: walletAddress,
+        beneficiary: payerAddress,
         minReturnedTokens,
         memo: paymentMemo,
         metadata: '0x',
@@ -430,7 +456,7 @@ export default function PaymentPage() {
       const payData = encodeFunctionData({ abi: payTx.abi, functionName: payTx.functionName, args: payTx.args })
       const paymentReview: PaymentReview = {
         txId: session.id,
-        account: walletAddress,
+        account: payerAddress,
         chainId: session.chainId,
         chainName: chain.name,
         projectId: String(projectId),
@@ -442,7 +468,7 @@ export default function PaymentPage() {
         amount: formatUnits(amount, isNativeToken ? 18 : 6),
         amountRaw: amount.toString(),
         valueRaw: value.toString(),
-        beneficiary: walletAddress,
+        beneficiary: payerAddress,
         memo: paymentMemo,
         rulesetId: reviewed.preview[0].id.toString(),
         expectedProjectTokens: reviewedOutcome.beneficiaryTokenCount.toString(),
@@ -462,8 +488,18 @@ export default function PaymentPage() {
       if (Date.now() >= new Date(quoteExpiresAt).getTime()) {
         throw new Error('Payment quote expired; request a new quote')
       }
-      if (!walletClient.account || walletClient.account.address.toLowerCase() !== walletAddress.toLowerCase()) {
+      if (!safeInfo && (!walletClient?.account || walletClient.account.address.toLowerCase() !== payerAddress.toLowerCase())) {
         throw new Error('The connected wallet changed; review the payment again')
+      }
+      if (safeInfo) {
+        const currentSafe = getActiveSafeInfo()
+        if (
+          !currentSafe ||
+          currentSafe.chainId !== session.chainId ||
+          currentSafe.safeAddress.toLowerCase() !== payerAddress.toLowerCase()
+        ) {
+          throw new Error('The connected Safe or its network changed; review the payment again')
+        }
       }
 
       const hookFingerprint = (preview: typeof reviewed.preview) => preview[3].map(specification => [
@@ -486,10 +522,38 @@ export default function PaymentPage() {
       }
       await assertReviewedPreviewUnchanged()
 
+      const callKey = [
+        payerAddress.toLowerCase(),
+        session.chainId,
+        terminal.toLowerCase(),
+        value.toString(),
+        payData.toLowerCase(),
+        approveData?.toLowerCase() ?? '',
+      ].join(':')
+      const store = useTransactionStore.getState()
+      const duplicate = store.transactions.find(transaction =>
+        transaction.callKey === callKey &&
+        (transaction.status === 'pending' || transaction.status === 'submitted' || transaction.status === 'safe-proposed')
+      )
+      if (duplicate) throw new Error('This exact merchant payment is already pending. Do not pay again.')
+      activityId = store.addTransaction({
+        type: 'pay',
+        projectId: String(projectId),
+        sessionId: session.id,
+        chainId: session.chainId,
+        account: payerAddress,
+        amount: paymentReview.amount,
+        token: paymentReview.tokenSymbol,
+        label: `Pay ${session.merchantName}`,
+        callKey,
+        status: 'pending',
+        stage: 'checking',
+      })
+
       const startRes = await fetch(`${API_BASE}/terminal/session/${session.id}/pay/wallet/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ payerAddress: walletAddress }),
+        body: JSON.stringify({ payerAddress }),
       })
       const startData = await startRes.json()
       if (!startData.success) throw new Error(startData.error || 'Payment session is no longer available')
@@ -497,13 +561,14 @@ export default function PaymentPage() {
 
       // Only prompt the wallet after the target, project configuration, runtime
       // hooks, exact call, balance, quote, and session have all been verified.
-      if (await walletClient.getChainId() !== session.chainId) {
+      if (!safeInfo && await walletClient!.getChainId() !== session.chainId) {
+        store.updateTransaction(activityId, { stage: 'switching' })
         await switchChainAsync({ chainId: session.chainId })
       }
-      if (await walletClient.getChainId() !== session.chainId) {
+      if (!safeInfo && await walletClient!.getChainId() !== session.chainId) {
         throw new Error(`Wallet did not switch to chain ${session.chainId}`)
       }
-      if (!walletClient.account || walletClient.account.address.toLowerCase() !== walletAddress.toLowerCase()) {
+      if (!safeInfo && (!walletClient!.account || walletClient!.account.address.toLowerCase() !== payerAddress.toLowerCase())) {
         throw new Error('The connected wallet changed; review the payment again')
       }
 
@@ -513,43 +578,62 @@ export default function PaymentPage() {
           address: paymentToken,
           abi: erc20Abi,
           functionName: 'allowance',
-          args: [walletAddress, terminal],
+          args: [payerAddress, terminal],
         })
         if ((allowance < amount) !== approvalRequired) {
           throw new Error('The token allowance changed; review the payment again')
         }
-        if (approvalRequired) {
-          await publicClient.call({ account: walletAddress, to: paymentToken, data: approveData! })
-          const approveHash = await walletClient.sendTransaction({
-            account: walletAddress,
+        if (approvalRequired && !safeInfo) {
+          store.updateTransaction(activityId, { stage: 'approving' })
+          await publicClient.call({ account: payerAddress, to: paymentToken, data: approveData! })
+          await submitTrackedTokenApproval({
+            chainId: session.chainId,
             chain,
-            to: paymentToken,
+            account: payerAddress,
+            token: paymentToken,
+            spender: terminal,
+            amount,
             data: approveData!,
-            value: 0n,
+            walletClient: walletClient!,
+            publicClient,
           })
-          const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash })
-          if (approveReceipt.status !== 'success') throw new Error('USDC approval reverted')
         }
       }
 
       await assertReviewedPreviewUnchanged()
-      if (!walletClient.account ||
-        walletClient.account.address.toLowerCase() !== walletAddress.toLowerCase() ||
-        await walletClient.getChainId() !== session.chainId) {
+      if (!safeInfo && (!walletClient!.account ||
+        walletClient!.account.address.toLowerCase() !== payerAddress.toLowerCase() ||
+        await walletClient!.getChainId() !== session.chainId)) {
         throw new Error('Wallet account or network changed; review the payment again')
       }
 
-      await publicClient.call({ account: walletAddress, to: terminal, data: payData, value })
+      if (safeInfo && approvalRequired) {
+        await publicClient.call({ account: payerAddress, to: paymentToken, data: approveData!, value: 0n })
+      } else {
+        await publicClient.call({ account: payerAddress, to: terminal, data: payData, value })
+      }
+      store.updateTransaction(activityId, { stage: 'submitting' })
 
-      const txHash = await walletClient.sendTransaction({
-        account: walletAddress,
-        chain,
-        to: terminal,
-        data: payData,
-        value,
-      })
+      let txHash: Hex
+      if (safeInfo) {
+        const txs: SafeTx[] = []
+        if (approvalRequired) txs.push(encodeApprovalTx(paymentToken, terminal, amount))
+        txs.push({ to: terminal, data: payData, value: `0x${value.toString(16)}` })
+        const safeTxHash = await proposeSafeTransactions(txs)
+        store.updateTransaction(activityId, { safeTxHash, status: 'safe-proposed', stage: undefined })
+        txHash = await waitForSafeExecution(safeTxHash)
+      } else {
+        txHash = await walletClient!.sendTransaction({
+          account: payerAddress,
+          chain,
+          to: terminal,
+          data: payData,
+          value,
+        })
+      }
       submittedTxHash = txHash
       setPendingWalletTxHash(txHash)
+      store.updateTransaction(activityId, { hash: txHash, status: 'submitted', stage: 'confirming' })
 
       // Give the backend the exact transaction immediately. It binds the hash
       // before checking the receipt, so an RPC timeout cannot invite a second pay.
@@ -562,8 +646,20 @@ export default function PaymentPage() {
       const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
       if (receipt.status !== 'success') {
         transactionReverted = true
+        store.updateTransaction(activityId, {
+          hash: txHash,
+          status: 'failed',
+          stage: undefined,
+          error: 'Payment transaction reverted',
+        })
         throw new Error('Payment transaction reverted')
       }
+      store.updateTransaction(activityId, {
+        hash: txHash,
+        status: 'confirmed',
+        stage: undefined,
+        confirmedAt: Date.now(),
+      })
 
       // Confirm payment with backend
       const confirmRes = await fetch(`${API_BASE}/terminal/session/${session.id}/pay/wallet/confirm`, {
@@ -578,6 +674,14 @@ export default function PaymentPage() {
       setSession(prev => prev ? { ...prev, status: 'completed' } : null)
       setStep('success')
     } catch (err) {
+      if (activityId && !submittedTxHash) {
+        const message = err instanceof Error ? err.message : String(err)
+        useTransactionStore.getState().updateTransaction(activityId, {
+          status: /rejected|denied|cancelled/i.test(message) ? 'cancelled' : 'failed',
+          stage: undefined,
+          error: txErrorMessage(err, 'Wallet payment failed'),
+        })
+      }
       if (submittedTxHash && !transactionReverted) {
         setError('Your transaction was submitted. Do not pay again while on-chain verification is still processing.')
         setStep('paying')
@@ -589,7 +693,7 @@ export default function PaymentPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          payerAddress: walletAddress,
+          payerAddress,
           txHash: transactionReverted ? submittedTxHash : undefined,
           errorMessage: err instanceof Error ? err.message : 'Unknown error',
         }),
@@ -601,7 +705,7 @@ export default function PaymentPage() {
     } finally {
       setLoading(false)
     }
-  }, [session, isConnected, walletAddress, walletClient, switchChainAsync])
+  }, [session, isConnected, walletAddress, walletClient, switchChainAsync, safeInfo])
 
   // Handle wallet connector selection
   const handleConnectWallet = (connector: typeof connectors[number]) => {
@@ -878,7 +982,11 @@ export default function PaymentPage() {
                   onClick={handlePayWithWallet}
                   className="w-full py-3"
                 >
-                  {isConnected && walletAddress ? `Pay with ${truncateAddress(walletAddress)}` : 'Connect Wallet'}
+                  {safeInfo
+                    ? `Pay with Safe ${truncateAddress(safeInfo.safeAddress)}`
+                    : isConnected && walletAddress
+                      ? `Pay with ${truncateAddress(walletAddress)}`
+                      : 'Connect Wallet'}
                 </Button>
               ) : (
                 <div className="space-y-2">

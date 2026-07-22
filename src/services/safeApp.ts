@@ -136,6 +136,40 @@ export function txHashForSafeTx(safeTxHash: string): Promise<`0x${string}` | nul
     .catch(() => null)
 }
 
+export interface WaitForSafeExecutionOptions {
+  pollingIntervalMs?: number
+  signal?: AbortSignal
+}
+
+/**
+ * Wait until Safe{Wallet} reports the actual on-chain execution hash.
+ *
+ * A safeTxHash is only a queue/proposal identifier and must never be passed to
+ * `waitForTransactionReceipt` or treated as success. Keeping this wait
+ * unbounded is intentional: a Safe can require several owners and may be
+ * executed hours later. Callers persist `safe-proposed` first, so the app can
+ * recover the proposal after a reload while the foreground flow remains on
+ * its pending step.
+ */
+export async function waitForSafeExecution(
+  safeTxHash: string,
+  options: WaitForSafeExecutionOptions = {},
+): Promise<`0x${string}`> {
+  const pollingIntervalMs = options.pollingIntervalMs ?? 4000
+  for (;;) {
+    if (options.signal?.aborted) throw new DOMException('Safe execution wait aborted', 'AbortError')
+    const txHash = await txHashForSafeTx(safeTxHash)
+    if (txHash) return txHash
+    await new Promise<void>((resolve, reject) => {
+      const timer = window.setTimeout(resolve, pollingIntervalMs)
+      options.signal?.addEventListener('abort', () => {
+        window.clearTimeout(timer)
+        reject(new DOMException('Safe execution wait aborted', 'AbortError'))
+      }, { once: true })
+    })
+  }
+}
+
 /**
  * Propose a BATCH of transactions as a single Safe queue entry (executed
  * atomically once signed). Used to bundle an ERC-20 approval + the main call

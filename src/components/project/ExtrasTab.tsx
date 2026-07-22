@@ -298,6 +298,12 @@ export default function ExtrasTab({ projectId, chainId, tokenSymbol, connectedCh
           chainId: call.chainId,
           to: call.to,
           data: call.data,
+          review: {
+            title: 'Review project payer deployment',
+            label: `Deploy the reviewed project payer on ${chainName(call.chainId)}`,
+            contractName: 'JBProjectPayerDeployer',
+            ...call.review,
+          },
           onPhase: (phase) => setDeployStatus({
             kind: 'pending',
             text: `${chainName(call.chainId)}: ${PHASE_TEXT[phase]}`,

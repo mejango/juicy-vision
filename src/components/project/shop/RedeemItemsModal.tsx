@@ -336,6 +336,14 @@ export function RedeemItemsModal({ isOpen, onClose, chains, defaultChainId, onRe
         chainId,
         to: terminal,
         data,
+        review: {
+          title: 'Review shop item redemption',
+          label: `Redeem ${ids.length} shop item${ids.length === 1 ? '' : 's'} for at least ${formatAmount(minReclaimed, reclaimToken)}`,
+          contractName: 'JBMultiTerminal',
+          abi: CASH_OUT_TOKENS_ABI,
+          functionName: 'cashOutTokensOf',
+          args: [activeAddress, projectId, 0n, reclaimToken.address, minReclaimed, activeAddress, metadata],
+        },
         // Re-quote before the send: abort if the live net dropped below the
         // reviewed 99% floor (never silently lower the floor).
         reverify: async () => {

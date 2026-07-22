@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
-import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
-import { formatUnits, type Chain, createPublicClient, http } from 'viem'
+import { useAccount, useWalletClient } from 'wagmi'
+import { decodeFunctionData, formatUnits, type Chain, createPublicClient, http } from 'viem'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
-import { useWalletBalances, executeManagedTransaction, useManagedWallet } from '../../hooks'
+import { useWalletBalances, useManagedWallet } from '../../hooks'
+import { useGuardedTx } from '../../hooks/useGuardedTx'
 import { GasBalanceStatus } from './GasBalanceStatus'
 import {
   encodeAdjustTiers,
@@ -19,10 +20,11 @@ import {
 import TechnicalDetails from '../shared/TechnicalDetails'
 import ChainStatusRow from './ChainStatusRow'
 import { ALL_VIEM_CHAINS, CHAINS as CHAIN_INFO, RPC_ENDPOINTS } from '../../constants'
-import { simulateTransaction, waitForSuccessfulTransaction } from '../../utils/transactionSafety'
+import { simulateTransaction } from '../../utils/transactionSafety'
 import { isUsdcCurrency } from '../../utils/technicalDetails'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 import { txErrorMessage } from '../../utils/txErrors'
+import { JB_721_TIERS_HOOK_ABI } from '../../constants/abis'
 
 const CHAINS: Record<number, Chain> = ALL_VIEM_CHAINS
 
@@ -85,7 +87,7 @@ export default function ManageTiersModal({
   const isDark = theme === 'dark'
   const { address } = useAccount()
   const { data: walletClient } = useWalletClient()
-  const { switchChainAsync } = useSwitchChain()
+  const guarded = useGuardedTx()
   const { addTransaction, updateTransaction } = useTransactionStore()
   const { totalEth, perChain, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
 
@@ -93,7 +95,7 @@ export default function ManageTiersModal({
   const { mode, isAuthenticated } = useAuthStore()
   const isManagedMode = mode === 'managed' && isAuthenticated()
   const { address: managedAddress } = useManagedWallet()
-  const reviewedActiveAddress = isManagedMode ? managedAddress : address
+  const reviewedActiveAddress = guarded.activeAddress
   const { assertCurrentAccount } = useReviewedTransactionAccount(
     isOpen,
     reviewedActiveAddress,
@@ -111,7 +113,7 @@ export default function ManageTiersModal({
     [chainHookData]
   )
 
-  const hasGasBalance = isManagedMode || (balancesAvailable && validChainData.every(chainData =>
+  const hasGasBalance = isManagedMode || guarded.isSafeMode || (balancesAvailable && validChainData.every(chainData =>
     (perChain.find(balance => balance.chainId === chainData.chainId)?.eth || 0n) > 0n
   ))
   const isOmnichain = validChainData.length > 1
@@ -172,7 +174,9 @@ export default function ManageTiersModal({
 
   // Execute the reviewed tier operations on a single chain.
   const updateTiersOnChain = useCallback(async (chainState: ChainTxState) => {
-    if (isManagedMode) {
+    if (guarded.isSafeMode) {
+      if (!guarded.activeAddress) throw new Error('Safe not connected')
+    } else if (isManagedMode) {
       if (!managedAddress) {
         throw new Error('Managed wallet not available')
       }
@@ -188,7 +192,7 @@ export default function ManageTiersModal({
     }
 
     try {
-      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+      if (!guarded.isSafeMode) assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
       const rpcUrl = RPC_ENDPOINTS[chainState.chainId]?.[0]
       if (!rpcUrl) {
         throw new Error(`No RPC endpoint configured for chain ${chainState.chainId}`)
@@ -204,7 +208,7 @@ export default function ManageTiersModal({
         }
         return requireRecognized721Hook(publicClient, currentHook, BigInt(chainState.projectId))
       }
-      const activeAddress = (isManagedMode ? managedAddress : address) as `0x${string}`
+      const activeAddress = guarded.activeAddress as `0x${string}`
       const operations: `0x${string}`[] = []
       if (pendingChanges.tiersToAdd.length > 0 || pendingChanges.tierIdsToRemove.length > 0) {
         operations.push(encodeAdjustTiers({
@@ -214,13 +218,6 @@ export default function ManageTiersModal({
       }
       if (pendingChanges.discountPercents.length > 0) {
         operations.push(encodeSetDiscountPercentsOf({ configs: pendingChanges.discountPercents }))
-      }
-
-      if (!isManagedMode) {
-        await switchChainAsync({ chainId: chainState.chainId })
-        if (await walletClient!.getChainId() !== chainState.chainId) {
-          throw new Error(`Wallet did not switch to chain ${chainState.chainId}`)
-        }
       }
 
       let hash = ''
@@ -243,15 +240,31 @@ export default function ManageTiersModal({
         })
         updateChainState(chainState.chainId, { status: 'authorizing' })
 
-        if (isManagedMode) {
-          assertCurrentAccount()
-          hash = await executeManagedTransaction(chainState.chainId, finalHook, data, '0x0')
-        } else {
-          assertCurrentAccount(walletClient!.account?.address)
-          hash = await walletClient!.sendTransaction({ to: finalHook, data, value: 0n })
-        }
+        const decoded = decodeFunctionData({ abi: JB_721_TIERS_HOOK_ABI, data })
+        hash = await guarded.run({
+          chainId: chainState.chainId,
+          to: finalHook,
+          data,
+          activityId: txId,
+          review: {
+            title: decoded.functionName === 'adjustTiers' ? 'Review NFT tier changes' : 'Review NFT tier discounts',
+            label: decoded.functionName === 'adjustTiers'
+              ? 'Apply the reviewed NFT tier additions and removals'
+              : 'Apply the reviewed NFT tier discount changes',
+            contractName: 'JB721TiersHook',
+            abi: JB_721_TIERS_HOOK_ABI,
+            functionName: decoded.functionName,
+            args: decoded.args,
+          },
+          reverify: async () => {
+            const latestHook = await resolveFreshHook()
+            if (latestHook.toLowerCase() !== finalHook.toLowerCase()) {
+              throw new Error('The project NFT hook changed. Review the collection again.')
+            }
+          },
+          onPhase: () => updateChainState(chainState.chainId, { status: 'submitted' }),
+        })
         updateChainState(chainState.chainId, { status: 'submitted', txHash: hash })
-        await waitForSuccessfulTransaction(chainState.chainId, hash as `0x${string}`)
         updateTransaction(txId, { hash, status: 'confirmed' })
       }
 
@@ -265,17 +278,17 @@ export default function ManageTiersModal({
     }
   }, [
     walletClient, address, pendingChanges, addTransaction,
-    updateTransaction, updateChainState, switchChainAsync,
-    isManagedMode, managedAddress, assertCurrentAccount
+    updateTransaction, updateChainState,
+    isManagedMode, managedAddress, assertCurrentAccount, guarded
   ])
 
   // Start the execution process
   const handleStart = useCallback(async () => {
-    const activeAddress = isManagedMode ? managedAddress : address
+    const activeAddress = guarded.activeAddress
     if (!activeAddress || validChainData.length === 0) return
 
     try {
-      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+      if (!guarded.isSafeMode) assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
     } catch (err) {
       onError?.(err instanceof Error ? err.message : 'The reviewed account could not be verified')
       return
@@ -292,7 +305,7 @@ export default function ManageTiersModal({
       }
     }
     setCurrentChainIndex(-1)
-  }, [address, chainStates, updateTiersOnChain, isManagedMode, managedAddress, validChainData, walletClient, assertCurrentAccount, onError])
+  }, [chainStates, updateTiersOnChain, validChainData, walletClient, assertCurrentAccount, onError, guarded, isManagedMode])
 
   if (!isOpen) return null
 

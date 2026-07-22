@@ -89,8 +89,6 @@ export function SplitsSubtab({ project, chainIds, chainProjects, variant, onEdit
   const [statuses, setStatuses] = useState<Record<number, DistributeStatus>>({})
   const [pendingNonce, setPendingNonce] = useState(0)
 
-  const chainKey = chainIds.join(',')
-
   // V6 project ids are independent per chain — resolve each chain's own id for
   // per-chain reads/txs; never use the home id off-home.
   const pidFor = useCallback(
@@ -200,6 +198,14 @@ export function SplitsSubtab({ project, chainIds, chainProjects, variant, onEdit
         chainId,
         to: JBController,
         data,
+        review: {
+          title: 'Review reserved token distribution',
+          label: `Send project #${String(pid)} reserved tokens to its configured splits`,
+          contractName: 'JBController',
+          abi: jbControllerAbi,
+          functionName: 'sendReservedTokensToSplitsOf',
+          args: [BigInt(pid)],
+        },
         // Abort when the pending balance dropped to zero since review —
         // someone else may have distributed while this sat open.
         reverify: async () => {

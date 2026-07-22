@@ -35,6 +35,7 @@ import {
   http,
   zeroAddress,
   type Address,
+  type Abi,
   type Chain,
   type PublicClient,
 } from 'viem'
@@ -1320,6 +1321,7 @@ export interface PreparedTx {
   to: Address
   data: `0x${string}`
   value: bigint
+  review?: { abi: Abi; functionName: string; args: readonly unknown[] }
 }
 
 /**
@@ -1338,14 +1340,16 @@ export function buildPermit2ApproveTx(
   const positionManager = POSITION_MANAGER_BY_CHAIN[chainId]
   if (!positionManager) throw new Error('No position manager on this chain')
   const expiration = nowSeconds + 30 * 24 * 3600
+  const args = [token, positionManager, amount, expiration] as const
   return {
     to: PERMIT2_ADDRESS,
     data: encodeFunctionData({
       abi: permit2Abi,
       functionName: 'approve',
-      args: [token, positionManager, amount, expiration],
+      args,
     }),
     value: 0n,
+    review: { abi: permit2Abi, functionName: 'approve', args },
   }
 }
 
@@ -1376,14 +1380,16 @@ export function buildModifyLiquiditiesTx(
 ): PreparedTx {
   const positionManager = POSITION_MANAGER_BY_CHAIN[chainId]
   if (!positionManager) throw new Error('No position manager on this chain')
+  const args = [plan.unlockData, deadline] as const
   return {
     to: positionManager,
     data: encodeFunctionData({
       abi: positionManagerAbi,
       functionName: 'modifyLiquidities',
-      args: [plan.unlockData, deadline],
+      args,
     }),
     value: plan.value,
+    review: { abi: positionManagerAbi, functionName: 'modifyLiquidities', args },
   }
 }
 
@@ -1433,14 +1439,16 @@ export function prepareRemoveLiquidity(
 export function buildRemoveLiquidityTx(chainId: number, plan: RemoveLiquidityPlan): PreparedTx {
   const positionManager = POSITION_MANAGER_BY_CHAIN[chainId]
   if (!positionManager) throw new Error('No position manager on this chain')
+  const args = [plan.unlockData, plan.deadline] as const
   return {
     to: positionManager,
     data: encodeFunctionData({
       abi: positionManagerAbi,
       functionName: 'modifyLiquidities',
-      args: [plan.unlockData, plan.deadline],
+      args,
     }),
     value: 0n,
+    review: { abi: positionManagerAbi, functionName: 'modifyLiquidities', args },
   }
 }
 
@@ -1599,31 +1607,44 @@ export function buildSplitHookActionTx(
     | { kind: 'claimFees'; projectId: bigint; beneficiary: Address },
 ): PreparedTx {
   let data: `0x${string}`
+  let review: PreparedTx['review']
   switch (action.kind) {
-    case 'deployPool':
-      data = encodeFunctionData({ abi: bannyLpSplitHookAbi, functionName: 'deployPool', args: [action.projectId, 0n] })
+    case 'deployPool': {
+      const args = [action.projectId, 0n] as const
+      data = encodeFunctionData({ abi: bannyLpSplitHookAbi, functionName: 'deployPool', args })
+      review = { abi: bannyLpSplitHookAbi, functionName: 'deployPool', args }
       break
-    case 'addLiquidity':
+    }
+    case 'addLiquidity': {
+      const args = [action.projectId, action.terminalToken, 0n] as const
       data = encodeFunctionData({
         abi: bannyLpSplitHookAbi,
         functionName: 'addLiquidity',
-        args: [action.projectId, action.terminalToken, 0n],
+        args,
       })
+      review = { abi: bannyLpSplitHookAbi, functionName: 'addLiquidity', args }
       break
-    case 'collectFees':
+    }
+    case 'collectFees': {
+      const args = [action.projectId, action.terminalToken] as const
       data = encodeFunctionData({
         abi: bannyLpSplitHookAbi,
         functionName: 'collectAndRouteLPFees',
-        args: [action.projectId, action.terminalToken],
+        args,
       })
+      review = { abi: bannyLpSplitHookAbi, functionName: 'collectAndRouteLPFees', args }
       break
-    case 'claimFees':
+    }
+    case 'claimFees': {
+      const args = [action.projectId, action.beneficiary] as const
       data = encodeFunctionData({
         abi: bannyLpSplitHookAbi,
         functionName: 'claimFeeTokensFor',
-        args: [action.projectId, action.beneficiary],
+        args,
       })
+      review = { abi: bannyLpSplitHookAbi, functionName: 'claimFeeTokensFor', args }
       break
+    }
   }
-  return { to: hookAddress, data, value: 0n }
+  return { to: hookAddress, data, value: 0n, review }
 }

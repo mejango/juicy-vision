@@ -114,6 +114,12 @@ function DeploySafeButton({
         chainId,
         to: request.to,
         data: request.data,
+        review: {
+          title: 'Review same-address Safe deployment',
+          label: `Replay this Safe's verified creation parameters on ${chainName(chainId)}`,
+          contractName: 'Safe Proxy Factory',
+          ...request.review,
+        },
         // Guard against a race: abort if the Safe was deployed here since the button rendered.
         reverify: async () => {
           invalidateSafeInfo(authority, chainId)

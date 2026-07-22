@@ -67,8 +67,6 @@ export function AutoIssuanceSubtab({ project, chainIds, chainProjects }: AutoIss
   const { activeAddress, run } = useGuardedTx()
 
   const symbol = project.tokenSymbol || 'tokens'
-  const chainKey = chainIds.join(',')
-
   // V6 project ids are independent per chain — resolve each chain's own id.
   const pidFor = useCallback(
     (cid: number): number | string => chainProjects?.find(cp => cp.chainId === cid)?.projectId ?? project.projectId,
@@ -125,6 +123,14 @@ export function AutoIssuanceSubtab({ project, chainIds, chainProjects }: AutoIss
         chainId: row.chainId,
         to: request.address,
         data,
+        review: {
+          title: 'Review automatic token issuance',
+          label: `Issue the unlocked stage allocation to ${shortAddress(row.beneficiary)}`,
+          contractName: 'REVOwner',
+          abi: request.abi,
+          functionName: request.functionName,
+          args: request.args,
+        },
         // Abort when the live amount dropped to zero since review — someone
         // else may have auto-issued this allocation already.
         reverify: async () => {

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuthStore } from '../stores'
 import { getPasskeyWallet, getStoredCredentialId } from '../services/passkeyWallet'
-import { keccak256, toBytes } from 'viem'
+import { keccak256, toBytes, type Address, type Hex } from 'viem'
+import { requireTransactionReview } from '../utils/transactionReview'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 const SMART_ACCOUNT_CACHE_KEY = 'juice-smart-account-address'
@@ -288,6 +289,35 @@ export async function createManagedRelayrBundle(
     projectOwner: projectOwner.toLowerCase(),
     smartAccountAddress: smartAccountAddress?.toLowerCase() || null,
   })))
+
+  await requireTransactionReview({
+    kind: 'authorization',
+    title: transactions.length > 1 ? 'Review Relayr multi-chain authorization' : 'Review Relayr authorization',
+    description: smartAccountAddress
+      ? 'Your managed signer will authorize Relayr to sponsor these exact app-controlled calls through your smart account. Each destination remains pending until Relayr confirms it onchain.'
+      : 'Your managed signer will authorize Relayr to sponsor these exact app-controlled calls. Each destination remains pending until Relayr confirms it onchain.',
+    confirmLabel: 'Agree & authorize Relayr',
+    authorization: {
+      type: 'Managed Relayr server authorization',
+      projectOwner,
+      smartAccountAddress: smartAccountAddress ?? null,
+      operationKey,
+      note: 'The backend derives ERC-2771 nonce, deadline, gas, and signature. The calls below are the exact app-controlled destinations, values, and calldata.',
+    },
+    calls: transactions.map((transaction, index) => ({
+      chainId: transaction.chainId,
+      from: (smartAccountAddress ?? projectOwner) as Address,
+      to: transaction.target as Address,
+      data: transaction.data as Hex,
+      value: BigInt(transaction.value || '0'),
+      label: transactions.length > 1 ? `Relayr destination ${index + 1}` : 'Relayr destination',
+    })),
+  })
+
+  const current = useAuthStore.getState()
+  if (!current.isAuthenticated() || current.mode !== 'managed' || !current.token || current.token !== token) {
+    throw new Error('Managed wallet session changed after review. Review the Relayr authorization again.')
+  }
 
   const result = await apiRequest<{ bundleId: string }>(
     '/wallet/relayr-bundle',

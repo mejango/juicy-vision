@@ -211,6 +211,14 @@ export function SettlementSubtab({ project, chainIds, chainProjects }: Settlemen
           args: request.args,
         }),
         value,
+        review: {
+          title: 'Review cross-chain accounting sync',
+          label: `Send this sucker's accounting snapshot across the bridge`,
+          contractName: 'JBSucker',
+          abi: request.abi,
+          functionName: request.functionName,
+          args: request.args,
+        },
         onPhase: phase => setTx(key, { kind: 'running', phase }),
       })
       setSyncInFlight(previous => ({ ...previous, [`${viewChainId}:${peer.peerChainId}`]: Math.floor(Date.now() / 1000) }))
@@ -256,6 +264,14 @@ export function SettlementSubtab({ project, chainIds, chainProjects }: Settlemen
         chainId: tx.peerChainId,
         to: request.address,
         data: encodeFunctionData({ abi: request.abi, functionName: request.functionName, args: request.args }),
+        review: {
+          title: 'Review cross-chain claim',
+          label: `Claim queued movement #${tx.index} for its reviewed beneficiary`,
+          contractName: 'JBSucker',
+          abi: request.abi,
+          functionName: request.functionName,
+          args: request.args,
+        },
         reverify: async () => {
           const client = publicClientFor(tx.peerChainId)
           const [inbox, executed] = await Promise.all([
@@ -331,6 +347,14 @@ export function SettlementSubtab({ project, chainIds, chainProjects }: Settlemen
         to: request.address,
         data: encodeFunctionData({ abi: request.abi, functionName: request.functionName, args: request.args }),
         value,
+        review: {
+          title: 'Review queued bridge execution',
+          label: 'Send the queued token outbox to the remote chain',
+          contractName: 'JBSucker',
+          abi: request.abi,
+          functionName: request.functionName,
+          args: request.args,
+        },
         reverify: async () => {
           const outbox = await publicClientFor(sample.chainId).readContract({
             address: sample.sourceSucker,

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useAccount, useSwitchChain, useWalletClient } from 'wagmi'
+import { useWalletClient } from 'wagmi'
 import { formatUnits, type Address } from 'viem'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
-import { executeManagedTransaction, useManagedWallet, useWalletBalances } from '../../hooks'
+import { useWalletBalances } from '../../hooks'
+import { useGuardedTx } from '../../hooks/useGuardedTx'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 import {
   createFundAccessClient,
@@ -18,7 +19,6 @@ import {
 } from '../../services/fundAccess'
 import { fetchProjectSplits, type JBSplitData } from '../../services/bendystraw'
 import { assertSafeStoredSplitGroups as assertSimpleStoredSplitGroups } from '../../utils/splitSafety'
-import { waitForSuccessfulTransaction } from '../../utils/transactionSafety'
 import { verifySendPayoutsParams, verifyUseAllowanceParams } from '../../utils/transactionVerification'
 import { buildTxLinkEntries, type TxLinkEntry } from '../../utils/txlink'
 import { CHAINS as CHAIN_INFO, MAINNET_CHAINS } from '../../constants'
@@ -83,15 +83,13 @@ export default function FundAccessModal({
 }: FundAccessModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
-  const { address } = useAccount()
   const { data: walletClient } = useWalletClient()
-  const { switchChainAsync } = useSwitchChain()
+  const guarded = useGuardedTx()
   const { addTransaction, updateTransaction } = useTransactionStore()
   const { perChain, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
   const { mode, isAuthenticated } = useAuthStore()
   const isManagedMode = mode === 'managed' && isAuthenticated()
-  const { address: managedAddress } = useManagedWallet()
-  const activeAddress = isManagedMode ? managedAddress : address
+  const activeAddress = guarded.activeAddress
   const { assertCurrentAccount } = useReviewedTransactionAccount(
     isOpen,
     activeAddress,
@@ -113,7 +111,7 @@ export default function FundAccessModal({
     [amount, context.decimals],
   )
   const chainGasBalance = perChain.find(balance => balance.chainId === chainId)?.eth ?? 0n
-  const hasGasBalance = isManagedMode || (balancesAvailable && chainGasBalance > 0n)
+  const hasGasBalance = isManagedMode || guarded.isSafeMode || (balancesAvailable && chainGasBalance > 0n)
   const provisionalMinimum = requestedAmount && kind === 'payout' && access.currency === context.accountingCurrency
     ? requestedAmount
     : 1n
@@ -176,7 +174,7 @@ export default function FundAccessModal({
       setError(activeAddress ? 'Enter a valid amount' : 'Wallet not connected')
       return
     }
-    if (!isManagedMode && !walletClient) {
+    if (!guarded.isSafeMode && !isManagedMode && !walletClient) {
       setError('Wallet not connected')
       return
     }
@@ -186,7 +184,7 @@ export default function FundAccessModal({
     const originalSplitFingerprint = splitFingerprint(splits)
     const prepare = async () => {
       assertReviewUnchanged(reviewedAccount, reviewedAmount)
-      assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
+      if (!guarded.isSafeMode) assertCurrentAccount(isManagedMode ? undefined : walletClient?.account?.address)
       const prepared = await prepareFundAccessTransaction({
         client: createFundAccessClient(chainId),
         chainId,
@@ -235,36 +233,32 @@ export default function FundAccessModal({
         status: 'pending',
       })
 
-      let hash: string
-      if (isManagedMode) {
-        assertCurrentAccount()
-        assertReviewUnchanged(reviewedAccount, reviewedAmount)
-        setStatus('pending')
-        hash = await executeManagedTransaction(chainId, prepared.target, prepared.data, '0')
-      } else {
-        setStatus('signing')
-        await switchChainAsync({ chainId })
-        if (await walletClient!.getChainId() !== chainId) throw new Error(`Wallet did not switch to chain ${chainId}`)
-        const finalPrepared = await prepare()
-        if (
-          finalPrepared.target.toLowerCase() !== prepared.target.toLowerCase() ||
-          finalPrepared.data.toLowerCase() !== prepared.data.toLowerCase()
-        ) {
-          throw new Error('The live balance, price, or quote changed. Review the updated amount and try again.')
-        }
-        assertReviewUnchanged(reviewedAccount, reviewedAmount)
-        assertCurrentAccount(walletClient!.account?.address)
-        hash = await walletClient!.sendTransaction({
-          to: finalPrepared.target,
-          data: finalPrepared.data,
-          value: 0n,
-        })
-        setStatus('pending')
-      }
+      const hash = await guarded.run({
+        chainId,
+        to: prepared.target,
+        data: prepared.data,
+        activityId: txId,
+        review: {
+          title: kind === 'payout' ? 'Review payout distribution' : 'Review surplus allowance withdrawal',
+          label: kind === 'payout'
+            ? `Send the reviewed payout amount for project #${projectId}`
+            : `Withdraw the reviewed surplus allowance for project #${projectId}`,
+          contractName: 'JBMultiTerminal',
+          ...prepared.review,
+        },
+        reverify: async () => {
+          const finalPrepared = await prepare()
+          if (
+            finalPrepared.target.toLowerCase() !== prepared.target.toLowerCase() ||
+            finalPrepared.data.toLowerCase() !== prepared.data.toLowerCase()
+          ) {
+            throw new Error('The live balance, price, or quote changed. Review the updated amount and try again.')
+          }
+        },
+        onPhase: phase => setStatus(phase === 'signing' ? 'signing' : 'pending'),
+        onSubmitted,
+      })
 
-      updateTransaction(txId, { hash, status: 'submitted' })
-      onSubmitted?.(hash)
-      if (!isManagedMode) await waitForSuccessfulTransaction(chainId, hash as `0x${string}`)
       updateTransaction(txId, { hash, status: 'confirmed', confirmedAt: Date.now() })
       onConfirmed?.(hash)
       onClose()
@@ -279,7 +273,7 @@ export default function FundAccessModal({
         onRefresh?.()
       }
     }
-  }, [access.currency, activeAddress, addTransaction, amount, assertCurrentAccount, assertReviewUnchanged, chainId, context.accountingCurrency, context.decimals, context.terminal, context.token, isManagedMode, kind, onClose, onConfirmed, onError, onRefresh, onSubmitted, projectId, requestedAmount, splits, switchChainAsync, updateTransaction, walletClient])
+  }, [access.currency, activeAddress, addTransaction, amount, assertCurrentAccount, assertReviewUnchanged, chainId, context.accountingCurrency, context.decimals, context.terminal, context.token, guarded, isManagedMode, kind, onClose, onConfirmed, onError, onRefresh, onSubmitted, projectId, requestedAmount, splits, updateTransaction, walletClient])
 
   const buildShareableEntries = useCallback(async (): Promise<TxLinkEntry[]> => {
     if (!activeAddress || requestedAmount === null) return []
