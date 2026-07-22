@@ -792,7 +792,6 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   if (isMobile) {
     return (
       <div className={`h-screen overflow-hidden flex flex-col ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
-        <TransactionExecutor />
         {/* Mobile header - only show when in chat mode */}
         {inChatMode && (
           <div className="flex-shrink-0">
