@@ -20,6 +20,7 @@ import {
 import { getProjectController } from '../../utils/paymentTerminal'
 import { getSafetyPublicClient } from '../../utils/transactionSafety'
 import { RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants/chains'
+import { isIpfsUri } from '../../utils/ipfs'
 
 // Relayr app ID for sponsored bundles
 const RELAYR_APP_ID = import.meta.env.VITE_RELAYR_APP_ID || 'juicy-vision'
@@ -322,7 +323,7 @@ export function useOmnichainSetUri(
     )
 
     try {
-      if (!/^ipfs:\/\/(?:Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{20,120})$/.test(uri)) {
+      if (!isIpfsUri(uri, false)) {
         throw new Error('Project metadata URI must be a valid IPFS CID')
       }
       // Fetch controller address for each chain from JBDirectory

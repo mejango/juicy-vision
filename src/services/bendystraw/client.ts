@@ -1,5 +1,7 @@
 import { GraphQLClient, RequestDocument, Variables } from 'graphql-request'
 import { createPublicClient, erc20Abi, http, isAddress } from 'viem'
+import type { JBChainId } from '@bananapus/nana-sdk-core'
+import { tokenCurrencyId } from '@bananapus/nana-sdk-core/v6'
 import { useSettingsStore, useDebugStore } from '../../stores'
 import { VIEM_CHAINS, ZERO_ADDRESS, REV_OWNER, JB_CONTRACTS, JB_ROUTER_TERMINAL, JB_ROUTER_TERMINAL_REGISTRY, RPC_ENDPOINTS, USDC_ADDRESSES, MAINNET_VIEM_CHAINS, MAINNET_RPC_ENDPOINTS, NATIVE_TOKEN, type SupportedChainId } from '../../constants'
 import { fetchIpfsMetadata } from '../../utils/ipfs'
@@ -460,7 +462,7 @@ export async function getProjectIdFromReceipt(
 
   // Only the recognized controller can establish a newly launched project ID.
   for (const log of receipt.logs) {
-    const projectId = decodeRecognizedLaunchProjectLog(log)
+    const projectId = decodeRecognizedLaunchProjectLog(log, chainId as JBChainId)
     if (projectId !== null) {
       console.log(`[getProjectIdFromReceipt] Extracted projectId: ${projectId}`)
       return projectId
@@ -1119,7 +1121,7 @@ export async function fetchProjectAccountingContexts(
 
     const contextDecimals = Number(context.decimals)
     const contextCurrency = Number(context.currency)
-    const tokenKeyedCurrency = Number(BigInt(context.token) & 0xffff_ffffn)
+    const tokenKeyedCurrency = tokenCurrencyId(context.token)
 
     let symbol: string
     if (isNative) {
@@ -1827,7 +1829,7 @@ async function fetchLiveProjectBalance(projectId: number, chainId: number): Prom
       chainId,
       Number(contexts[0].decimals),
     )
-    if (!context || Number(contexts[0].currency) !== Number(BigInt(contexts[0].token) & 0xffff_ffffn)) {
+    if (!context || Number(contexts[0].currency) !== tokenCurrencyId(contexts[0].token)) {
       return null
     }
     // Independent reads: the live-terminal check and the store balance

@@ -25,6 +25,11 @@
  */
 
 import { parseEther, parseUnits } from 'viem'
+import {
+  RULESET_WEIGHT_INHERIT,
+  TIER_UNLIMITED_SUPPLY,
+  tokenCurrencyId,
+} from '@bananapus/nana-sdk-core/v6'
 import type {
   JBRulesetConfig,
   JBSplitConfig,
@@ -64,8 +69,6 @@ const UINT104_MAX = (1n << 104n) - 1n // max tier price / auto-issuance count
 
 /** uint32 max (~136 years) — the "Forever" duration option. */
 export const FOREVER_SECONDS = 4294967295
-
-const TIER_UNLIMITED_SUPPLY = 999999999
 
 /**
  * JBDeadline approval-hook contracts (chain-invariant — same address on every
@@ -112,7 +115,7 @@ function resolvedStr(str: string | undefined): string {
 
 /** uint32(uint160(token)) — the token-keyed JBAccountingContext currency id. */
 function uint32Currency(token: string): number {
-  return Number(BigInt(token) & 0xffffffffn)
+  return tokenCurrencyId(token as `0x${string}`)
 }
 
 /** uint256(uint160(token)) as a decimal string — the payout split group id. */
@@ -960,7 +963,7 @@ function revStageDaysAfter(state: CreateFlowState, idx: number): number {
 
 /**
  * Revnet stage configs from the ported StageState[]: weight '' on later
- * stages → initialIssuance '0' (inherit, with cut), cut percent ×1e7 and
+ * stages → the SDK inheritance sentinel (with cut), cut percent ×1e7 and
  * frequency days×86400, split rows ×1e7 renormalized to the reserved pool,
  * auto-issuances (count 18-dec, per-chain beneficiary override), start times
  * cumulative from baseStart (stage 1 honors a scheduled start).
@@ -1001,8 +1004,11 @@ export function buildRevnetStageConfigs(state: CreateFlowState, baseStart: numbe
       })
     }
 
-    // initialIssuance: tokens per base unit × 1e18. 0 on later stages = inherit (with cut).
-    const issuance = idx === 0 || stage.weight ? tokenAmount18(stage.weight, UINT112_MAX) : 0n
+    // initialIssuance: tokens per base unit × 1e18. Blank later stages inherit.
+    const issuance =
+      idx === 0 || stage.weight
+        ? tokenAmount18(stage.weight, UINT112_MAX)
+        : RULESET_WEIGHT_INHERIT
     const cutFreq = stage.issuanceCutOn ? Math.max(0, Math.round((Number(stage.cutFreqDays) || 0) * 86400)) : 0
     const cutPercent = stage.issuanceCutOn ? Math.round(clampPct(stage.weightCutPercent) * 10_000_000) : 0
     const taxRate = Math.round(clampPct(stage.cashOutTaxRate) * 100) // percent → out of 10000

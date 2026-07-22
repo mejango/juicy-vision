@@ -50,7 +50,7 @@ describe('tier metadata payload', () => {
     expect(isSafeTierMediaUri('ipfs://Qmb7EZvTHUeVTDi6YmwDFQvKEfCR4UGciUka24coJcNJzS')).toBe(true)
     expect(isSafeTierMediaUri('https://example.com/item.mp4')).toBe(true)
     expect(isSafeTierMediaUri('javascript:alert(1)')).toBe(false)
-    expect(() => buildTierMetadata({ name: 'Bad', animationUrl: 'javascript:alert(1)' })).toThrow(/Animation/)
+    expect(() => buildTierMetadata({ name: 'Bad', animationUrl: 'javascript:alert(1)' })).toThrow(/animation/i)
     expect(() => buildTierMetadata({ name: 'Bad', mediaType: 'video' })).toThrow(/MIME/)
   })
 })

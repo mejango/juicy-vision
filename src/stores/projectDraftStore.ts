@@ -7,7 +7,7 @@ export interface DraftTier {
   currency: number // 1 = ETH, 2 = USD
   description?: string
   imageUrl?: string
-  initialSupply?: number // undefined = unlimited (999999999)
+  initialSupply?: number // undefined = the SDK's unlimited-supply sentinel
 }
 
 // Split/payout data collected from forms

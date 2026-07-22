@@ -6,6 +6,7 @@ import {
 } from '../omnichainDeployer'
 import { RELAYR_APP_ID } from '../../config/environment'
 import { decodeFunctionData, isAddress, zeroAddress, type Hex } from 'viem'
+import { tokenCurrencyId } from '@bananapus/nana-sdk-core/v6'
 import {
   JB_CONTRACTS,
   JB_OMNICHAIN_DEPLOYER,
@@ -617,7 +618,7 @@ function deriveRevnetBaseCurrency(
     throw new Error(`Accounting token not recognized on chain ${chainId}: ${context.token}`)
   }
   const expectedDecimals = isNative ? 18 : 6
-  const expectedCurrency = Number(BigInt(context.token) & 0xffffffffn)
+  const expectedCurrency = tokenCurrencyId(context.token as `0x${string}`)
   if (context.decimals !== expectedDecimals || context.currency !== expectedCurrency) {
     throw new Error(
       `Accounting context does not match ${context.token}: expected ${expectedDecimals} decimals and currency ${expectedCurrency}`,

@@ -19,9 +19,7 @@
  */
 
 import {
-  encodeAbiParameters,
   encodeFunctionData,
-  keccak256,
   zeroAddress,
   type Address,
   type Hex,
@@ -37,7 +35,28 @@ import {
   jbTokensAbi,
   type JBChainId,
 } from '@bananapus/nana-sdk-core'
-import { getAccountingContexts, getV6SuckerPairs } from '@bananapus/nana-sdk-core/v6'
+import {
+  CCIP_SUCKER_TRANSPORT_VALUES,
+  NATIVE_SUCKER_TRANSPORT_VALUES,
+  assertSuckerTransportValue,
+  buildSyncAccountingDataTx,
+  buildToRemoteTx,
+  classifySuckerMovement,
+  classifySuckerTransport,
+  findSuckerTransportValue,
+  getAccountingContexts,
+  getAllV6SuckerPairs,
+  getSuckerMovements,
+  getV6SuckerPairs,
+  jbSuckerV6ViewAbi,
+  relativeSuckerDrift,
+  suckerBranchRoot as sdkSuckerBranchRoot,
+  suckerBytes32ToAddress,
+  suckerHashPair as sdkSuckerHashPair,
+  suckerLeafProof as sdkSuckerLeafProof,
+  suckerTimestampSeconds,
+  suckerZeroHashes as sdkSuckerZeroHashes,
+} from '@bananapus/nana-sdk-core/v6'
 import { NATIVE_TOKEN, JB_CONTRACTS, JB_ROUTER_TERMINAL, JB_ROUTER_TERMINAL_REGISTRY } from '../constants'
 import { cashOutProtocolFee, quotedOutputFloor } from '../utils/terminalPreview'
 import { publicClientFor } from './projectTx'
@@ -156,56 +175,24 @@ export interface SuckerChainProject {
 // ---------------------------------------------------------------------------
 
 export const BYTES32_ZERO = `0x${'0'.repeat(64)}` as Hex
-const MERKLE_DEPTH = 32
 
 export function suckerHashPair(a: Hex, b: Hex): Hex {
-  return keccak256(encodeAbiParameters([{ type: 'bytes32' }, { type: 'bytes32' }], [a, b]))
+  return sdkSuckerHashPair(a, b)
 }
-
-let zeroHashCache: Hex[] | null = null
 
 /** z[0..32]; z[32] === 0x27ae5ba0… (the empty-tree root). */
 export function suckerZeroHashes(): Hex[] {
-  if (zeroHashCache) return zeroHashCache
-  const z: Hex[] = [BYTES32_ZERO]
-  for (let i = 0; i < MERKLE_DEPTH; i++) z.push(suckerHashPair(z[i], z[i]))
-  zeroHashCache = z
-  return z
+  return [...sdkSuckerZeroHashes()]
 }
 
 /** Sibling path (32 elements) for the leaf at `index`, given the dense leaf-hash array [0,count). */
 export function suckerLeafProof(leafHashes: readonly Hex[], index: number): Hex[] {
-  if (!Number.isSafeInteger(index) || index < 0 || index >= leafHashes.length) {
-    throw new Error('The requested bridge leaf is outside the reconstructed outbox.')
-  }
-  const Z = suckerZeroHashes()
-  let level = leafHashes.slice()
-  const proof: Hex[] = []
-  let pos = index
-  for (let l = 0; l < MERKLE_DEPTH; l++) {
-    const sibling = pos ^ 1
-    proof.push(sibling < level.length ? level[sibling] : Z[l])
-    const next: Hex[] = []
-    for (let i = 0; i * 2 < level.length; i++) {
-      const left = level[i * 2]
-      const right = i * 2 + 1 < level.length ? level[i * 2 + 1] : Z[l]
-      next.push(suckerHashPair(left, right))
-    }
-    level = next
-    pos = Math.floor(pos / 2)
-  }
-  return proof
+  return [...sdkSuckerLeafProof(leafHashes, index)]
 }
 
 /** Recompute the root from a leaf + proof (mirrors MerkleLib.branchRoot) — used to verify before submitting. */
 export function suckerBranchRoot(leaf: Hex, proof: readonly Hex[], index: number): Hex {
-  let current = leaf
-  let pos = index
-  for (let i = 0; i < MERKLE_DEPTH; i++) {
-    current = pos & 1 ? suckerHashPair(proof[i], current) : suckerHashPair(current, proof[i])
-    pos = Math.floor(pos / 2)
-  }
-  return current
+  return sdkSuckerBranchRoot(leaf, proof, index)
 }
 
 // ---------------------------------------------------------------------------
@@ -213,22 +200,10 @@ export function suckerBranchRoot(leaf: Hex, proof: readonly Hex[], index: number
 // ---------------------------------------------------------------------------
 
 /** 0.001 … 0.5 ETH of CCIP transport budget. A too-low tier reverts; the first success wins (excess refunds on-chain). */
-export const CCIP_TRANSPORT_LADDER: readonly bigint[] = [
-  1_000_000_000_000_000n,
-  5_000_000_000_000_000n,
-  20_000_000_000_000_000n,
-  50_000_000_000_000_000n,
-  200_000_000_000_000_000n,
-  500_000_000_000_000_000n,
-]
+export const CCIP_TRANSPORT_LADDER = CCIP_SUCKER_TRANSPORT_VALUES
 
 /** Native bridges may accept 0 for a sync push; escalate if not. */
-export const NATIVE_SYNC_LADDER: readonly bigint[] = [
-  0n,
-  1_000_000_000_000_000n,
-  10_000_000_000_000_000n,
-  50_000_000_000_000_000n,
-]
+export const NATIVE_SYNC_LADDER = NATIVE_SUCKER_TRANSPORT_VALUES
 
 /**
  * Try each value in order; the first whose simulation resolves wins. All
@@ -239,15 +214,7 @@ export async function escalateValue(
   values: readonly bigint[],
   simulate: (value: bigint) => Promise<unknown>,
 ): Promise<bigint | null> {
-  for (const value of values) {
-    try {
-      await simulate(value)
-      return value
-    } catch {
-      // insufficient budget (or sim limitation) — try the next tier
-    }
-  }
-  return null
+  return findSuckerTransportValue(values, simulate)
 }
 
 /**
@@ -257,10 +224,12 @@ export async function escalateValue(
  * CCIP send through.
  */
 export function assertCcipTransport(infra: SuckerInfra, value: bigint, baseFee: bigint = 0n): void {
-  if (infra === 'CCIP' && value - baseFee <= 0n) {
-    throw new Error('A CCIP bridge message needs a positive native fee budget — refusing to send zero.')
-  }
-  if (infra === 'unknown') {
+  try {
+    assertSuckerTransportValue(infra === 'CCIP' ? 'ccip' : infra, value, baseFee)
+  } catch {
+    if (infra === 'CCIP') {
+      throw new Error('A CCIP bridge message needs a positive native fee budget — refusing to send zero.')
+    }
     throw new Error('The bridge type could not be verified, so its fee regime is unknown. Try again shortly.')
   }
 }
@@ -275,9 +244,7 @@ export function classifyMovementStatus(input: {
   deliveredCount: number
   sentCount: number
 }): { status: MovementStatus; canExecute: boolean } {
-  if (input.executed) return { status: 'claimed', canExecute: false }
-  if (input.index < input.deliveredCount) return { status: 'claimable', canExecute: false }
-  return { status: 'pending', canExecute: input.index >= input.sentCount }
+  return classifySuckerMovement(input)
 }
 
 // ---------------------------------------------------------------------------
@@ -294,11 +261,7 @@ export interface Staleness {
 
 /** Relative drift between two values, as a 0..1 fraction of the larger one. */
 export function relativeDrift(a: bigint, b: bigint): number {
-  if (a === 0n && b === 0n) return 0
-  const hi = a > b ? a : b
-  if (hi === 0n) return 0
-  const d = a > b ? a - b : b - a
-  return Number((d * 10000n) / hi) / 10000
+  return relativeSuckerDrift(a, b)
 }
 
 /** Drift below the keeper's 5% sync threshold stays green — it's the % that matters. */
@@ -368,7 +331,7 @@ export function gossipSnapshotStaleness(
 
 /** Packed sucker timestamp (block.timestamp << 128 | seq) → unix seconds. */
 export function unpackSuckerTimestamp(raw: bigint): number {
-  return Number(raw >> 128n)
+  return suckerTimestampSeconds(raw)
 }
 
 /** "Snapshot N ago" age label for a unix timestamp (0 → never). */
@@ -381,103 +344,8 @@ export function snapshotAge(ts: number, nowSeconds: number = Math.floor(Date.now
   return `${Math.round(s / 86400)}d ago`
 }
 
-// ---------------------------------------------------------------------------
-// ABIs beyond the SDK's jbSuckerV6Abi (verified against JBSucker.sol)
-// ---------------------------------------------------------------------------
-
-const suckerViewAbi = [
-  { type: 'function', name: 'peerChainId', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
-  { type: 'function', name: 'peer', stateMutability: 'view', inputs: [], outputs: [{ type: 'bytes32' }] },
-  { type: 'function', name: 'projectId', stateMutability: 'view', inputs: [], outputs: [{ type: 'uint256' }] },
-  {
-    type: 'function',
-    name: 'remoteTokenFor',
-    stateMutability: 'view',
-    inputs: [{ name: 'token', type: 'address' }],
-    outputs: [
-      {
-        name: 'remoteToken',
-        type: 'tuple',
-        components: [
-          { name: 'enabled', type: 'bool' },
-          { name: 'emergencyHatch', type: 'bool' },
-          { name: 'minGas', type: 'uint32' },
-          { name: 'addr', type: 'bytes32' },
-        ],
-      },
-    ],
-  },
-  {
-    type: 'function',
-    name: 'inboxOf',
-    stateMutability: 'view',
-    inputs: [{ name: 'token', type: 'address' }],
-    outputs: [
-      {
-        type: 'tuple',
-        components: [
-          { name: 'nonce', type: 'uint64' },
-          { name: 'root', type: 'bytes32' },
-        ],
-      },
-    ],
-  },
-  {
-    type: 'function',
-    name: 'outboxOf',
-    stateMutability: 'view',
-    inputs: [{ name: 'token', type: 'address' }],
-    outputs: [
-      {
-        type: 'tuple',
-        components: [
-          { name: 'nonce', type: 'uint64' },
-          { name: 'numberOfClaimsSent', type: 'uint192' },
-          { name: 'balance', type: 'uint256' },
-          {
-            name: 'tree',
-            type: 'tuple',
-            components: [
-              { name: 'branch', type: 'bytes32[32]' },
-              { name: 'count', type: 'uint256' },
-            ],
-          },
-        ],
-      },
-    ],
-  },
-  {
-    type: 'function',
-    name: 'executedLeafHashOf',
-    stateMutability: 'view',
-    inputs: [
-      { name: 'token', type: 'address' },
-      { name: 'index', type: 'uint256' },
-    ],
-    outputs: [{ type: 'bytes32' }],
-  },
-] as const
-
-/** syncAccountingData() snapshots the LOCAL chain's accounting and bridges it to the peer (payable AMB fee). */
-export const suckerSyncAbi = [
-  { type: 'function', name: 'syncAccountingData', stateMutability: 'payable', inputs: [], outputs: [] },
-] as const
-
-const INSERT_TO_OUTBOX_EVENT = {
-  type: 'event',
-  name: 'InsertToOutboxTree',
-  inputs: [
-    { name: 'beneficiary', type: 'bytes32', indexed: true },
-    { name: 'token', type: 'address', indexed: true },
-    { name: 'hashed', type: 'bytes32', indexed: false },
-    { name: 'index', type: 'uint256', indexed: false },
-    { name: 'root', type: 'bytes32', indexed: false },
-    { name: 'projectTokenCount', type: 'uint256', indexed: false },
-    { name: 'terminalTokenAmount', type: 'uint256', indexed: false },
-    { name: 'metadata', type: 'bytes32', indexed: false },
-    { name: 'caller', type: 'address', indexed: false },
-  ],
-} as const
+// Canonical sucker reads, writes, and movement event definitions live in the SDK.
+const suckerViewAbi = jbSuckerV6ViewAbi
 
 /** The registry's aggregated cross-chain accounting record (direct + gossiped, folded per source chain). */
 const peerChainAdjustedAccountsAbi = [
@@ -534,7 +402,7 @@ export function suckerRegistryAddress(chainId: number): Address | null {
   return byChain?.[String(chainId)] ?? null
 }
 
-const bytes32ToAddress = (value: Hex | string): Address => `0x${String(value).slice(-40)}` as Address
+const bytes32ToAddress = (value: Hex | string): Address => suckerBytes32ToAddress(value as Hex)
 const isZeroHex = (value: string | null | undefined): boolean => !value || /^0x0+$/.test(value)
 
 /** Active sucker pairs for a project on `chainId`. RPC failures propagate so callers can distinguish "no routes" from "could not verify". */
@@ -561,24 +429,12 @@ export async function readAllSuckerPairsOf(
   chainId: number,
   deps: SuckerBridgeDeps = {},
 ): Promise<SuckerPair[]> {
-  const registry = suckerRegistryAddress(chainId)
-  if (!registry) throw new Error(`Sucker registry unavailable on chain ${chainId}.`)
-  const client = clientOf(deps, chainId)
-  const suckers = await client.readContract({
-    address: registry,
-    abi: jbSuckerRegistryAbi,
-    functionName: 'allSuckersOf',
-    args: [BigInt(projectId)],
+  if (!suckerRegistryAddress(chainId)) throw new Error(`Sucker registry unavailable on chain ${chainId}.`)
+  const pairs = await getAllV6SuckerPairs(clientOf(deps, chainId), {
+    chainId: chainId as JBChainId,
+    projectId: BigInt(projectId),
   })
-  return Promise.all(
-    (suckers ?? []).map(async local => {
-      const [peerChainId, peer] = await Promise.all([
-        client.readContract({ address: local, abi: suckerViewAbi, functionName: 'peerChainId' }),
-        client.readContract({ address: local, abi: suckerViewAbi, functionName: 'peer' }),
-      ])
-      return { local, remoteChainId: Number(peerChainId), remote: bytes32ToAddress(peer) }
-    }),
-  )
+  return pairs.map(pair => ({ local: pair.local, remoteChainId: Number(pair.remoteChainId), remote: pair.remote }))
 }
 
 /**
@@ -592,27 +448,8 @@ export async function classifySuckerInfra(
   sucker: Address,
   deps: SuckerBridgeDeps = {},
 ): Promise<SuckerInfra> {
-  const client = clientOf(deps, chainId)
-  const probe = (name: string) =>
-    client.readContract({
-      address: sucker,
-      abi: [{ type: 'function', name, stateMutability: 'view', inputs: [], outputs: [{ type: 'address' }] }],
-      functionName: name,
-    })
-  try {
-    const router = (await probe('CCIP_ROUTER')) as Address
-    return router && router.toLowerCase() !== zeroAddress ? 'CCIP' : 'native'
-  } catch {
-    for (const name of ['OPMESSENGER', 'ARBINBOX']) {
-      try {
-        await probe(name)
-        return 'native'
-      } catch {
-        // not this bridge family — keep probing
-      }
-    }
-    return 'unknown'
-  }
+  const transport = await classifySuckerTransport(clientOf(deps, chainId), sucker)
+  return transport === 'ccip' ? 'CCIP' : transport
 }
 
 /**
@@ -861,19 +698,6 @@ export async function fetchGossipKnowledge(
 // Queued movements (log scan + merkle reconstruction)
 // ---------------------------------------------------------------------------
 
-interface LeafCacheEntry {
-  count: number
-  byIndex: Record<number, { hashed: Hex; root: Hex; beneficiary: Hex; projectTokenCount: bigint; terminalTokenAmount: bigint; metadata: Hex }>
-  blockOf: Record<number, bigint>
-  ts: Record<number, number>
-}
-
-const BRIDGE_LEAF_CACHE: Record<string, LeafCacheEntry> = {}
-
-const SCAN_WINDOW = 45_000n
-/** Hard cap on scanned windows per (sucker, token) — ~2.7M blocks. Beyond that the chain reports unreadable, never a fake-empty table. */
-const MAX_SCAN_WINDOWS = 60
-
 async function scanChainMovements(
   pid: bigint,
   chainId: number,
@@ -881,197 +705,105 @@ async function scanChainMovements(
   deps: SuckerBridgeDeps,
 ): Promise<QueuedMovement[]> {
   const client = clientOf(deps, chainId)
-  const sourceContexts = (await getAccountingContexts(client, { chainId: chainId as JBChainId, projectId: pid })).map(
-    context => describeAccountingToken(chainId, context),
-  )
-  const pairs = await readAllSuckerPairsOf(pid.toString(), chainId, deps)
+  const sourceContexts = (
+    await getAccountingContexts(client, { chainId: chainId as JBChainId, projectId: pid })
+  ).map(context => describeAccountingToken(chainId, context))
+  const pairs = await readAllSuckerPairsOf(pid, chainId, deps)
   const rows: QueuedMovement[] = []
+
   await Promise.all(
-    pairs.map(async pair => {
-      const { local: sourceSucker, remoteChainId, remote: peerSucker } = pair
-      const infra = await classifySuckerInfra(chainId, sourceSucker, deps)
-      const remoteClient = clientOf(deps, remoteChainId)
-      // The peer chain's contexts must be read with the peer chain's OWN project id.
+    pairs.map(async ({ local: sourceSucker, remoteChainId, remote: peerSucker }) => {
       const remotePid = remotePidFor(remoteChainId)
       if (remotePid == null) throw new Error(`No known project id on peer chain ${remoteChainId}.`)
+
+      const remoteClient = clientOf(deps, remoteChainId)
       const remoteContexts = (
-        await getAccountingContexts(remoteClient, { chainId: remoteChainId as JBChainId, projectId: remotePid })
+        await getAccountingContexts(remoteClient, {
+          chainId: remoteChainId as JBChainId,
+          projectId: remotePid,
+        })
       ).map(context => describeAccountingToken(remoteChainId, context))
+      const infra = await classifySuckerInfra(chainId, sourceSucker, deps)
+
       await Promise.all(
-        sourceContexts.map(async acct => {
-          const TOKEN = acct.token
-          const outbox = await client.readContract({
-            address: sourceSucker,
-            abi: suckerViewAbi,
-            functionName: 'outboxOf',
-            args: [TOKEN],
-          })
-          const count = Number(outbox.tree.count)
-          const sentCount = Number(outbox.numberOfClaimsSent)
-          if (!Number.isSafeInteger(count) || count < 0 || !Number.isSafeInteger(sentCount) || sentCount < 0 || sentCount > count) {
-            throw new Error('The bridge outbox returned invalid counters.')
-          }
-          if (count === 0) return
+        sourceContexts.map(async sourceContext => {
+          // Cleared historical mappings can only be recovered from one exact
+          // cross-chain accounting-context match. The SDK verifies any supplied
+          // override against a live mapping before reconstructing movements.
+          const sourceKey = accountingContextKey(
+            sourceContext.token,
+            sourceContext.symbol,
+            sourceContext.decimals,
+          )
+          const historicalCandidates = remoteContexts.filter(
+            context =>
+              accountingContextKey(context.token, context.symbol, context.decimals) === sourceKey,
+          )
+          const historicalRemoteToken =
+            historicalCandidates.length === 1 ? historicalCandidates[0].token : undefined
 
-          // The destination inbox is keyed by the sucker's exact token mapping — not by
-          // whichever accounting context happens to be first on that chain.
-          const mapping = await client.readContract({
-            address: sourceSucker,
-            abi: suckerViewAbi,
-            functionName: 'remoteTokenFor',
-            args: [TOKEN],
+          const movements = await getSuckerMovements(client, remoteClient, {
+            sourceSucker,
+            destinationSucker: peerSucker,
+            sourceToken: sourceContext.token,
+            remoteToken: historicalRemoteToken,
           })
-          let remoteToken: Address | null = isZeroHex(mapping.addr) ? null : bytes32ToAddress(mapping.addr)
-          if (!remoteToken) {
-            // A mapping can be disabled after its cumulative tree has entries. Recover only an
-            // unambiguous same-asset destination context; guessing would make claims unsafe.
-            const sourceKey = accountingContextKey(TOKEN, acct.symbol, acct.decimals)
-            const candidates = remoteContexts.filter(
-              context => accountingContextKey(context.token, context.symbol, context.decimals) === sourceKey,
+          if (movements.length === 0) return
+
+          const remoteToken = movements[0].remoteToken
+          if (movements.some(movement => movement.remoteToken.toLowerCase() !== remoteToken.toLowerCase())) {
+            throw new Error('The bridge returned inconsistent destination tokens.')
+          }
+          const remoteContext = remoteContexts.find(
+            context => context.token.toLowerCase() === remoteToken.toLowerCase(),
+          )
+          if (!remoteContext || remoteContext.decimals !== sourceContext.decimals) {
+            throw new Error(
+              'The bridge token mapping does not match a verified destination accounting context.',
             )
-            if (candidates.length !== 1) throw new Error('A historical bridge token mapping could not be recovered safely.')
-            remoteToken = candidates[0].token
-          }
-          const remoteAcct = remoteContexts.find(context => context.token.toLowerCase() === remoteToken!.toLowerCase())
-          if (!remoteAcct || remoteAcct.decimals !== acct.decimals) {
-            throw new Error('The bridge token mapping does not match a verified destination accounting context.')
           }
 
-          // The outbox tree is cumulative: read its exact size, then scan backwards until every
-          // leaf needed to reconstruct proofs is present (capped — see MAX_SCAN_WINDOWS).
-          const latest = await client.getBlockNumber()
-          const cacheKey = `${chainId}:${sourceSucker.toLowerCase()}:${TOKEN.toLowerCase()}`
-          const cached = BRIDGE_LEAF_CACHE[cacheKey]
-          const byIndex: LeafCacheEntry['byIndex'] = cached && cached.count <= count ? { ...cached.byIndex } : {}
-          const blockOf: LeafCacheEntry['blockOf'] = cached && cached.count <= count ? { ...cached.blockOf } : {}
-          let cursor = latest
-          let windowsScanned = 0
-          while (Object.keys(byIndex).length < count && cursor >= 0n && windowsScanned < MAX_SCAN_WINDOWS) {
-            const windows: { lo: bigint; hi: bigint }[] = []
-            for (let n = 0; n < 4 && cursor >= 0n && windowsScanned < MAX_SCAN_WINDOWS; n++) {
-              const hi = cursor
-              const lo = hi >= SCAN_WINDOW ? hi - SCAN_WINDOW + 1n : 0n
-              windows.push({ lo, hi })
-              windowsScanned++
-              cursor = lo === 0n ? -1n : lo - 1n
-            }
-            const batches = await Promise.all(
-              windows.map(window =>
-                client.getLogs({
-                  address: sourceSucker,
-                  event: INSERT_TO_OUTBOX_EVENT,
-                  args: { token: TOKEN },
-                  fromBlock: window.lo,
-                  toBlock: window.hi,
-                }),
-              ),
-            )
-            for (const batch of batches) {
-              for (const log of batch) {
-                const index = Number(log.args.index)
-                if (Number.isSafeInteger(index) && index >= 0 && index < count && byIndex[index] === undefined) {
-                  byIndex[index] = {
-                    hashed: log.args.hashed as Hex,
-                    root: log.args.root as Hex,
-                    beneficiary: log.args.beneficiary as Hex,
-                    projectTokenCount: log.args.projectTokenCount as bigint,
-                    terminalTokenAmount: log.args.terminalTokenAmount as bigint,
-                    metadata: log.args.metadata as Hex,
-                  }
-                  blockOf[index] = log.blockNumber
-                }
-              }
-            }
-          }
-          if (Object.keys(byIndex).length !== count) {
-            throw new Error('The RPC could not return the complete bridge outbox history.')
-          }
-          const leafHashes: Hex[] = []
-          for (let i = 0; i < count; i++) {
-            if (!byIndex[i]) throw new Error('The bridge outbox history has a missing leaf.')
-            leafHashes.push(byIndex[i].hashed)
-          }
-          // Verify the reconstruction against the latest EMITTED root before trusting any proof from it.
-          const latestProof = suckerLeafProof(leafHashes, count - 1)
-          if (suckerBranchRoot(leafHashes[count - 1], latestProof, count - 1).toLowerCase() !== byIndex[count - 1].root.toLowerCase()) {
-            throw new Error('The reconstructed bridge outbox does not match its latest emitted root.')
-          }
-
-          const inbox = await remoteClient.readContract({
-            address: peerSucker,
-            abi: suckerViewAbi,
-            functionName: 'inboxOf',
-            args: [remoteToken],
-          })
-          const inboxRoot = (inbox.root as Hex) || BYTES32_ZERO
-          let deliveredCount = 0
-          if (!isZeroHex(inboxRoot)) {
-            for (const key of Object.keys(byIndex)) {
-              if (byIndex[Number(key)].root.toLowerCase() === inboxRoot.toLowerCase()) deliveredCount = Number(key) + 1
-            }
-          }
-
-          const ts: LeafCacheEntry['ts'] = cached && cached.count <= count ? { ...cached.ts } : {}
+          const timestamps = new Map<string, number>()
           await Promise.all(
-            Object.keys(blockOf)
-              .map(Number)
-              .filter(key => ts[key] == null)
-              .map(async key => {
-                const block = await client.getBlock({ blockNumber: blockOf[key] })
-                ts[key] = Number(block.timestamp)
-              }),
-          )
-          BRIDGE_LEAF_CACHE[cacheKey] = { count, byIndex, blockOf, ts }
-
-          const executed = await Promise.all(
-            Array.from({ length: count }, async (_, index) => {
-              const hash = await remoteClient.readContract({
-                address: peerSucker,
-                abi: suckerViewAbi,
-                functionName: 'executedLeafHashOf',
-                args: [remoteToken!, BigInt(index)],
-              })
-              return !isZeroHex(hash)
-            }),
+            [...new Set(movements.map(movement => movement.blockNumber.toString()))].map(
+              async blockNumber => {
+                const block = await client.getBlock({ blockNumber: BigInt(blockNumber) })
+                timestamps.set(blockNumber, Number(block.timestamp))
+              },
+            ),
           )
 
-          for (let k = 0; k < count; k++) {
-            const leaf = byIndex[k]
-            const { status, canExecute } = classifyMovementStatus({
-              executed: executed[k],
-              index: k,
-              deliveredCount,
-              sentCount,
-            })
-            let proof: Hex[] | null = null
-            if (status === 'claimable') {
-              proof = suckerLeafProof(leafHashes.slice(0, deliveredCount), k)
-              // Never offer a Claim whose proof doesn't recompute to the DESTINATION inbox root.
-              if (suckerBranchRoot(leaf.hashed, proof, k).toLowerCase() !== inboxRoot.toLowerCase()) {
-                throw new Error('The locally reconstructed bridge proof does not match the destination inbox.')
-              }
+          for (const movement of movements) {
+            const index = Number(movement.leaf.index)
+            if (!Number.isSafeInteger(index) || index < 0) {
+              throw new Error('The bridge movement returned an invalid leaf index.')
             }
+            const proof = movement.proof ? [...movement.proof] : null
+            const inboxRoot = proof
+              ? sdkSuckerBranchRoot(movement.leafHash, proof, index)
+              : null
+
             rows.push({
-              createdAt: ts[k] ?? null,
+              createdAt: timestamps.get(movement.blockNumber.toString()) ?? null,
               chainId,
               peerChainId: remoteChainId,
-              beneficiary: bytes32ToAddress(leaf.beneficiary),
-              beneficiary32: leaf.beneficiary,
-              projectTokenCount: leaf.projectTokenCount,
-              terminalTokenAmount: leaf.terminalTokenAmount,
-              status,
-              index: k,
+              beneficiary: suckerBytes32ToAddress(movement.leaf.beneficiary),
+              beneficiary32: movement.leaf.beneficiary,
+              projectTokenCount: movement.leaf.projectTokenCount,
+              terminalTokenAmount: movement.leaf.terminalTokenAmount,
+              status: movement.status,
+              index,
               sourceSucker,
               peerSucker,
-              metadata: leaf.metadata,
-              leafHash: leaf.hashed,
+              metadata: movement.leaf.metadata,
+              leafHash: movement.leafHash,
               proof,
-              inboxRoot: status === 'claimable' ? inboxRoot : null,
-              canExecute,
-              token: TOKEN,
-              remoteToken,
-              tokenDecimals: acct.decimals,
-              tokenSymbol: acct.symbol,
+              inboxRoot,
+              canExecute: movement.canExecute,
+              token: movement.sourceToken,
+              remoteToken: movement.remoteToken,
+              tokenDecimals: sourceContext.decimals,
+              tokenSymbol: sourceContext.symbol,
               infra,
             })
           }
@@ -1079,6 +811,7 @@ async function scanChainMovements(
       )
     }),
   )
+
   return rows
 }
 
@@ -1144,12 +877,17 @@ export async function findToRemoteValue(
   if (infra === 'unknown') return null
   if (infra === 'native') return fee
   if (!account) return null // need a caller to simulate against
-  const data = encodeFunctionData({
-    abi: [{ type: 'function', name: 'toRemote', stateMutability: 'payable', inputs: [{ name: 'token', type: 'address' }], outputs: [] }],
-    functionName: 'toRemote',
-    args: [token],
+  const request = buildToRemoteTx({
+    chainId: chainId as JBChainId,
+    sucker,
+    token,
   })
-  return escalateValue(
+  const data = encodeFunctionData({
+    abi: request.abi,
+    functionName: request.functionName,
+    args: request.args,
+  })
+  const value = await escalateValue(
     CCIP_TRANSPORT_LADDER.map(tier => fee + tier),
     value =>
       client.call({
@@ -1160,6 +898,8 @@ export async function findToRemoteValue(
         stateOverride: [{ address: account, balance: FUNDED_BALANCE }],
       }),
   )
+  if (value !== null) assertSuckerTransportValue('ccip', value, fee)
+  return value
 }
 
 /**
@@ -1179,17 +919,29 @@ export async function findSyncValue(
   const infra = await classifySuckerInfra(chainId, sucker, deps)
   if (infra === 'unknown') return null
   const client = clientOf(deps, chainId)
-  const data = encodeFunctionData({ abi: suckerSyncAbi, functionName: 'syncAccountingData' })
+  const request = buildSyncAccountingDataTx({
+    chainId: chainId as JBChainId,
+    sucker,
+  })
+  const data = encodeFunctionData({
+    abi: request.abi,
+    functionName: request.functionName,
+    args: request.args,
+  })
   const ladder = infra === 'CCIP' ? CCIP_TRANSPORT_LADDER : NATIVE_SYNC_LADDER
-  return escalateValue(ladder, value =>
+  const value = await escalateValue(ladder, candidate =>
     client.call({
       account,
       to: sucker,
       data,
-      value,
+      value: candidate,
       stateOverride: [{ address: account, balance: FUNDED_BALANCE }],
     }),
   )
+  if (value !== null) {
+    assertSuckerTransportValue(infra === 'CCIP' ? 'ccip' : infra, value)
+  }
+  return value
 }
 
 // ---------------------------------------------------------------------------

@@ -1,5 +1,12 @@
 // IPFS gateway resolution and pinning utilities
 
+import {
+  decodeEncodedIpfsUriCandidates as decodeSdkIpfsCandidates,
+  encodeIpfsUri as encodeSdkIpfsUri,
+  ipfsAssetPath,
+  isIpfsCid,
+} from '@bananapus/nana-sdk-core'
+
 const IPFS_PATH_GATEWAYS = [
   'https://gateway.pinata.cloud/ipfs/',
   'https://dweb.link/ipfs/',
@@ -114,178 +121,32 @@ export async function fetchIpfsMetadata(metadataUri: string): Promise<IpfsProjec
 // Accept pinned CIDv0/CIDv1 URIs. Paths are optional for read-only metadata
 // references, while transaction forms can require the CID root explicitly.
 export function isIpfsUri(uri: string, allowPath = true): boolean {
-  const suffix = allowPath ? '(?:/[^\\s]*)?' : ''
-  return new RegExp(`^ipfs://(?:Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{20,120})${suffix}$`).test(uri)
-}
-
-// Base58 alphabet (Bitcoin/IPFS style)
-const BASE58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
-const BASE32_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567'
-
-/**
- * Decode base58 string to bytes
- */
-function base58Decode(str: string): Uint8Array {
-  const bytes: number[] = []
-  for (let i = 0; i < str.length; i++) {
-    const char = str[i]
-    const value = BASE58_ALPHABET.indexOf(char)
-    if (value === -1) {
-      throw new Error(`Invalid base58 character: ${char}`)
-    }
-
-    let carry = value
-    for (let j = 0; j < bytes.length; j++) {
-      carry += bytes[j] * 58
-      bytes[j] = carry & 0xff
-      carry >>= 8
-    }
-    while (carry > 0) {
-      bytes.push(carry & 0xff)
-      carry >>= 8
-    }
-  }
-
-  // Handle leading zeros (1's in base58)
-  for (let i = 0; i < str.length && str[i] === '1'; i++) {
-    bytes.push(0)
-  }
-
-  return new Uint8Array(bytes.reverse())
-}
-
-/**
- * Encode bytes to base58
- */
-function base58Encode(bytes: Uint8Array): string {
-  const digits = [0]
-  for (let i = 0; i < bytes.length; i++) {
-    let carry = bytes[i]
-    for (let j = 0; j < digits.length; j++) {
-      carry += digits[j] << 8
-      digits[j] = carry % 58
-      carry = Math.floor(carry / 58)
-    }
-    while (carry > 0) {
-      digits.push(carry % 58)
-      carry = Math.floor(carry / 58)
-    }
-  }
-  // Handle leading zeros
-  let result = ''
-  for (let i = 0; i < bytes.length && bytes[i] === 0; i++) {
-    result += BASE58_ALPHABET[0]
-  }
-  // Convert digits to string (reversed)
-  for (let i = digits.length - 1; i >= 0; i--) {
-    result += BASE58_ALPHABET[digits[i]]
-  }
-  return result
-}
-
-function base32Decode(value: string): Uint8Array {
-  const normalized = value.trim().toLowerCase()
-  if (!normalized.startsWith('b')) throw new Error('Only base32 CIDv1 values are supported')
-  const input = normalized.slice(1).replace(/=+$/, '')
-  const output: number[] = []
-  let bits = 0
-  let buffer = 0
-  for (const char of input) {
-    const index = BASE32_ALPHABET.indexOf(char)
-    if (index < 0) throw new Error(`Invalid base32 character: ${char}`)
-    buffer = (buffer << 5) | index
-    bits += 5
-    if (bits >= 8) {
-      output.push((buffer >> (bits - 8)) & 0xff)
-      bits -= 8
-      buffer &= bits === 0 ? 0 : (1 << bits) - 1
-    }
-  }
-  return new Uint8Array(output)
-}
-
-function base32Encode(bytes: Uint8Array): string {
-  let result = ''
-  let bits = 0
-  let buffer = 0
-  for (const byte of bytes) {
-    buffer = (buffer << 8) | byte
-    bits += 8
-    while (bits >= 5) {
-      result += BASE32_ALPHABET[(buffer >>> (bits - 5)) & 31]
-      bits -= 5
-      buffer &= bits === 0 ? 0 : (1 << bits) - 1
-    }
-  }
-  if (bits > 0) result += BASE32_ALPHABET[(buffer << (5 - bits)) & 31]
-  return result
-}
-
-function readVarint(bytes: Uint8Array, offset: number): { value: number; offset: number } {
-  let value = 0
-  let shift = 0
-  for (let index = offset; index < bytes.length; index++) {
-    const byte = bytes[index]
-    value += (byte & 0x7f) * (2 ** shift)
-    if ((byte & 0x80) === 0) return { value, offset: index + 1 }
-    shift += 7
-    if (shift > 49) throw new Error('CID varint is too large')
-  }
-  throw new Error('CID varint is truncated')
-}
-
-function cidV1Parts(cid: string): { codec: number; digest: Uint8Array } {
-  const raw = base32Decode(cid)
-  const version = readVarint(raw, 0)
-  if (version.value !== 1) throw new Error(`Unsupported CID version: ${version.value}`)
-  const codec = readVarint(raw, version.offset)
-  const multihashCode = readVarint(raw, codec.offset)
-  const multihashLength = readVarint(raw, multihashCode.offset)
-  if (multihashCode.value !== 0x12 || multihashLength.value !== 32) {
-    throw new Error('Only 32-byte sha2-256 IPFS hashes are supported')
-  }
-  if (multihashLength.offset + multihashLength.value !== raw.length) {
-    throw new Error('CIDv1 multihash length is invalid')
-  }
-  return {
-    codec: codec.value,
-    digest: raw.slice(multihashLength.offset),
-  }
+  if (!uri.startsWith('ipfs://')) return false
+  const path = ipfsAssetPath(uri)
+  return Boolean(path && (allowPath || !path.includes('/')))
 }
 
 function ipfsLocation(uri: string): { cid: string; path: string } | null {
-  let value = uri.trim()
+  const value = uri.trim()
   if (!value) return null
-  if (value.startsWith('ipfs://')) {
-    value = value.slice(7)
-  } else if (/^https?:\/\//i.test(value)) {
-    try {
-      const parsed = new URL(value)
-      const pathMatch = parsed.pathname.match(/^\/ipfs\/([^/]+)(\/.*)?$/i)
-      if (pathMatch) return { cid: pathMatch[1], path: (pathMatch[2] || '').replace(/^\//, '') }
-      const subdomain = parsed.hostname.split('.')[0]
-      if (/^(Qm|b[a-z2-7])/i.test(subdomain)) {
-        return { cid: subdomain, path: parsed.pathname.replace(/^\//, '') }
-      }
-      return null
-    } catch {
-      return null
-    }
-  }
-  const slash = value.indexOf('/')
+  const candidate =
+    ipfsAssetPath(value) ??
+    (isIpfsCid(value.split('/')[0]) ? value : null)
+  if (!candidate) return null
+  const slash = candidate.indexOf('/')
   return slash === -1
-    ? { cid: value, path: '' }
-    : { cid: value.slice(0, slash), path: value.slice(slash + 1) }
+    ? { cid: candidate, path: '' }
+    : { cid: candidate.slice(0, slash), path: candidate.slice(slash + 1) }
 }
 
 /**
  * Encode an IPFS CID to a hex bytes32 for on-chain storage
  *
  * This matches juice-interface's encodeIpfsUri function.
- * Input: CIDv0 string (Qm...)
+ * Input: a DAG-PB CIDv0/CIDv1 string or ipfs:// URI
  * Output: 0x + 32-byte hex (the raw SHA-256 hash, without the multihash prefix)
  *
- * @param cid - IPFS CID (Qm... format) or ipfs:// URI
+ * @param cid - DAG-PB IPFS CID or ipfs:// URI
  * @returns bytes32 hex string (0x...) or null if invalid
  */
 export function encodeIpfsUri(cid: string | undefined | null): string | null {
@@ -294,26 +155,7 @@ export function encodeIpfsUri(cid: string | undefined | null): string | null {
   if (!location) throw new Error('Metadata URI is not an IPFS CID')
   if (location.path) throw new Error('Tier metadata must use an IPFS root CID without a path')
 
-  let digest: Uint8Array
-  if (location.cid.startsWith('Qm')) {
-    const decoded = base58Decode(location.cid)
-    if (decoded.length !== 34 || decoded[0] !== 0x12 || decoded[1] !== 0x20) {
-      throw new Error('CIDv0 must use a 32-byte sha2-256 multihash')
-    }
-    digest = decoded.slice(2)
-  } else if (location.cid.toLowerCase().startsWith('b')) {
-    const parts = cidV1Parts(location.cid)
-    if (parts.codec !== 0x70) {
-      throw new Error(
-        'Raw CIDv1 metadata cannot be stored in the 721 bytes32 URI slot; pin it as DAG-PB first',
-      )
-    }
-    digest = parts.digest
-  } else {
-    throw new Error('Only CIDv0 or base32 CIDv1 metadata is supported')
-  }
-
-  return `0x${Array.from(digest).map(byte => byte.toString(16).padStart(2, '0')).join('')}`
+  return encodeSdkIpfsUri(location.cid)
 }
 
 /**
@@ -325,39 +167,8 @@ export function encodeIpfsUri(cid: string | undefined | null): string | null {
 export function decodeEncodedIPFSUriCandidates(
   encodedUri: string | undefined | null,
 ): [string, string] | null {
-  if (!encodedUri) return null
-
-  // Remove 0x prefix if present
-  let hex = encodedUri.startsWith('0x') ? encodedUri.slice(2) : encodedUri
-
-  // Must be 64 or 66 hex chars (32 or 33 bytes)
-  if (hex.length !== 64 && hex.length !== 66) return null
-
-  // If 66 chars, skip the first byte (version marker 01)
-  if (hex.length === 66) {
-    hex = hex.slice(2)
-  }
-
-  // Check for zero hash (no IPFS content)
-  if (hex === '0'.repeat(64)) return null
-
-  // Build the multihash: 0x1220 (sha2-256, 32 bytes) + hash
-  const multihashHex = '1220' + hex
-
-  // Convert hex to bytes
-  const bytes = new Uint8Array(multihashHex.length / 2)
-  for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(multihashHex.slice(i * 2, i * 2 + 2), 16)
-  }
-
-  // Base58 encode to get CIDv0 (Qm...)
-  const cid = base58Encode(bytes)
-
-  // CIDv0 should start with Qm
-  if (!cid.startsWith('Qm')) return null
-
-  const rawCidV1 = `b${base32Encode(new Uint8Array([0x01, 0x55, ...bytes]))}`
-  return [`ipfs://${cid}`, `ipfs://${rawCidV1}`]
+  const candidates = decodeSdkIpfsCandidates(encodedUri)
+  return candidates ? [...candidates] : null
 }
 
 // Extract CID from IPFS URI
@@ -382,11 +193,6 @@ export function resolveIpfsUri(uri: string | undefined | null): string | null {
   // IPFS URI or legacy URL - extract CID and use gateway
   const urls = ipfsGatewayUrls(uri)
   if (urls.length > 0) return urls[0]
-
-  // If it starts with Qm or baf, it might be a raw CID
-  if (uri.match(/^(Qm[a-zA-Z0-9]{44}|baf[a-zA-Z0-9]+)$/)) {
-    return `${IPFS_PATH_GATEWAYS[0]}${uri}`
-  }
 
   // Fallback - return as-is if it's a URL
   if (uri.startsWith('http')) {

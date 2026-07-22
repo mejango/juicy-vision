@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { erc20Abi, isAddress } from 'viem'
+import { tokenCurrencyId } from '@bananapus/nana-sdk-core/v6'
 import { ALL_CHAIN_IDS, CHAINS } from '../../../constants'
 import { getSafetyPublicClient } from '../../../utils/transactionSafety'
 import type { AcceptKind, CreateFlowState, ProjectType, SuckerType } from './state'
@@ -30,7 +31,7 @@ interface StepProps {
 // currency equals it and no JBPrices feed is needed.
 function customCurrencyId(state: CreateFlowState): number {
   const a = state.customToken.address
-  return isAddress(a, { strict: false }) ? Number(BigInt(a) % (1n << 32n)) : 0
+  return isAddress(a, { strict: false }) ? tokenCurrencyId(a) : 0
 }
 
 // Point every ruleset/shop currency at the right base id. A custom ERC-20 → its own currency id. Otherwise,

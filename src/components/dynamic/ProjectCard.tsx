@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useAccount } from 'wagmi'
 import { createPublicClient, http, formatEther, formatUnits, parseUnits, erc20Abi, type Address, type Hex, type PublicClient } from 'viem'
 import { NATIVE_TOKEN, type JBChainId } from '@bananapus/nana-sdk-core'
-import { getAccountingContexts } from '@bananapus/nana-sdk-core/v6'
+import { getAccountingContexts, tokenCurrencyId } from '@bananapus/nana-sdk-core/v6'
 import {
   fetchProject,
   fetchSuckerGroupBalance,
@@ -839,7 +839,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                   name: candidate.name,
                   tokenAddress: candidate.tokenAddress,
                   decimals: candidate.decimals,
-                  currency: Number(BigInt(candidate.tokenAddress) & 0xffff_ffffn),
+                  currency: tokenCurrencyId(candidate.tokenAddress),
                   route: terminal.type === 'multi' ? 'direct' : 'routed',
                 }
               } catch (err) {

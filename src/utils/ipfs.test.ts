@@ -20,7 +20,7 @@ describe('721-compatible IPFS encoding', () => {
   })
 
   it('rejects raw CIDv1 metadata before it can be stored onchain', () => {
-    expect(() => encodeIpfsUri(`ipfs://${RAW_CID_V1}`)).toThrow(/raw CIDv1 metadata/i)
+    expect(() => encodeIpfsUri(`ipfs://${RAW_CID_V1}`)).toThrow(/CIDv1 metadata/i)
   })
 
   it('reconstructs canonical DAG-PB and legacy raw candidates from one digest', () => {
