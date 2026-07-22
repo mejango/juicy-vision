@@ -292,7 +292,6 @@ jobs:
           docker run --detach \
             --name "$api_name" \
             --network "$network_name" \
-            --publish 127.0.0.1:18081:8080 \
             --read-only \
             --tmpfs /tmp:rw,noexec,nosuid,size=16m \
             --cap-drop ALL \
@@ -311,9 +310,10 @@ jobs:
             exit 1
           fi
 
+          api_probe='const paths=["livez","readyz"];for(const path of paths){const response=await fetch(`http://127.0.0.1:8080/${path}`);if(!response.ok){console.error(`${path}: ${response.status} ${await response.text()}`);Deno.exit(1)}}'
           for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:18081/livez >/dev/null \
-              && curl --fail --silent http://127.0.0.1:18081/readyz >/dev/null; then
+            if docker exec "$api_name" deno eval --allow-net=127.0.0.1:8080 "$api_probe" \
+              >/dev/null 2>&1; then
               break
             fi
             if [[ "$(docker inspect --format '{{.State.Running}}' "$api_name")" != true ]]; then
@@ -322,11 +322,7 @@ jobs:
             fi
             sleep 1
           done
-          if ! curl --fail --silent --show-error http://127.0.0.1:18081/livez; then
-            docker logs "$api_name"
-            exit 1
-          fi
-          if ! curl --fail --silent --show-error http://127.0.0.1:18081/readyz; then
+          if ! docker exec "$api_name" deno eval --allow-net=127.0.0.1:8080 "$api_probe"; then
             docker logs "$api_name"
             exit 1
           fi
