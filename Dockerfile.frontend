@@ -21,6 +21,9 @@ ENV BUILD_SHA=${BUILD_SHA} \
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts && npm run deps:check
 COPY . .
+# Keep build tooling installed above, but compile the shipped bundle against
+# production framework exports.
+ENV NODE_ENV=production
 RUN npm run check:release-config && npm run build && npm run check:bundle
 
 # Official multi-platform unprivileged Nginx image, pinned to the reviewed manifest digest.
