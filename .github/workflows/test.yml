@@ -85,7 +85,7 @@ jobs:
         env:
           DEPLOY_ENV: production
           VITE_API_URL: https://api.ci.invalid
-          VITE_WALLETCONNECT_PROJECT_ID: 00000000000000000000000000000000
+          VITE_WALLETCONNECT_PROJECT_ID: '00000000000000000000000000000000'
           BUILD_SHA: ${{ github.sha }}
           SOURCE_DATE_EPOCH: ${{ steps.source.outputs.epoch }}
         run: npm run check:release-config && npm run build
