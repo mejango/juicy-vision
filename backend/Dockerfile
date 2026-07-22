@@ -1,5 +1,5 @@
 # Official multi-platform Deno image, pinned to the reviewed manifest digest.
-FROM denoland/deno:2.6.5@sha256:72970f0e7c937999d0b138fd6384e0eef732187dcd3003788e673ee2ae34f9d9 AS cache
+FROM denoland/deno:2.9.3@sha256:6288db6be1c26473bb9d1843f906d9a219c0dda57fd85de4aac90296951cf6ef AS cache
 
 WORKDIR /app/backend
 COPY --chown=deno:deno backend/ ./
@@ -11,7 +11,7 @@ USER deno
 RUN deno cache --frozen main.ts run_migrate.ts
 RUN deno check --frozen main.ts run_migrate.ts scripts/validate-config.ts
 
-FROM denoland/deno:2.6.5@sha256:72970f0e7c937999d0b138fd6384e0eef732187dcd3003788e673ee2ae34f9d9
+FROM denoland/deno:2.9.3@sha256:6288db6be1c26473bb9d1843f906d9a219c0dda57fd85de4aac90296951cf6ef
 
 ARG BUILD_SHA=source-unknown
 ENV DENO_ENV=production \
