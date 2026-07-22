@@ -24,7 +24,7 @@ COPY . .
 RUN npm run check:release-config && npm run build && npm run check:bundle
 
 # Official multi-platform unprivileged Nginx image, pinned to the reviewed manifest digest.
-FROM nginxinc/nginx-unprivileged:1.28.0-alpine@sha256:c97ff0bf7cbae369953c6da1232ec14ad9f971d66360c5698db0856a4cd657a0
+FROM nginxinc/nginx-unprivileged:1.31.3-alpine@sha256:18d67281256ded39ff65e010ae4f831be18f19356f83c60bc546492c7eb6dd23
 
 ARG BUILD_SHA=source-unknown
 LABEL org.opencontainers.image.revision=${BUILD_SHA}
