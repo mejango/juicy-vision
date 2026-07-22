@@ -146,8 +146,13 @@ if (/automatically run migrations when it starts/i.test(read('DEVELOPMENT.md')))
 }
 requirePattern(
   '.github/workflows/test.yml',
-  /--read-only[\s\S]*--cap-drop ALL[\s\S]*juicy-vision-backend:ci[\s\S]*\/livez[\s\S]*\/readyz/,
-  'the backend container smoke test must stay read-only and unprivileged and verify liveness and readiness',
+  /docker run --detach[\s\S]*--name "\$api_name"[\s\S]*--network "\$network_name"[\s\S]*--read-only[\s\S]*--cap-drop ALL[\s\S]*--security-opt no-new-privileges[\s\S]*juicy-vision-backend:ci/,
+  'the backend API smoke container must stay read-only and unprivileged',
+)
+requirePattern(
+  '.github/workflows/test.yml',
+  /api_probe='[^']*http:\/\/127\.0\.0\.1:8080\/livez[^']*http:\/\/127\.0\.0\.1:8080\/readyz[^']*'[\s\S]*docker exec "\$api_name" deno eval --allow-net=127\.0\.0\.1:8080 "\$api_probe"/,
+  'the isolated backend container smoke test must verify liveness and readiness from inside the API container',
 )
 
 const backendTestFiles = sourceFiles('backend/src').filter(path => path.endsWith('.test.ts'))
