@@ -146,12 +146,12 @@ if (/automatically run migrations when it starts/i.test(read('DEVELOPMENT.md')))
 }
 requirePattern(
   '.github/workflows/test.yml',
-  /docker run --detach[\s\S]*--name "\$api_name"[\s\S]*--network "\$network_name"[\s\S]*--read-only[\s\S]*--cap-drop ALL[\s\S]*--security-opt no-new-privileges[\s\S]*juicy-vision-backend:ci/,
+  /docker run --detach\s*\\\s*--name "\$api_name"\s*\\[\s\S]*?--network "\$network_name"\s*\\[\s\S]*?--read-only\s*\\[\s\S]*?--cap-drop ALL\s*\\[\s\S]*?--security-opt no-new-privileges\s*\\[\s\S]*?juicy-vision-backend:ci/,
   'the backend API smoke container must stay read-only and unprivileged',
 )
 requirePattern(
   '.github/workflows/test.yml',
-  /api_probe='[^']*http:\/\/127\.0\.0\.1:8080\/livez[^']*http:\/\/127\.0\.0\.1:8080\/readyz[^']*'[\s\S]*docker exec "\$api_name" deno eval --allow-net=127\.0\.0\.1:8080 "\$api_probe"/,
+  /api_probe='[^'\n]*http:\/\/127\.0\.0\.1:8080\/livez[^'\n]*http:\/\/127\.0\.0\.1:8080\/readyz[^'\n]*'[\s\S]*?if ! docker exec "\$api_name" deno eval --allow-net=127\.0\.0\.1:8080 "\$api_probe"; then/,
   'the isolated backend container smoke test must verify liveness and readiness from inside the API container',
 )
 
