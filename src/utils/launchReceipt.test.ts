@@ -28,12 +28,13 @@ function launchLog(address: Address) {
 
 describe('V6 project launch receipt decoding', () => {
   it('decodes the unindexed V6 project ID from the recognized controller', () => {
-    expect(decodeRecognizedLaunchProjectLog(launchLog(JB_CONTRACTS.JBController))).toBe(42)
+    expect(decodeRecognizedLaunchProjectLog(launchLog(JB_CONTRACTS.JBController), 1)).toBe(42)
   })
 
   it('rejects an otherwise identical event from an unknown contract', () => {
     expect(decodeRecognizedLaunchProjectLog(
       launchLog('0x9999999999999999999999999999999999999999'),
+      1,
     )).toBeNull()
   })
 })

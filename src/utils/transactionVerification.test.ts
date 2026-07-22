@@ -524,6 +524,16 @@ describe('transactionVerification', () => {
       expect(result.isValid).toBe(true)
     })
 
+    it('accepts genuine zero issuance', () => {
+      const result = verifyDeployRevnetParams({
+        ...validParams,
+        stageConfigurations: [
+          { ...validParams.stageConfigurations[0], initialIssuance: 0n },
+        ],
+      })
+      expect(result.isValid).toBe(true)
+    })
+
     it('rejects empty name', () => {
       const result = verifyDeployRevnetParams({ ...validParams, name: '' })
       expect(result.isValid).toBe(false)

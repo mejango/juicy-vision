@@ -33,15 +33,39 @@ import {
   erc20Abi,
   formatUnits,
   http,
-  keccak256,
-  toEventSelector,
   zeroAddress,
   type Address,
   type Chain,
   type PublicClient,
 } from 'viem'
 import { jbSplitsAbi, jbTerminalStoreAbi, type JBChainId } from '@bananapus/nana-sdk-core'
-import { getAccountingContexts, RESERVED_TOKEN_SPLIT_GROUP_ID } from '@bananapus/nana-sdk-core/v6'
+import {
+  RESERVED_TOKEN_SPLIT_GROUP_ID,
+  UNISWAP_PERMIT2_ADDRESS,
+  UNISWAP_V4_INITIALIZE_TOPIC,
+  UNISWAP_V4_MAX_TICK,
+  UNISWAP_V4_MODIFY_LIQUIDITY_TOPIC,
+  UNISWAP_V4_POOL_MANAGER_ADDRESSES,
+  UNISWAP_V4_POSITION_MANAGER_ADDRESSES,
+  UNISWAP_V4_Q96,
+  UNISWAP_V4_QUOTER_ADDRESSES,
+  getAccountingContexts,
+  uniswapV4AlignTickDown,
+  uniswapV4AlignTickUp,
+  uniswapV4AmountsForLiquidity,
+  uniswapV4CounterpartAmount,
+  uniswapV4DefaultPriceRange,
+  uniswapV4LiquidityForAmounts,
+  uniswapV4PoolId,
+  uniswapV4PoolStateSlot,
+  uniswapV4PositionTicks,
+  uniswapV4PositionTokenIdFromLog,
+  uniswapV4PriceFromSqrtPriceX96,
+  uniswapV4SqrtPriceX96AtTick,
+  uniswapV4SqrtPriceX96FromSlot0,
+  tokenCurrencyId,
+  type UniswapV4PoolKey,
+} from '@bananapus/nana-sdk-core/v6'
 import {
   JB_BUYBACK_HOOK,
   JB_BUYBACK_HOOK_REGISTRY,
@@ -60,27 +84,12 @@ import { publicClientFor } from './projectTx'
 // hookmate AddressConstants.sol — the address book JB's own router uses).
 // ---------------------------------------------------------------------------
 
-export const POOL_MANAGER_BY_CHAIN: Record<number, Address> = {
-  1: '0x000000000004444c5dc75cb358380d2e3de08a90',
-  11155111: '0xe03a1074c86cfedd5c142c4f04f1a1536e203543',
-  10: '0x9a13f98cb987694c9f086b1f5eb990eea8264ec3',
-  11155420: '0x000000000004444c5dc75cb358380d2e3de08a90',
-  8453: '0x498581ff718922c3f8e6a244956af099b2652b2b',
-  84532: '0x05e73354cfdd6745c338b50bcfdfa3aa6fa03408',
-  42161: '0x360e68faccca8ca495c1b759fd9eee466db9fb32',
-  421614: '0xfb3e0c6f74eb1a21cc1da29aec80d2dfe6c9a317',
-}
+type AddressByChain = Readonly<Partial<Record<number, Address>>>
+
+export const POOL_MANAGER_BY_CHAIN = UNISWAP_V4_POOL_MANAGER_ADDRESSES as AddressByChain
 
 /** OP Sepolia (11155420) has no PositionManager → no LP there. */
-export const POSITION_MANAGER_BY_CHAIN: Record<number, Address> = {
-  1: '0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e',
-  11155111: '0x429ba70129df741b2ca2a85bc3a2a3328e5c09b4',
-  10: '0x3c3ea4b57a46241e54610e5f022e5c45859a1017',
-  8453: '0x7c5f5a4bbd8fd63184577525326123b519429bdc',
-  84532: '0x4b2c77d209d3405f41a037ec6c77f7f5b8e2ca80',
-  42161: '0xd88f38f930b7952f2db2432cb002e7abbf3dd869',
-  421614: '0xac631556d3d4019c95769033b5e719dd77124bac',
-}
+export const POSITION_MANAGER_BY_CHAIN = UNISWAP_V4_POSITION_MANAGER_ADDRESSES as AddressByChain
 
 /**
  * Uniswap V4 Quoter (v4-periphery) per chain — the read-only quoter that runs
@@ -91,18 +100,10 @@ export const POSITION_MANAGER_BY_CHAIN: Record<number, Address> = {
  * deployments. Chains absent here (e.g. OP Sepolia 11155420 — no V4 Quoter
  * deployed) gate the direct-swap offer OFF rather than guess an address.
  */
-export const V4_QUOTER_BY_CHAIN: Record<number, Address> = {
-  1: '0x52f0e24d1c21c8a0cb1e5a5dd6198556bd9e1203',
-  10: '0x1f3131a13296fb91c90870043742c3cdbff1a8d7',
-  8453: '0x0d5e0f971ed27fbff6c2837bf31316121532048d',
-  42161: '0x3972c00f7ed4885e145823eb7c655375d275a1c5',
-  11155111: '0x61b3f2011a92d183c7dbadbda940a7555ccf9227',
-  84532: '0x4a6513c898fe1b2d0e78d3b0e0a4a151589b1cba',
-  421614: '0x7de51022d70a725b508085468052e25e22b5c4c9',
-}
+export const V4_QUOTER_BY_CHAIN = UNISWAP_V4_QUOTER_ADDRESSES as AddressByChain
 
 /** Canonical Permit2 singleton (same on all chains). */
-export const PERMIT2_ADDRESS: Address = '0x000000000022D473030F116dDEE9F6B43aC78BA3'
+export const PERMIT2_ADDRESS = UNISWAP_PERMIT2_ADDRESS
 
 /**
  * BannyLPSplitHook (deployment name JBP6FeeLPSplitHook) — same address on
@@ -125,7 +126,11 @@ export function ammChainAvailable(chainId: number): boolean {
  * buyback pool's project tokens show up in the owners list under the PoolManager
  * address. Flag those rows as the AMM (website isAmmAddress :3151).
  */
-const AMM_ADDRESSES = new Set(Object.values(POOL_MANAGER_BY_CHAIN).map(address => address.toLowerCase()))
+const AMM_ADDRESSES = new Set(
+  Object.values(POOL_MANAGER_BY_CHAIN)
+    .filter((address): address is Address => Boolean(address))
+    .map(address => address.toLowerCase()),
+)
 export function isAmmAddress(address: string | null | undefined): boolean {
   return Boolean(address && AMM_ADDRESSES.has(address.toLowerCase()))
 }
@@ -159,13 +164,6 @@ const extsloadAbi = [{
   stateMutability: 'view',
   inputs: [{ name: 'slot', type: 'bytes32' }],
   outputs: [{ type: 'bytes32' }],
-}] as const
-
-const POOLKEY_TUPLE = [{
-  type: 'tuple',
-  components: [
-    { type: 'address' }, { type: 'address' }, { type: 'uint24' }, { type: 'int24' }, { type: 'address' },
-  ],
 }] as const
 
 // V4Quoter.quoteExactInputSingle. The on-chain function is nonpayable (it runs
@@ -316,99 +314,13 @@ export function lpHookErrorText(message: string, symbol: string): string | null 
 // LiquidityAmounts (website :20547-20592).
 // ---------------------------------------------------------------------------
 
-export const LP_Q96 = 1n << 96n
-export const MAX_TICK = 887272
-
-/** TickMath.getSqrtPriceAtTick — exact integer port (Q64.96). */
-export function lpSqrtAtTick(tick: number): bigint {
-  const absTick = tick < 0 ? -tick : tick
-  if (absTick > MAX_TICK) throw new Error('tick out of range')
-  let price = (absTick & 0x1) !== 0 ? 0xfffcb933bd6fad37aa2d162d1a594001n : 1n << 128n
-  if (absTick & 0x2) price = (price * 0xfff97272373d413259a46990580e213an) >> 128n
-  if (absTick & 0x4) price = (price * 0xfff2e50f5f656932ef12357cf3c7fdccn) >> 128n
-  if (absTick & 0x8) price = (price * 0xffe5caca7e10e4e61c3624eaa0941cd0n) >> 128n
-  if (absTick & 0x10) price = (price * 0xffcb9843d60f6159c9db58835c926644n) >> 128n
-  if (absTick & 0x20) price = (price * 0xff973b41fa98c081472e6896dfb254c0n) >> 128n
-  if (absTick & 0x40) price = (price * 0xff2ea16466c96a3843ec78b326b52861n) >> 128n
-  if (absTick & 0x80) price = (price * 0xfe5dee046a99a2a811c461f1969c3053n) >> 128n
-  if (absTick & 0x100) price = (price * 0xfcbe86c7900a88aedcffc83b479aa3a4n) >> 128n
-  if (absTick & 0x200) price = (price * 0xf987a7253ac413176f2b074cf7815e54n) >> 128n
-  if (absTick & 0x400) price = (price * 0xf3392b0822b70005940c7a398e4b70f3n) >> 128n
-  if (absTick & 0x800) price = (price * 0xe7159475a2c29b7443b29c7fa6e889d9n) >> 128n
-  if (absTick & 0x1000) price = (price * 0xd097f3bdfd2022b8845ad8f792aa5825n) >> 128n
-  if (absTick & 0x2000) price = (price * 0xa9f746462d870fdf8a65dc1f90e061e5n) >> 128n
-  if (absTick & 0x4000) price = (price * 0x70d869a156d2a1b890bb3df62baf32f7n) >> 128n
-  if (absTick & 0x8000) price = (price * 0x31be135f97d08fd981231505542fcfa6n) >> 128n
-  if (absTick & 0x10000) price = (price * 0x9aa508b5b7a84e1c677de54f3e99bc9n) >> 128n
-  if (absTick & 0x20000) price = (price * 0x5d6af8dedb81196699c329225ee604n) >> 128n
-  if (absTick & 0x40000) price = (price * 0x2216e584f5fa1ea926041bedfe98n) >> 128n
-  if (absTick & 0x80000) price = (price * 0x48a170391f7dc42444e8fa2n) >> 128n
-  if (tick > 0) price = ((1n << 256n) - 1n) / price
-  return (price + 0xffffffffn) >> 32n // Q128.128 -> sqrtPriceX96, round up
-}
-
-function lpSortPair(a: bigint, b: bigint): [bigint, bigint] {
-  return a > b ? [b, a] : [a, b]
-}
-
-function lpLiqForAmount0(sa: bigint, sb: bigint, amount0: bigint): bigint {
-  ;[sa, sb] = lpSortPair(sa, sb)
-  const inter = (sa * sb) / LP_Q96
-  return (amount0 * inter) / (sb - sa)
-}
-
-function lpLiqForAmount1(sa: bigint, sb: bigint, amount1: bigint): bigint {
-  ;[sa, sb] = lpSortPair(sa, sb)
-  return (amount1 * LP_Q96) / (sb - sa)
-}
-
-export function lpGetLiquidityForAmounts(sp: bigint, sa: bigint, sb: bigint, amount0: bigint, amount1: bigint): bigint {
-  ;[sa, sb] = lpSortPair(sa, sb)
-  if (sp <= sa) return lpLiqForAmount0(sa, sb, amount0)
-  if (sp < sb) {
-    const l0 = lpLiqForAmount0(sp, sb, amount0)
-    const l1 = lpLiqForAmount1(sa, sp, amount1)
-    return l0 < l1 ? l0 : l1
-  }
-  return lpLiqForAmount1(sa, sb, amount1)
-}
-
-function lpAmount0ForL(sa: bigint, sb: bigint, liquidity: bigint): bigint {
-  ;[sa, sb] = lpSortPair(sa, sb)
-  return ((liquidity << 96n) * (sb - sa)) / sb / sa
-}
-
-function lpAmount1ForL(sa: bigint, sb: bigint, liquidity: bigint): bigint {
-  ;[sa, sb] = lpSortPair(sa, sb)
-  return (liquidity * (sb - sa)) / LP_Q96
-}
-
-export function lpGetAmountsForLiquidity(
-  sp: bigint,
-  sa: bigint,
-  sb: bigint,
-  liquidity: bigint,
-): { amount0: bigint; amount1: bigint } {
-  ;[sa, sb] = lpSortPair(sa, sb)
-  if (sp <= sa) return { amount0: lpAmount0ForL(sa, sb, liquidity), amount1: 0n }
-  if (sp < sb) return { amount0: lpAmount0ForL(sp, sb, liquidity), amount1: lpAmount1ForL(sa, sp, liquidity) }
-  return { amount0: 0n, amount1: lpAmount1ForL(sa, sb, liquidity) }
-}
-
-export function lpAlignDown(tick: number, spacing: number): number {
-  let r = tick % spacing
-  if (r !== 0 && tick < 0) r += spacing
-  return tick - r
-}
-
-export function lpAlignUp(tick: number, spacing: number): number {
-  return lpAlignDown(tick + spacing - 1, spacing)
-}
-
-/** Sign-extend a 24-bit tick packed inside PositionManager positionInfo. */
-export function lpSignExtend24(value: bigint): bigint {
-  return value & 0x800000n ? value - 0x1000000n : value
-}
+export const LP_Q96 = UNISWAP_V4_Q96
+export const MAX_TICK = UNISWAP_V4_MAX_TICK
+export const lpSqrtAtTick = uniswapV4SqrtPriceX96AtTick
+export const lpGetLiquidityForAmounts = uniswapV4LiquidityForAmounts
+export const lpGetAmountsForLiquidity = uniswapV4AmountsForLiquidity
+export const lpAlignDown = uniswapV4AlignTickDown
+export const lpAlignUp = uniswapV4AlignTickUp
 
 /**
  * Concentrated-liquidity deposit counterpart (website :20406). Given one
@@ -419,26 +331,7 @@ export function lpSignExtend24(value: bigint): bigint {
  * Outside the range it's single-sided: 0 for the side that isn't needed,
  * null when the requested side can't fund the position at all.
  */
-export function lpCounterpart(
-  amount: number,
-  driverIsPair: boolean,
-  p: number,
-  pa: number,
-  pb: number,
-): number | null {
-  if (!(amount > 0) || !(p > 0) || !(pa > 0) || !(pb > pa)) return null
-  const sp = Math.sqrt(p)
-  const sa = Math.sqrt(pa)
-  const sb = Math.sqrt(pb)
-  if (p <= pa) return driverIsPair ? null : 0 // all token: no pair side
-  if (p >= pb) return driverIsPair ? 0 : null // all pair: no token side
-  if (driverIsPair) {
-    const liquidity = amount / (sp - sa)
-    return liquidity * (1 / sp - 1 / sb) // token amount
-  }
-  const liquidity = amount / (1 / sp - 1 / sb)
-  return liquidity * (sp - sa) // pair amount
-}
+export const lpCounterpart = uniswapV4CounterpartAmount
 
 /** Trim a float for an input field (no separators; ~6 significant digits). */
 export function lpTrimNum(n: number): string {
@@ -453,26 +346,7 @@ export function lpTrimNum(n: number): string {
  * is inverted, degenerate, or spot moved outside it, widen around the live
  * pool price so the default position is genuinely two-sided.
  */
-export function lpDefaultRange(
-  poolPrice: number,
-  floor: number,
-  ceiling: number,
-): { min: number; max: number; economic: boolean } {
-  let p = Number(poolPrice)
-  let f = Number(floor)
-  let c = Number(ceiling)
-  p = isFinite(p) && p > 0 ? p : 0
-  f = isFinite(f) && f > 0 ? f : 0
-  c = isFinite(c) && c > 0 ? c : 0
-  const economic = p > 0 && f > 0 && c > f && f < p && p < c
-  let min = economic ? f : p > 0 ? p / 2 : c > 0 ? c / 10 : 0
-  let max = economic ? c : p > 0 ? p * 2 : c
-  if (p > 0 && (!(min > 0) || min >= p)) min = p / 2
-  if (p > 0 && !(max > p)) max = p * 2
-  if (!(min > 0) && max > 0) min = max / 10
-  if (!(max > min)) max = min > 0 ? min * 10 : 0
-  return { min, max, economic }
-}
+export const lpDefaultRange = uniswapV4DefaultPriceRange
 
 /** A quoted output's minimum floor: `bps`/10000 of it, clamped to ≥ 1 wei when positive. */
 export function quotedOutputFloor(quoted: bigint, bps: number | bigint = 9900n): bigint {
@@ -494,13 +368,7 @@ export interface PairToken {
   isNative: boolean
 }
 
-export interface PoolKey {
-  currency0: Address
-  currency1: Address
-  fee: number
-  tickSpacing: number
-  hooks: Address
-}
+export type PoolKey = UniswapV4PoolKey
 
 export interface PoolState {
   key: PoolKey
@@ -661,34 +529,21 @@ export async function resolveBuybackHook(
   return recognize(info.hook)
 }
 
-function poolIdOf(key: PoolKey): `0x${string}` {
-  return keccak256(
-    encodeAbiParameters(POOLKEY_TUPLE, [
-      [key.currency0, key.currency1, key.fee, key.tickSpacing, key.hooks],
-    ]),
-  )
-}
+const poolIdOf = uniswapV4PoolId
 
 async function readSlot0SqrtPrice(client: PublicClient, poolManager: Address, poolId: `0x${string}`): Promise<bigint> {
-  // pools mapping lives at PoolManager storage slot 6; sqrtPriceX96 = lower 160 bits of slot0.
-  const stateSlot = keccak256(
-    encodeAbiParameters([{ type: 'bytes32' }, { type: 'uint256' }], [poolId, 6n]),
-  )
   const slot0 = await client.readContract({
     address: poolManager,
     abi: extsloadAbi,
     functionName: 'extsload',
-    args: [stateSlot],
+    args: [uniswapV4PoolStateSlot(poolId)],
   })
-  return BigInt(slot0) & ((1n << 160n) - 1n)
+  return uniswapV4SqrtPriceX96FromSlot0(slot0)
 }
 
 /** Human pair-per-token price for a sqrtPriceX96 and pool ordering. */
 export function poolPriceFromSqrtP(sqrtP: bigint, pairIsC0: boolean, pairDecimals: number): number {
-  const sp = Number(sqrtP) / 2 ** 96
-  const rawP = sp * sp // raw currency1 per currency0 (base units)
-  const rawRatio = pairIsC0 ? (rawP > 0 ? 1 / rawP : 0) : rawP
-  return rawRatio * 10 ** (18 - pairDecimals)
+  return uniswapV4PriceFromSqrtPriceX96(sqrtP, pairIsC0, pairDecimals) ?? 0
 }
 
 /**
@@ -800,12 +655,8 @@ export async function quoteDirectBuy(
 // LP position enumeration — capped PoolManager log scan
 // ---------------------------------------------------------------------------
 
-const LP_INITIALIZE_TOPIC = toEventSelector(
-  'Initialize(bytes32,address,address,uint24,int24,address,uint160,int24)',
-).toLowerCase()
-const LP_MODIFY_LIQUIDITY_TOPIC = toEventSelector(
-  'ModifyLiquidity(bytes32,address,int24,int24,int256,bytes32)',
-).toLowerCase()
+const LP_INITIALIZE_TOPIC = UNISWAP_V4_INITIALIZE_TOPIC
+const LP_MODIFY_LIQUIDITY_TOPIC = UNISWAP_V4_MODIFY_LIQUIDITY_TOPIC
 
 export const LP_LOG_WINDOW = 45_000n
 const LP_LOG_BATCH_WINDOWS = 8
@@ -832,7 +683,6 @@ export interface PoolLogScanState {
  * ids would attribute unrelated positions to this pool.
  */
 export function collectPoolLogs(logs: readonly RawLog[], positionManager: Address, state: PoolLogScanState): void {
-  const posmTail = positionManager.slice(2).toLowerCase()
   for (const log of logs || []) {
     const topic0 = String(log.topics?.[0] || '').toLowerCase()
     const block = BigInt(log.blockNumber ?? 0)
@@ -841,13 +691,8 @@ export function collectPoolLogs(logs: readonly RawLog[], positionManager: Addres
       continue
     }
     if (topic0 !== LP_MODIFY_LIQUIDITY_TOPIC) continue
-    if (String(log.topics?.[2] || '').slice(-40).toLowerCase() !== posmTail) continue
-    const data = String(log.data || '')
-    if (!/^0x[0-9a-fA-F]{256}$/.test(data)) {
-      throw new Error('Malformed ModifyLiquidity log while reading LP positions')
-    }
-    const tokenId = BigInt('0x' + data.slice(194, 258))
-    if (tokenId <= 0n) continue
+    const tokenId = uniswapV4PositionTokenIdFromLog(log, positionManager)
+    if (tokenId === null) continue
     const known = state.tokenIds.get(tokenId.toString())
     if (!known || block < known.block) state.tokenIds.set(tokenId.toString(), { id: tokenId, block })
   }
@@ -1106,9 +951,10 @@ export interface LpPositionsSnapshot {
 
 /** Decode positionInfo's packed ticks (upper at bits 32-55, lower at 8-31). */
 export function ticksFromPositionInfo(info: bigint): { tickLower: number; tickUpper: number } {
+  const ticks = uniswapV4PositionTicks(info)
   return {
-    tickUpper: Number(lpSignExtend24((info >> 32n) & 0xffffffn)),
-    tickLower: Number(lpSignExtend24((info >> 8n) & 0xffffffn)),
+    tickUpper: ticks.upper,
+    tickLower: ticks.lower,
   }
 }
 
@@ -1618,7 +1464,7 @@ export async function readCashOutFloorPrice(
     const client = clientFor(chainId)
     const token = pair.isNative ? (NATIVE_TOKEN as Address) : pair.addr
     // Accounting-context currency ids are uint32(uint160(token)).
-    const currency = BigInt.asUintN(32, BigInt(token))
+    const currency = BigInt(tokenCurrencyId(token))
     const reclaim = await client.readContract({
       address: JB_CONTRACTS.JBTerminalStore,
       abi: jbTerminalStoreAbi,

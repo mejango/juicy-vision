@@ -1099,11 +1099,11 @@ export function verifyDeployRevnetParams(params: {
       `stageConfigurations[${index}].initialIssuance`,
       doubts,
     )
-    if (initialIssuance <= 0n || initialIssuance > (1n << 112n) - 1n) {
+    if (initialIssuance < 0n || initialIssuance > (1n << 112n) - 1n) {
       doubts.push({
         severity: 'critical',
         field: `stageConfigurations[${index}].initialIssuance`,
-        message: `Stage ${index + 1} issuance must fit uint112 and be greater than zero`,
+        message: `Stage ${index + 1} issuance must fit uint112`,
       })
     }
     validateIntegerRange(stage.issuanceCutFrequency, `stageConfigurations[${index}].issuanceCutFrequency`, 86_400, 2 ** 32 - 1, doubts)

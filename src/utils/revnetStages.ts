@@ -38,7 +38,7 @@ export function revnetStageError(stage: RevnetStageInput, index: number): string
 
   try {
     const issuance = parseEther(stage.initialIssuance.trim())
-    if (issuance <= 0n || issuance > UINT112_MAX) return `${label} has an invalid issuance rate`
+    if (issuance < 0n || issuance > UINT112_MAX) return `${label} has an invalid issuance rate`
   } catch {
     return `${label} has an invalid issuance rate`
   }

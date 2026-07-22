@@ -8,6 +8,12 @@
  * auditable without following component state.
  */
 
+import { JB_CHAINS, type JBChainId } from '@bananapus/nana-sdk-core'
+import {
+  JB_PROJECT_PAYER_DEPLOYER as SDK_PROJECT_PAYER_DEPLOYER,
+  buildDeployProjectPayerTx,
+  normalizeProjectPayerMetadata,
+} from '@bananapus/nana-sdk-core/v6'
 import { encodeFunctionData, isAddress } from 'viem'
 import { getNetworkOption, safeRequest } from './bendystraw/client'
 
@@ -16,40 +22,12 @@ import { getNetworkOption, safeRequest } from './bendystraw/client'
  * Verified against website/data/manifest.json AND
  * deploy-all-v6/deployments/{ethereum,optimism,base,arbitrum,+sepolias}/JBProjectPayerDeployer.json.
  */
-export const JB_PROJECT_PAYER_DEPLOYER = '0x7321740fd0dcf73dd3e2aa8fc060454abfce9517' as `0x${string}`
-
-/**
- * Chains on which JBProjectPayerDeployer is actually deployed. A payer address
- * can only be deployed where the deployer exists, so the UI must gate each
- * chain on membership here (mirrors the website's getAddress lookup, which
- * returns null on chains without the deployer). Kept as an explicit map so a
- * future chain that lacks the deployer stays absent rather than defaulting on.
- */
-const PROJECT_PAYER_DEPLOYER_CHAIN_IDS = [1, 10, 8453, 42161, 11155111, 11155420, 84532, 421614] as const
-
-export const JB_PROJECT_PAYER_DEPLOYER_BY_CHAIN: Record<number, `0x${string}`> = Object.fromEntries(
-  PROJECT_PAYER_DEPLOYER_CHAIN_IDS.map(chainId => [chainId, JB_PROJECT_PAYER_DEPLOYER]),
-)
+export const JB_PROJECT_PAYER_DEPLOYER = SDK_PROJECT_PAYER_DEPLOYER
 
 /** The JBProjectPayerDeployer address on a chain, or null when it isn't deployed there. */
 export function getProjectPayerDeployer(chainId: number): `0x${string}` | null {
-  return JB_PROJECT_PAYER_DEPLOYER_BY_CHAIN[chainId] ?? null
+  return JB_CHAINS[chainId as JBChainId] ? JB_PROJECT_PAYER_DEPLOYER : null
 }
-
-export const PROJECT_PAYER_DEPLOY_ABI = [{
-  type: 'function',
-  name: 'deployProjectPayer',
-  stateMutability: 'nonpayable',
-  inputs: [
-    { name: 'defaultProjectId', type: 'uint256' },
-    { name: 'defaultBeneficiary', type: 'address' },
-    { name: 'defaultMemo', type: 'string' },
-    { name: 'defaultMetadata', type: 'bytes' },
-    { name: 'defaultAddToBalance', type: 'bool' },
-    { name: 'owner', type: 'address' },
-  ],
-  outputs: [{ name: 'projectPayer', type: 'address' }],
-}] as const
 
 // ---------------------------------------------------------------------------
 // Bendystraw listing
@@ -132,14 +110,7 @@ function validAddress(value: string): value is `0x${string}` {
   return typeof value === 'string' && isAddress(value, { strict: false })
 }
 
-/** Validate + normalize the optional hex metadata forwarded to pay/addToBalance. */
-export function normalizeProjectPayerMetadata(metadata: string): `0x${string}` {
-  const hex = String(metadata || '').trim() || '0x'
-  if (!/^0x([0-9a-fA-F]{2})*$/.test(hex)) {
-    throw new Error('Metadata must be hex bytes, e.g. 0x or 0x1234')
-  }
-  return hex as `0x${string}`
-}
+export { normalizeProjectPayerMetadata }
 
 export interface ProjectPayerDeployParams {
   chainId: number
@@ -167,12 +138,22 @@ export function buildProjectPayerDeployCall(params: ProjectPayerDeployParams): P
   if (!Number.isSafeInteger(projectId) || projectId < 1) throw new Error('Enter a project ID')
   if (!validAddress(beneficiary)) throw new Error('Enter a default beneficiary address')
   if (!validAddress(owner)) throw new Error('Enter the payer admin address')
-  const to = getProjectPayerDeployer(chainId)
-  if (!to) throw new Error(`JBProjectPayerDeployer is not deployed on chain ${chainId}`)
-  const data = encodeFunctionData({
-    abi: PROJECT_PAYER_DEPLOY_ABI,
-    functionName: 'deployProjectPayer',
-    args: [BigInt(projectId), beneficiary, String(memo || ''), normalizeProjectPayerMetadata(metadata), !!addToBalance, owner],
+  if (!getProjectPayerDeployer(chainId)) {
+    throw new Error(`JBProjectPayerDeployer is not deployed on chain ${chainId}`)
+  }
+  const request = buildDeployProjectPayerTx({
+    chainId: chainId as JBChainId,
+    projectId: BigInt(projectId),
+    beneficiary,
+    memo: String(memo || ''),
+    metadata,
+    addToBalance: !!addToBalance,
+    owner,
   })
-  return { chainId: Number(chainId), to, data }
+  const data = encodeFunctionData({
+    abi: request.abi,
+    functionName: request.functionName,
+    args: request.args,
+  })
+  return { chainId: Number(chainId), to: request.address, data }
 }

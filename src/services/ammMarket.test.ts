@@ -17,7 +17,6 @@ import {
   lpDefaultRange,
   lpGetAmountsForLiquidity,
   lpGetLiquidityForAmounts,
-  lpSignExtend24,
   lpSqrtAtTick,
   LP_Q96,
   MAX_TICK,
@@ -91,13 +90,7 @@ describe('tick alignment', () => {
   })
 })
 
-describe('lpSignExtend24 / ticksFromPositionInfo', () => {
-  it('sign-extends 24-bit values', () => {
-    expect(lpSignExtend24(0x000001n)).toBe(1n)
-    expect(lpSignExtend24(0xffffffn)).toBe(-1n)
-    expect(lpSignExtend24(0x800000n)).toBe(-8388608n)
-  })
-
+describe('ticksFromPositionInfo', () => {
   it('unpacks lower/upper ticks from positionInfo', () => {
     // info layout: tickUpper at bits 32-55, tickLower at bits 8-31.
     const tickLower = -600n & 0xffffffn

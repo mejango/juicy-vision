@@ -1,4 +1,5 @@
 import { isAddress, zeroAddress } from 'viem'
+import { TIER_UNLIMITED_SUPPLY } from '@bananapus/nana-sdk-core/v6'
 import type { JB721TierConfigInput } from '../services/tiersHook'
 import type { NFTTier } from '../services/nft/types'
 import { isUsdcCurrency } from './technicalDetails'
@@ -159,7 +160,7 @@ export function assertSafeTierAdjustments(
       throw new Error(`${label} has an invalid price`)
     }
     if (price < 0n || price >= 1n << 104n) throw new Error(`${label} has an invalid price`)
-    if (!Number.isInteger(tier.initialSupply) || tier.initialSupply <= 0 || tier.initialSupply > 999_999_999) {
+    if (!Number.isInteger(tier.initialSupply) || tier.initialSupply <= 0 || tier.initialSupply > TIER_UNLIMITED_SUPPLY) {
       throw new Error(`${label} has an invalid supply`)
     }
     if (!Number.isInteger(tier.votingUnits) || tier.votingUnits < 0 || tier.votingUnits > 0xffff_ffff) {

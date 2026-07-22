@@ -26,7 +26,13 @@ import {
   jbContractAddress,
   type JBChainId,
 } from '@bananapus/nana-sdk-core'
-import { JBPermissionIdsV6, buildSetPermissionsTx, getCurrentRuleset } from '@bananapus/nana-sdk-core/v6'
+import {
+  JBPermissionCatalogV6,
+  JBPermissionIdsV6,
+  buildSetPermissionsTx,
+  decodePermissionBitmap as decodeSdkPermissionBitmap,
+  getCurrentRuleset,
+} from '@bananapus/nana-sdk-core/v6'
 
 // ─── Contract addresses ──────────────────────────────────────────────────────
 
@@ -95,16 +101,14 @@ const PERMISSION_COPY: Record<keyof typeof JBPermissionIdsV6, { label: string; d
 }
 
 /** The full V6 permission catalog, sorted by id. Ids come from the SDK. */
-export const PERMISSIONS: PermissionInfo[] = (
-  Object.entries(JBPermissionIdsV6) as [keyof typeof JBPermissionIdsV6, number][]
-)
-  .map(([key, id]) => ({
+export const PERMISSIONS: PermissionInfo[] = JBPermissionCatalogV6.map(
+  ({ key, id }) => ({
     id,
     key: String(key),
     label: PERMISSION_COPY[key]?.label ?? String(key),
     description: PERMISSION_COPY[key]?.description ?? '',
-  }))
-  .sort((a, b) => a.id - b.id)
+  }),
+)
 
 const PERMISSION_BY_ID = new Map(PERMISSIONS.map(info => [info.id, info]))
 
@@ -161,11 +165,7 @@ export function permissionSetsDiffer(a: number[], b: number[]): boolean {
 
 /** Decode a JBPermissions.permissionsOf packed bitmap (bit N set → id N granted). */
 export function decodePermissionBitmap(bitmap: bigint): number[] {
-  const ids: number[] = []
-  for (const info of PERMISSIONS) {
-    if ((bitmap >> BigInt(info.id)) & 1n) ids.push(info.id)
-  }
-  return ids
+  return decodeSdkPermissionBitmap(bitmap)
 }
 
 /**

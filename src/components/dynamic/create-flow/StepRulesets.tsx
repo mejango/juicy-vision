@@ -6,6 +6,7 @@
 
 import type { ReactNode } from 'react'
 import { isAddress } from 'viem'
+import { tokenCurrencyId } from '@bananapus/nana-sdk-core/v6'
 import { truncateAddress } from '../../../utils/ens'
 import type { AfterMode, CreateFlowState, DeadlineKey, PayoutKind, PayoutMode, RecipientRow, StageState } from './state'
 import {
@@ -69,7 +70,7 @@ function recomputeCustomDuration(stage: StageState): void {
 
 function customCurrencyId(state: CreateFlowState): number {
   const a = state.customToken.address
-  return isAddress(a, { strict: false }) ? Number(BigInt(a) % (1n << 32n)) : 0
+  return isAddress(a, { strict: false }) ? tokenCurrencyId(a) : 0
 }
 
 function fundAccessCurrencyLabel(currency: number, state: CreateFlowState): string {

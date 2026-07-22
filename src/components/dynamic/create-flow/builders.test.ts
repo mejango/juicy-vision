@@ -6,6 +6,11 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { parseEther, parseUnits } from 'viem'
+import {
+  RULESET_WEIGHT_INHERIT,
+  TIER_UNLIMITED_SUPPLY,
+  tokenCurrencyId,
+} from '@bananapus/nana-sdk-core/v6'
 
 // Pinning is network-bound; mock it (and the CID encoder, which requires a
 // real base58 CIDv0) so the async 721 builder runs hermetically.
@@ -206,7 +211,7 @@ describe('buildTerminalConfigsForChain', () => {
     expect(configs[0].terminal).toBe(JB_CONTRACTS.JBMultiTerminal)
     expect(configs[0].accountingContextsToAccept).toEqual([
       { token: NATIVE_TOKEN, decimals: 18, currency: 61166 },
-      { token: usdc, decimals: 6, currency: Number(BigInt(usdc) & 0xffffffffn) },
+      { token: usdc, decimals: 6, currency: tokenCurrencyId(usdc as `0x${string}`) },
     ])
 
     expect(configs[1]).toEqual({ terminal: JB_ROUTER_TERMINAL_REGISTRY, accountingContextsToAccept: [] })
@@ -226,7 +231,7 @@ describe('buildTerminalConfigsForChain', () => {
     s.customToken = { address: HOOK_A, name: 'T', symbol: 'T', decimals: 8, status: 'ok', error: '' }
     const configs = buildTerminalConfigsForChain(s, CHAIN_A)
     expect(configs[0].accountingContextsToAccept).toEqual([
-      { token: HOOK_A, decimals: 8, currency: Number(BigInt(HOOK_A) & 0xffffffffn) },
+      { token: HOOK_A, decimals: 8, currency: tokenCurrencyId(HOOK_A) },
     ])
   })
 })
@@ -305,7 +310,7 @@ describe('multi-token payouts', () => {
     expect(cfg.fundAccessLimitGroups[1].token).toBe(usdc)
     expect(cfg.fundAccessLimitGroups[1].payoutLimits[0]).toEqual({
       amount: parseUnits('100', 6).toString(), // USDC amounts use 6 decimals
-      currency: Number(BigInt(usdc) & 0xffffffffn),
+      currency: tokenCurrencyId(usdc as `0x${string}`),
     })
   })
 })
@@ -315,7 +320,7 @@ describe('multi-token payouts', () => {
 // ---------------------------------------------------------------------------
 
 describe('buildRevnetStageConfigs', () => {
-  it("encodes issuance, cuts, splits, and inherit-weight ('' → initialIssuance '0')", () => {
+  it('encodes issuance, cuts, splits, and the SDK inherit-weight sentinel', () => {
     const s = initState()
     s.projectType = 'revnet'
     s.chainIds = [CHAIN_A]
@@ -326,7 +331,7 @@ describe('buildRevnetStageConfigs', () => {
     s.stages[0].cashOutTaxRate = 10
     s.stages[0].reservedRecipients = [wallet(A1, 20)]
     const later = createStage()
-    later.weight = '' // inherit — the REV builder's 0-issuance sentinel
+    later.weight = '' // inherit the prior cut-adjusted issuance
     later.startDaysAfter = '45'
     s.stages.push(later)
 
@@ -347,7 +352,7 @@ describe('buildRevnetStageConfigs', () => {
 
     // Stage 2 inherits issuance and snaps its start to the previous stage's
     // 30-day cut boundary: 45 days → 60 days.
-    expect(configs[1].initialIssuance).toBe('0')
+    expect(configs[1].initialIssuance).toBe(RULESET_WEIGHT_INHERIT.toString())
     expect(configs[1].startsAtOrAfter).toBe(base + 60 * 86400)
     expect(configs[1].issuanceCutFrequency).toBe(0)
   })
@@ -481,7 +486,7 @@ describe('buildDeployTiersConfigFromState', () => {
 
     const [hat, cap] = config!.tiersConfig.tiers
     expect(hat.price).toBe(parseEther('0.01').toString())
-    expect(hat.initialSupply).toBe(999999999) // unlimited sentinel
+    expect(hat.initialSupply).toBe(TIER_UNLIMITED_SUPPLY)
     expect(hat.encodedIPFSUri).toBe(`0x${'11'.repeat(32)}`)
     expect(cap.price).toBe(parseEther('2').toString())
     expect(cap.initialSupply).toBe(10)
@@ -542,7 +547,7 @@ describe('buildChainConfigOverrides', () => {
     const overrides = buildChainConfigOverrides(s, s.chainIds, 0, config!.tiersConfig.tiers)
 
     expect(overrides[0].tiers).toHaveLength(2)
-    expect(overrides[0].tiers![0].initialSupply).toBe(999999999)
+    expect(overrides[0].tiers![0].initialSupply).toBe(TIER_UNLIMITED_SUPPLY)
 
     expect(overrides[1].tiers).toHaveLength(1)
     expect(overrides[1].tiers![0].encodedIPFSUri).toBe(config!.tiersConfig.tiers[0].encodedIPFSUri)

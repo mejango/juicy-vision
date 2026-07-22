@@ -11,6 +11,11 @@
 //
 // Everything above the "async loading" divider is pure and unit-tested.
 
+import {
+  resolveRulesetIssuanceStages,
+  rulesetIssuanceRateAt,
+} from '@bananapus/nana-sdk-core/v6'
+
 // ---------------------------------------------------------------------------
 // Stage metadata decode
 // ---------------------------------------------------------------------------
@@ -90,12 +95,15 @@ export function cutsElapsed(stage: Pick<StageTerms, 'start' | 'duration'>, t: nu
  * Display-precision float, matching the website's issuance ladder.
  */
 export function issuanceAtTime(sorted: readonly StageTerms[], t: number): number {
-  if (sorted.length === 0) return 0
-  const active = sorted[activeStageIndexAt(sorted, t)]
-  const base = Number(active.weight) / 1e18
-  if (active.duration === 0) return base
-  const k = cutsElapsed(active, t)
-  return base * Math.pow((WEIGHT_CUT_SCALE - active.weightCutPercent) / WEIGHT_CUT_SCALE, k)
+  const resolved = resolveRulesetIssuanceStages(
+    sorted.map(stage => ({
+      start: stage.start,
+      duration: stage.duration,
+      weight: BigInt(stage.weight),
+      weightCutPercent: stage.weightCutPercent,
+    })),
+  )
+  return rulesetIssuanceRateAt(resolved, t)
 }
 
 /**

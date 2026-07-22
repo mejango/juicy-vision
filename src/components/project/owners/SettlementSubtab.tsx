@@ -13,7 +13,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { encodeFunctionData, formatUnits, type Hex } from 'viem'
 import { type JBChainId } from '@bananapus/nana-sdk-core'
-import { buildBridgeClaimTx, buildToRemoteTx, type JBLeafProof } from '@bananapus/nana-sdk-core/v6'
+import {
+  buildBridgeClaimTx,
+  buildSyncAccountingDataTx,
+  buildToRemoteTx,
+  type JBLeafProof,
+} from '@bananapus/nana-sdk-core/v6'
 import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
 import { ExplainerMessage } from '../../ui/ExplainerMessage'
@@ -33,7 +38,6 @@ import {
   gossipSnapshotStaleness,
   snapshotAge,
   suckerBranchRoot,
-  suckerSyncAbi,
   type BridgeRoute,
   type CompositionRow,
   type GossipChainKnowledge,
@@ -193,10 +197,19 @@ export function SettlementSubtab({ project, chainIds, chainProjects }: Settlemen
       if (value == null) throw new Error('Could not determine the bridge messaging fee — try again shortly.')
       // Never send 0 native on a CCIP sucker — that flips it to LINK-fee mode.
       assertCcipTransport(infra, value)
+      const request = buildSyncAccountingDataTx({
+        chainId: peer.peerChainId as JBChainId,
+        sucker: peer.syncSucker,
+        value,
+      })
       await run({
         chainId: peer.peerChainId,
-        to: peer.syncSucker,
-        data: encodeFunctionData({ abi: suckerSyncAbi, functionName: 'syncAccountingData' }),
+        to: request.address,
+        data: encodeFunctionData({
+          abi: request.abi,
+          functionName: request.functionName,
+          args: request.args,
+        }),
         value,
         onPhase: phase => setTx(key, { kind: 'running', phase }),
       })

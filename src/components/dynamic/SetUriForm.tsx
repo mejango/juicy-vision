@@ -14,6 +14,7 @@ import { resolveProjectChains } from '../../utils/projectChains'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { IpfsImage } from '../ui/IpfsMedia'
 import { MAINNET_CHAINS } from '../../constants'
+import { isIpfsCid } from '@bananapus/nana-sdk-core'
 
 interface SetUriFormProps {
   projectId: string
@@ -33,8 +34,7 @@ interface ChainProjectData {
 
 // Validate IPFS CID format (basic check)
 function isValidIpfsCid(value: string): boolean {
-  const cid = extractCid(value)
-  return /^(?:Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{20,120})$/.test(cid)
+  return isIpfsCid(extractCid(value))
 }
 
 // Extract CID from input (handles both raw CIDs and ipfs:// URIs)

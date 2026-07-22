@@ -20,6 +20,7 @@
  */
 
 import { erc20Abi, formatEther, formatUnits, zeroAddress } from 'viem'
+import { tokenCurrencyId as sdkTokenCurrencyId } from '@bananapus/nana-sdk-core/v6'
 import {
   createStage,
   initState,
@@ -162,7 +163,7 @@ function sameAddr(a: string | undefined | null, b: string | undefined | null): b
 
 /** V6 accounting-context currency id: uint32(uint160(token)). */
 function tokenCurrencyId(token: string): number {
-  return Number(BigInt(token) & 0xffff_ffffn)
+  return sdkTokenCurrencyId(token as `0x${string}`)
 }
 
 /** Limits priced in USD carry 18 decimals; otherwise the token's own. */

@@ -12,7 +12,11 @@
  */
 
 import { createPublicClient, encodeFunctionData, http, isAddress, pad } from 'viem'
-import { tokenCurrencyId } from '@bananapus/nana-sdk-core/v6'
+import {
+  TIER_UNLIMITED_SUPPLY,
+  suckerBytes32ToAddress,
+  tokenCurrencyId,
+} from '@bananapus/nana-sdk-core/v6'
 import {
   JB_OMNICHAIN_DEPLOYER_ABI,
   JB_OMNICHAIN_DEPLOYER_ADDRESS,
@@ -356,7 +360,7 @@ function formatSuckerDeploymentConfiguration(
           if (remoteToken.slice(2, 26) !== '0'.repeat(24)) {
             throw new Error(`${mappingField}.remoteToken: Expected a left-padded EVM address`)
           }
-          const remoteAddress = `0x${remoteToken.slice(-40)}`.toLowerCase()
+          const remoteAddress = suckerBytes32ToAddress(remoteToken).toLowerCase()
           const recognizedRemote = remoteAddress === '0x000000000000000000000000000000000000eeee' ||
             Object.values(USDC_ADDRESSES).some(address => address.toLowerCase() === remoteAddress)
           if (!recognizedRemote) {
@@ -913,7 +917,7 @@ function validateTiersHookConfiguration(config: JBDeployTiersHookConfig, chainId
     if (price < 0n || price > (1n << 104n) - 1n) {
       throw new Error(`Tier ${index + 1} has an invalid price`)
     }
-    if (!Number.isInteger(tier.initialSupply) || tier.initialSupply <= 0 || tier.initialSupply > 999_999_999) {
+    if (!Number.isInteger(tier.initialSupply) || tier.initialSupply <= 0 || tier.initialSupply > TIER_UNLIMITED_SUPPLY) {
       throw new Error(`Tier ${index + 1} has an invalid supply`)
     }
     if (!Number.isInteger(tier.votingUnits) || tier.votingUnits < 0 || tier.votingUnits > 0xffff_ffff) {
@@ -1534,7 +1538,7 @@ export function buildSetUriTransaction(params: {
   data: `0x${string}`
   value: string
 } {
-  if (!/^ipfs:\/\/(?:Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{20,120})$/.test(params.uri)) {
+  if (!isIpfsUri(params.uri, false)) {
     throw new Error('Project metadata URI must be a valid IPFS CID')
   }
   if (params.controller.toLowerCase() !== JB_CONTRACTS.JBController.toLowerCase()) {

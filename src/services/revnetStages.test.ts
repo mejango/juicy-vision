@@ -82,9 +82,9 @@ describe('issuanceAtTime', () => {
     expect(issuanceAtTime(stages, 102 * DAY)).toBeCloseTo(500 * 0.62, 9) // one 38% cut
   })
 
-  it('clamps to the first stage before any stage has started', () => {
+  it('returns zero before the first stage has started', () => {
     const stages = [stage({ start: 5000, duration: DAY, weight, weightCutPercent: 100_000_000 })]
-    expect(issuanceAtTime(stages, 0)).toBe(1000)
+    expect(issuanceAtTime(stages, 0)).toBe(0)
   })
 
   it('returns 0 for an empty schedule and for a zero weight', () => {
