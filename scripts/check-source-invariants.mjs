@@ -81,6 +81,25 @@ for (const path of ['Dockerfile.frontend', 'backend/Dockerfile', 'backend/src/db
   }
 }
 
+for (const path of ['backend/railway.json', 'backend/railway.staging.json']) {
+  const config = JSON.parse(read(path))
+  if (
+    config.build?.builder !== 'DOCKERFILE' ||
+    config.build?.dockerfilePath !== 'backend/Dockerfile' ||
+    config.deploy?.startCommand !== null ||
+    config.deploy?.healthcheckPath !== '/readyz'
+  ) {
+    failures.push(
+      `${path}: backend Railway services must use backend/Dockerfile, its default CMD, and /readyz`,
+    )
+  }
+}
+requirePattern(
+  'DEPLOY_RAILWAY.md',
+  /\*\*Root Directory\*\* set to `\/`[\s\S]*\*\*Config File Path\*\* to `\/backend\/railway\.json`[\s\S]*`\/backend\/railway\.staging\.json`[\s\S]*Clear \*\*Custom Start Command\*\*[\s\S]*`backend\/Dockerfile`[\s\S]*`\/readyz` healthcheck/,
+  'backend Railway setup must retain the repo root, absolute backend config path, Dockerfile CMD, and readiness probe',
+)
+
 const privateKeyPatterns = [
   '*.pem',
   '*.key',

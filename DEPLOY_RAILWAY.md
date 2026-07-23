@@ -36,13 +36,18 @@ This guide covers deploying Juicy Vision to Railway with the juicy.vision domain
 ## Step 3: Deploy Backend
 
 1. Click "New Service" → "GitHub Repo"
-2. Select this repo and set root directory to `/backend`
-3. Add environment variables:
+2. Select this repo and keep **Root Directory** set to `/`
+3. In the backend service settings, set **Config File Path** to `/backend/railway.json`
+   (use `/backend/railway.staging.json` for staging)
+4. Clear **Custom Start Command** and leave it empty. The Railway config sets
+   `deploy.startCommand` to `null`, so the reviewed `CMD` from `backend/Dockerfile` runs
+5. Confirm the deployment plan shows `backend/Dockerfile` and the `/readyz` healthcheck
+6. Add environment variables. Railway supplies `PORT`; do not override it:
 
 ```env
 # Required
-PORT=3001
 DENO_ENV=production
+ALLOWED_ORIGINS=https://juicy.vision,https://www.juicy.vision
 DATABASE_URL=<from-postgres-service>
 JWT_SECRET=<generate-secure-random-32-char-string>
 ANTHROPIC_API_KEY=sk-ant-...
@@ -66,8 +71,7 @@ STRIPE_SECRET_KEY=
 STRIPE_WEBHOOK_SECRET=
 ```
 
-4. Set the start command: `deno run --allow-net --allow-env --allow-read main.ts`
-5. Deploy and note the generated URL (e.g., `juicy-vision-backend-production.up.railway.app`)
+7. Deploy and note the generated URL (e.g., `juicy-vision-backend-production.up.railway.app`)
 
 ## Step 4: Deploy Frontend
 
@@ -137,7 +141,7 @@ railway connect postgres
 
 ## Step 9: Verify Deployment
 
-1. Check backend health: `curl https://api.juicy.vision/health`
+1. Check backend readiness: `curl https://api.juicy.vision/readyz`
 2. Open frontend: `https://juicy.vision`
 3. Test a chat interaction
 
