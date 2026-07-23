@@ -19,7 +19,8 @@ vi.mock('react-router-dom', () => ({
 
 vi.mock('wagmi', () => ({
   useAccount: () => ({ address: '0x1234567890123456789012345678901234567890', isConnected: true }),
-  useConnect: () => ({ connect: vi.fn(), connectors: [], isPending: false }),
+  useConnect: () => ({ connect: vi.fn(), isPending: false }),
+  useConnectors: () => [],
   useWalletClient: () => ({
     data: {
       account: { address: '0x1234567890123456789012345678901234567890' },

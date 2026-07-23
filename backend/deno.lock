@@ -7,8 +7,7 @@
     "npm:jose@5.10.0": "5.10.0",
     "npm:stripe@*": "20.2.0",
     "npm:stripe@20.2.0": "20.2.0",
-    "npm:viem@*": "2.44.4_zod@3.25.76_ws@8.18.3",
-    "npm:viem@2.44.4": "2.44.4_zod@3.25.76_ws@8.18.3",
+    "npm:viem@2.55.8": "2.55.8_zod@3.25.76_ws@8.21.0",
     "npm:zod@3.25.76": "3.25.76"
   },
   "npm": {
@@ -231,7 +230,7 @@
         "ms"
       ]
     },
-    "isows@1.0.7_ws@8.18.3": {
+    "isows@1.0.7_ws@8.21.0": {
       "integrity": "sha512-I1fSfDCZL5P0v33sVqeTDSpcstAg/N+wF5HS033mogOVIp4B+oHC7oOCsA3axAbBSGTJ8QubbNmnIRN/h8U7hg==",
       "dependencies": [
         "ws"
@@ -268,8 +267,8 @@
     "object-inspect@1.13.4": {
       "integrity": "sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew=="
     },
-    "ox@0.11.3_zod@3.25.76": {
-      "integrity": "sha512-1bWYGk/xZel3xro3l8WGg6eq4YEKlaqvyMtVhfMFpbJzK2F6rj4EDRtqDCWVEJMkzcmEi9uW2QxsqELokOlarw==",
+    "ox@0.14.32_zod@3.25.76": {
+      "integrity": "sha512-EPB214GvtsP2TtAYZXkNdizLzGp6PXtfaHcRrD4pcBk/D0Y7ZCNv71QgwrjeCsZ+82moVeMlZZG+NDEIUfxMpw==",
       "dependencies": [
         "@adraffy/ens-normalize",
         "@noble/ciphers",
@@ -335,8 +334,8 @@
     "undici-types@5.26.5": {
       "integrity": "sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA=="
     },
-    "viem@2.44.4_zod@3.25.76_ws@8.18.3": {
-      "integrity": "sha512-sJDLVl2EsS5Fo7GSWZME5CXEV7QRYkUJPeBw7ac+4XI3D4ydvMw/gjulTsT5pgqcpu70BploFnOAC6DLpan1Yg==",
+    "viem@2.55.8_zod@3.25.76_ws@8.21.0": {
+      "integrity": "sha512-BHqtsmK4iMLuLnRyrPIB1jVrmFVliRIP/K0dnFT7gBOpfo8Ko4ozhkzUCRNfR+Z/ZZdnlnVrh04fAOuIm5Svkg==",
       "dependencies": [
         "@noble/curves",
         "@noble/hashes",
@@ -361,8 +360,8 @@
         "webidl-conversions"
       ]
     },
-    "ws@8.18.3": {
-      "integrity": "sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg=="
+    "ws@8.21.0": {
+      "integrity": "sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g=="
     },
     "zod@3.25.76": {
       "integrity": "sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ=="
@@ -532,7 +531,7 @@
       "npm:@hono/zod-validator@0.4.3",
       "npm:hono@4.11.4",
       "npm:jose@5.10.0",
-      "npm:viem@2.44.4",
+      "npm:viem@2.55.8",
       "npm:zod@3.25.76"
     ]
   }

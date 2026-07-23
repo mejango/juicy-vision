@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
-import { useAccount, useConnect, useWalletClient, useSwitchChain } from 'wagmi'
+import { useAccount, useConnect, useConnectors, useWalletClient, useSwitchChain } from 'wagmi'
 import { createPublicClient, encodeFunctionData, erc20Abi, formatUnits, http, type Address, type Hex } from 'viem'
 import { NATIVE_TOKEN, type JBChainId } from '@bananapus/nana-sdk-core'
 import { buildPayTx } from '@bananapus/nana-sdk-core/v6'
@@ -64,7 +64,8 @@ export default function PaymentPage() {
 
   // Wallet connection
   const { address: walletAddress, isConnected } = useAccount()
-  const { connect, connectors, isPending: isConnecting } = useConnect()
+  const { connect, isPending: isConnecting } = useConnect()
+  const connectors = useConnectors()
   const { data: walletClient } = useWalletClient()
   const { switchChainAsync } = useSwitchChain()
   const { safeInfo } = useSafeApp()

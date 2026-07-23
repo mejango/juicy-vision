@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { useAccount, useConnect, useDisconnect, useSignMessage } from 'wagmi'
+import { useAccount, useConnect, useConnectors, useDisconnect, useSignMessage } from 'wagmi'
 import { useThemeStore, useAuthStore, useSettingsStore } from '../../stores'
 import { useManagedWallet, useEnsNameResolved, useJuiceBalance, useSafeApp } from '../../hooks'
 import { hasValidWalletSession, signInWithWalletClient, clearWalletSession } from '../../services/siwe'
@@ -365,7 +365,8 @@ function SelfCustodyConnect({ onBack }: { onBack: () => void }) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { setMode } = useAuthStore()
-  const { connect, connectors, isPending, error } = useConnect()
+  const { connect, isPending, error } = useConnect()
+  const connectors = useConnectors()
 
   const handleConnect = (connector: typeof connectors[number]) => {
     setMode('self_custody')
@@ -1634,7 +1635,8 @@ function SettingsView({ onBack }: { onBack: () => void }) {
 
   // Wallet connection
   const { address: walletAddress, isConnected: isWalletConnected } = useAccount()
-  const { connect, connectors } = useConnect()
+  const { connect } = useConnect()
+  const connectors = useConnectors()
   const { disconnect } = useDisconnect()
 
   // Check for passkey wallet connection
