@@ -18,11 +18,11 @@ updates:
         update-types:
           - version-update:semver-minor
           - version-update:semver-patch
-    # Recharts 3.10 changes tooltip/legend types used by four chart surfaces;
-    # keep it on the reviewed line until that UI migration is covered.
+    # Recharts 3.9 changes tooltip/legend types used by four chart surfaces;
+    # keep it pinned to the reviewed line until that UI migration is covered.
     ignore:
       - dependency-name: recharts
-        versions: ['>=3.10.0 <4']
+        versions: ['>=3.6.1 <4']
     groups:
       npm-routine:
         applies-to: version-updates
