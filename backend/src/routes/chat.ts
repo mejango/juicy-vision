@@ -254,7 +254,7 @@ chatRouter.get(
   optionalAuth,
   requireWalletOrAuth,
   async (c) => {
-    const folderId = c.req.param('folderId');
+    const folderId = c.req.param('folderId')!;
     const walletSession = c.get('walletSession')!;
 
     const owned = await loadOwnedFolder(c, folderId, walletSession.address);
@@ -278,7 +278,7 @@ chatRouter.patch(
   requireWalletOrAuth,
   zValidator('json', UpdateFolderSchema),
   async (c) => {
-    const folderId = c.req.param('folderId');
+    const folderId = c.req.param('folderId')!;
     const walletSession = c.get('walletSession')!;
     const body = c.req.valid('json');
 
@@ -305,7 +305,7 @@ chatRouter.delete(
   optionalAuth,
   requireWalletOrAuth,
   async (c) => {
-    const folderId = c.req.param('folderId');
+    const folderId = c.req.param('folderId')!;
     const walletSession = c.get('walletSession')!;
 
     const owned = await loadOwnedFolder(c, folderId, walletSession.address);
@@ -332,7 +332,7 @@ chatRouter.patch(
   requireWalletOrAuth,
   zValidator('json', PinFolderSchema),
   async (c) => {
-    const folderId = c.req.param('folderId');
+    const folderId = c.req.param('folderId')!;
     const walletSession = c.get('walletSession')!;
     const body = c.req.valid('json');
 
@@ -448,7 +448,7 @@ async function loadOwnedFolder(
 
 // GET /chat/:chatId - Get chat details
 chatRouter.get('/:chatId', optionalAuth, optionalWalletSession, async (c) => {
-  const chatId = c.req.param('chatId');
+  const chatId = c.req.param('chatId')!;
   const sessionId = c.req.header('X-Session-ID');
   const chat = await getChatById(chatId);
 
@@ -500,7 +500,7 @@ chatRouter.delete(
   optionalAuth,
   requireWalletOrAuth,
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const walletSession = c.get('walletSession')!;
 
     try {
@@ -528,7 +528,7 @@ chatRouter.get(
   optionalAuth,
   optionalWalletSession,
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const chat = await getChatById(chatId);
 
     if (!chat) {
@@ -565,7 +565,7 @@ chatRouter.post(
   requireWalletOrAuth,
   zValidator('json', AddMemberSchema),
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const walletSession = c.get('walletSession')!;
     const body = c.req.valid('json');
 
@@ -590,8 +590,8 @@ chatRouter.delete(
   optionalAuth,
   requireWalletOrAuth,
   async (c) => {
-    const chatId = c.req.param('chatId');
-    const targetAddress = c.req.param('address');
+    const chatId = c.req.param('chatId')!;
+    const targetAddress = c.req.param('address')!;
     const walletSession = c.get('walletSession')!;
 
     try {
@@ -618,8 +618,8 @@ chatRouter.patch(
   requireWalletOrAuth,
   zValidator('json', UpdatePermissionsSchema),
   async (c) => {
-    const chatId = c.req.param('chatId');
-    const targetAddress = c.req.param('address');
+    const chatId = c.req.param('chatId')!;
+    const targetAddress = c.req.param('address')!;
     const walletSession = c.get('walletSession')!;
     const body = c.req.valid('json');
 
@@ -694,7 +694,7 @@ chatRouter.post(
   rateLimitByWallet('chatMessage'),
   zValidator('json', SendMessageSchema),
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const walletSession = c.get('walletSession')!;
     const sessionId = c.req.header('X-Session-ID');
     const body = c.req.valid('json');
@@ -784,7 +784,7 @@ chatRouter.post(
 
 // GET /chat/:chatId/messages - Get messages
 chatRouter.get('/:chatId/messages', optionalAuth, optionalWalletSession, async (c) => {
-  const chatId = c.req.param('chatId');
+  const chatId = c.req.param('chatId')!;
   const limit = parseInt(c.req.query('limit') || '100', 10);
   const beforeId = c.req.query('before');
 
@@ -815,7 +815,7 @@ chatRouter.delete(
   optionalAuth,
   requireWalletOrAuth,
   async (c) => {
-    const messageId = c.req.param('messageId');
+    const messageId = c.req.param('messageId')!;
     const walletSession = c.get('walletSession')!;
 
     try {
@@ -836,7 +836,7 @@ chatRouter.get(
   '/:chatId/ai/balance',
   optionalAuth,
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const balance = await getAiBalanceStatus(chatId);
 
     if (!balance) {
@@ -861,7 +861,7 @@ chatRouter.get(
   optionalAuth,
   requireWalletOrAuth,
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const walletSession = c.get('walletSession')!;
 
     // Check member permission
@@ -903,7 +903,7 @@ chatRouter.get(
   requireWalletOrAuth,
   zValidator('query', SqueezeSchema),
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const walletSession = c.get('walletSession')!;
     const { chainId, amount } = c.req.valid('query');
 
@@ -959,7 +959,7 @@ chatRouter.post(
   requireWalletOrAuth,
   zValidator('json', ConfirmPaymentSchema),
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const walletSession = c.get('walletSession')!;
     const body = c.req.valid('json');
 
@@ -993,7 +993,7 @@ chatRouter.get(
   optionalAuth,
   requireWalletOrAuth,
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const limit = parseInt(c.req.query('limit') || '50', 10);
     const history = await getBillingHistory(chatId, limit);
 
@@ -1018,7 +1018,7 @@ chatRouter.patch(
   requireWalletOrAuth,
   zValidator('json', ToggleAiSchema),
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const walletSession = c.get('walletSession')!;
     const body = c.req.valid('json');
 
@@ -1058,7 +1058,7 @@ chatRouter.post(
   requireWalletOrAuth,
   zValidator('json', InvokeAiSchema),
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const walletSession = c.get('walletSession')!;
     const body = c.req.valid('json');
 
@@ -1110,7 +1110,7 @@ chatRouter.post(
   optionalAuth,
   requireWalletOrAuth,
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const walletSession = c.get('walletSession')!;
 
     // Only admins can archive
@@ -1130,7 +1130,7 @@ chatRouter.post(
 
 // GET /chat/:chatId/archive - Get archive info
 chatRouter.get('/:chatId/archive', async (c) => {
-  const chatId = c.req.param('chatId');
+  const chatId = c.req.param('chatId')!;
   const cid = await getLatestArchiveCid(chatId);
 
   if (!cid) {
@@ -1148,7 +1148,7 @@ chatRouter.get('/:chatId/archive', async (c) => {
 
 // GET /chat/archive/:cid - Fetch archived chat
 chatRouter.get('/archive/:cid', async (c) => {
-  const cid = c.req.param('cid');
+  const cid = c.req.param('cid')!;
 
   try {
     const archive = await fetchArchivedChat(cid);
@@ -1174,7 +1174,7 @@ chatRouter.post(
   requireWalletOrAuth,
   zValidator('json', FeedbackSchema),
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const walletSession = c.get('walletSession')!;
     const body = c.req.valid('json');
 
@@ -1209,7 +1209,7 @@ chatRouter.patch(
   requireWalletOrAuth,
   zValidator('json', PinChatSchema),
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const walletSession = c.get('walletSession')!;
     const body = c.req.valid('json');
 
@@ -1244,7 +1244,7 @@ chatRouter.patch(
   requireWalletOrAuth,
   zValidator('json', MoveChatSchema),
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const walletSession = c.get('walletSession')!;
     const body = c.req.valid('json');
 
@@ -1275,7 +1275,7 @@ chatRouter.patch(
   requireWalletOrAuth,
   zValidator('json', RenameChatSchema),
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const walletSession = c.get('walletSession')!;
     const body = c.req.valid('json');
 
@@ -1338,7 +1338,7 @@ chatRouter.post(
     }).optional(),
   ),
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const body = c.req.valid('json') || {};
     const wallet = c.get('walletSession');
 
@@ -1557,7 +1557,7 @@ chatRouter.get(
   optionalAuth,
   optionalWalletSession,
   async (c) => {
-    const messageId = c.req.param('messageId');
+    const messageId = c.req.param('messageId')!;
 
     try {
       const states = await getMessageComponentStates(messageId);
@@ -1574,8 +1574,8 @@ chatRouter.get(
   optionalAuth,
   optionalWalletSession,
   async (c) => {
-    const messageId = c.req.param('messageId');
-    const componentKey = c.req.param('componentKey');
+    const messageId = c.req.param('messageId')!;
+    const componentKey = c.req.param('componentKey')!;
 
     try {
       const state = await getComponentState(messageId, componentKey);
@@ -1593,8 +1593,8 @@ chatRouter.put(
   optionalWalletSession,
   zValidator('json', ComponentStateSchema),
   async (c) => {
-    const messageId = c.req.param('messageId');
-    const componentKey = c.req.param('componentKey');
+    const messageId = c.req.param('messageId')!;
+    const componentKey = c.req.param('componentKey')!;
     const { state } = c.req.valid('json');
 
     try {

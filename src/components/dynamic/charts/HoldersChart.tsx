@@ -123,7 +123,7 @@ export default function HoldersChart({
   }, [projectId, chainId, limit])
 
   // Custom tooltip
-  const CustomTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
+  const CustomTooltip = ({ active, payload }: TooltipContentProps) => {
     if (!active || !payload?.length) return null
 
     const item = payload[0].payload as ChartDataPoint

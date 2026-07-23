@@ -45,7 +45,7 @@ inviteRouter.post(
   requireWalletOrAuth,
   zValidator('json', CreateInviteSchema),
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const walletSession = c.get('walletSession')!;
     const body = c.req.valid('json');
 
@@ -163,7 +163,7 @@ inviteRouter.get(
   optionalAuth,
   requireWalletOrAuth,
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const walletSession = c.get('walletSession')!;
 
     // Check member has admin/founder role
@@ -185,8 +185,8 @@ inviteRouter.delete(
   optionalAuth,
   requireWalletOrAuth,
   async (c) => {
-    const chatId = c.req.param('chatId');
-    const inviteId = c.req.param('inviteId');
+    const chatId = c.req.param('chatId')!;
+    const inviteId = c.req.param('inviteId')!;
     const walletSession = c.get('walletSession')!;
 
     // Check member has admin/founder role
@@ -204,7 +204,7 @@ inviteRouter.delete(
  * GET /invite/:code - Get invite info (public endpoint)
  */
 inviteRouter.get('/invite/:code', async (c) => {
-  const code = c.req.param('code');
+  const code = c.req.param('code')!;
   const invite = await getInviteByCode(code);
 
   if (!invite) {
@@ -252,7 +252,7 @@ inviteRouter.post(
   optionalAuth,
   requireWalletOrAuth,
   async (c) => {
-    const code = c.req.param('code');
+    const code = c.req.param('code')!;
     const walletSession = c.get('walletSession')!;
     const sessionId = c.req.header('X-Session-ID');
 
@@ -385,7 +385,7 @@ inviteRouter.get(
   '/:chatId/events',
   optionalAuth,
   async (c) => {
-    const chatId = c.req.param('chatId');
+    const chatId = c.req.param('chatId')!;
     const limit = parseInt(c.req.query('limit') || '50', 10);
 
     const chat = await getChatById(chatId);

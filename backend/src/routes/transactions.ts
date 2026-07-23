@@ -110,7 +110,7 @@ transactionsRouter.patch(
   optionalAuth,
   zValidator('json', UpdateTransactionSchema),
   async (c) => {
-    const id = c.req.param('id');
+    const id = c.req.param('id')!;
     if (!z.string().uuid().safeParse(id).success) {
       return c.json({ success: false, error: 'Invalid transaction ID' }, 400);
     }
@@ -151,7 +151,7 @@ transactionsRouter.get(
   '/:id',
   optionalAuth,
   async (c) => {
-    const id = c.req.param('id');
+    const id = c.req.param('id')!;
     if (!z.string().uuid().safeParse(id).success) {
       return c.json({ success: false, error: 'Invalid transaction ID' }, 400);
     }
@@ -183,7 +183,7 @@ transactionsRouter.get(
   '/session/:sessionId',
   optionalAuth,
   async (c) => {
-    const sessionId = c.req.param('sessionId');
+    const sessionId = c.req.param('sessionId')!;
     const requesterSessionId = requestSessionId(c);
     if (!requesterSessionId || requesterSessionId !== sessionId) {
       return c.json({ success: false, error: 'Session access denied' }, 403);

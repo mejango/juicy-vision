@@ -293,7 +293,7 @@ walletRouter.get(
   requireAuth,
   async (c) => {
     const user = c.get('user');
-    const bundleId = c.req.param('id');
+    const bundleId = c.req.param('id')!;
 
     try {
       const status = await getRelayrBundleStatus(user.id, bundleId);
@@ -393,7 +393,7 @@ walletRouter.get('/transfers', requireAuth, async (c) => {
 // DELETE /wallet/transfer/:id - Cancel a pending transfer
 walletRouter.delete('/transfer/:id', requireAuth, async (c) => {
   const user = c.get('user');
-  const transferId = c.req.param('id');
+  const transferId = c.req.param('id')!;
 
   try {
     await cancelTransfer(transferId, user.id);
@@ -462,7 +462,7 @@ walletRouter.post(
   rateLimitByUser('walletExportConfirm'),
   async (c) => {
     const user = c.get('user');
-    const exportId = c.req.param('id');
+    const exportId = c.req.param('id')!;
 
     try {
       // Verify ownership
@@ -494,7 +494,7 @@ walletRouter.post(
   rateLimitByUser('walletExportConfirm'),
   async (c) => {
     const user = c.get('user');
-    const exportId = c.req.param('id');
+    const exportId = c.req.param('id')!;
 
     try {
       // Verify ownership
@@ -522,7 +522,7 @@ walletRouter.post(
 // DELETE /wallet/export/:id - Cancel a pending export
 walletRouter.delete('/export/:id', requireAuth, async (c) => {
   const user = c.get('user');
-  const exportId = c.req.param('id');
+  const exportId = c.req.param('id')!;
 
   try {
     // Verify ownership
@@ -546,7 +546,7 @@ walletRouter.delete('/export/:id', requireAuth, async (c) => {
 // GET /wallet/export/:id - Get export status
 walletRouter.get('/export/:id', requireAuth, async (c) => {
   const user = c.get('user');
-  const exportId = c.req.param('id');
+  const exportId = c.req.param('id')!;
 
   try {
     const status = await getExportStatus(exportId);

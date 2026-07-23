@@ -36,7 +36,7 @@ function DownloadPopover({
   attachment: Attachment
   onClose: () => void
   isDark: boolean
-  anchorRef: React.RefObject<HTMLDivElement>
+  anchorRef: React.RefObject<HTMLDivElement | null>
 }) {
   const popoverRef = useRef<HTMLDivElement>(null)
 

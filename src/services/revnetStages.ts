@@ -224,7 +224,7 @@ interface StoreAutoIssuanceEventsPage {
 // Mirrors bendystraw/client.ts getClient + getNetworkOption: proxy through the
 // backend when configured, else the user's configured direct endpoint.
 async function bendystrawClientFor(chainId: number) {
-  const { GraphQLClient } = await import('graphql-request')
+  const { GraphQLClient } = await import('./graphqlClient')
   const { IS_TESTNET } = await import('../config/environment')
   const isMainnetChain = [1, 10, 8453, 42161].includes(chainId)
   const network = IS_TESTNET && isMainnetChain ? 'mainnet' : undefined

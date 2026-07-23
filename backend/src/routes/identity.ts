@@ -195,7 +195,7 @@ identityRouter.get(
 // GET /identity/resolve/:identity - Resolve identity to address
 // e.g., /identity/resolve/@jango🍉 or /identity/resolve/jango🍉
 identityRouter.get('/resolve/:identity', async (c) => {
-  const identityStr = decodeURIComponent(c.req.param('identity'));
+  const identityStr = decodeURIComponent(c.req.param('identity')!);
   const parsed = parseIdentityString(identityStr);
 
   if (!parsed) {
@@ -233,7 +233,7 @@ identityRouter.get('/resolve/:identity', async (c) => {
 
 // GET /identity/address/:address - Get identity for an address (resolves links)
 identityRouter.get('/address/:address', async (c) => {
-  const address = c.req.param('address');
+  const address = c.req.param('address')!;
   // Use resolved lookup to get identity from linked primary if applicable
   const identity = await getIdentityByAddressResolved(address);
 
@@ -252,7 +252,7 @@ identityRouter.get('/address/:address', async (c) => {
 
 // GET /identity/address/:address/history - Get identity history for an address
 identityRouter.get('/address/:address/history', async (c) => {
-  const address = c.req.param('address');
+  const address = c.req.param('address')!;
   const history = await getIdentityHistory(address);
 
   return c.json({
@@ -354,7 +354,7 @@ identityRouter.post(
 // DELETE /identity/link/:address - Unlink an address
 identityRouter.delete('/link/:address', requireWalletAuth, async (c) => {
   const walletSession = c.get('walletSession')!;
-  const addressToUnlink = c.req.param('address');
+  const addressToUnlink = c.req.param('address')!;
 
   const success = await unlinkAddress(addressToUnlink, walletSession.address);
 
@@ -370,7 +370,7 @@ identityRouter.delete('/link/:address', requireWalletAuth, async (c) => {
 
 // GET /identity/link/check/:address - Check if an address can be linked
 identityRouter.get('/link/check/:address', async (c) => {
-  const address = c.req.param('address');
+  const address = c.req.param('address')!;
 
   const canLink = await canBeLinkTarget(address);
   const canPrimary = await canBePrimary(address);

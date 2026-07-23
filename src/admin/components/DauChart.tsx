@@ -75,7 +75,7 @@ export default function DauChart({ includeAnonymous = false, onToggleAnonymous }
     }
   }, [filteredData])
 
-  const CustomTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
+  const CustomTooltip = ({ active, payload }: TooltipContentProps) => {
     if (!active || !payload?.length) return null
 
     const point = payload[0].payload as DauDataPoint

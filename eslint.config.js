@@ -1,10 +1,11 @@
+import { fixupPluginRules } from '@eslint/compat'
 import js from '@eslint/js'
 import globals from 'globals'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 
-// Flat config (ESLint 9). Scoped to the frontend in src/ — the code that tsc/build
+// Flat config (ESLint 10). Scoped to the frontend in src/ — the code that tsc/build
 // and the vitest suite gate. Non-frontend trees (deno backend, playwright e2e,
 // mobile, terminal) have their own toolchains and are not linted here.
 export default tseslint.config(
@@ -35,15 +36,25 @@ export default tseslint.config(
       globals: { ...globals.browser, ...globals.node },
     },
     plugins: {
-      'react-hooks': reactHooks,
-      'react-refresh': reactRefresh,
+      // These plugins still expose rules written for the ESLint 9 context API.
+      // Preserve their full behavior through ESLint 10's compatibility adapter.
+      'react-hooks': fixupPluginRules(reactHooks),
+      'react-refresh': fixupPluginRules(reactRefresh),
     },
     rules: {
-      ...reactHooks.configs.recommended.rules,
+      // Preserve the established hooks correctness gate. React Hooks 7 folds
+      // React Compiler readiness rules into `recommended`; those are a
+      // separate refactor rather than a dependency-upgrade requirement.
+      'react-hooks/rules-of-hooks': 'error',
       'react-refresh/only-export-components': ['error', { allowConstantExport: true }],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       '@typescript-eslint/no-explicit-any': 'error',
       'react-hooks/exhaustive-deps': 'error',
+      // ESLint 10 added these to its recommended preset. Enabling them across
+      // legacy catch/reassignment sites is a separate cleanup with no runtime
+      // bearing on this toolchain migration.
+      'no-useless-assignment': 'off',
+      'preserve-caught-error': 'off',
       'no-empty': 'error',
       // Dynamic require() is used deliberately in a few spots to break import cycles.
       '@typescript-eslint/no-require-imports': 'error',

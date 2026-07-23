@@ -85,8 +85,8 @@ export const ChatMessageSchema = z.object({
   timestamp: z.date(),
   toolCalls: z.array(z.object({
     tool: z.string(),
-    input: z.record(z.unknown()),
-    output: z.record(z.unknown()).optional(),
+    input: z.record(z.string(), z.unknown()),
+    output: z.record(z.string(), z.unknown()).optional(),
     success: z.boolean().optional(),
     latencyMs: z.number().optional(),
   })).optional(),
@@ -127,7 +127,7 @@ export const EventSchema = z.object({
   sessionId: z.string().uuid(),
   userId: z.string().uuid().nullable(),
   type: z.string(),
-  data: z.record(z.unknown()),
+  data: z.record(z.string(), z.unknown()),
   timestamp: z.date(),
 });
 

@@ -3303,7 +3303,7 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
             const clampedMinTileY = Math.max(minTileY, -maxTiles)
             const clampedMaxTileY = Math.min(maxTileY, maxTiles)
 
-            const visibleRows: JSX.Element[] = []
+            const visibleRows: React.JSX.Element[] = []
 
             for (let ty = clampedMinTileY; ty <= clampedMaxTileY; ty++) {
               for (const row of rows) {

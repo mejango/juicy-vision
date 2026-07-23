@@ -318,7 +318,7 @@ interface MessageCountRow {
 }
 
 adminRouter.get('/chats/:chatId', zValidator('query', ChatMessagesQuerySchema), async (c) => {
-  const chatId = c.req.param('chatId');
+  const chatId = c.req.param('chatId')!;
   const { page, limit } = c.req.valid('query');
   const offset = (page - 1) * limit;
 
@@ -536,7 +536,7 @@ adminRouter.get(
 // ============================================================================
 
 adminRouter.post('/juice/spends/:id/process', async (c) => {
-  const spendId = c.req.param('id');
+  const spendId = c.req.param('id')!;
 
   try {
     const result = await processSingleSpend(spendId);
@@ -652,7 +652,7 @@ adminRouter.get('/escalations/stats', async (c) => {
 
 adminRouter.get('/escalations/:id', async (c) => {
   try {
-    const id = c.req.param('id');
+    const id = c.req.param('id')!;
     const result = await getEscalation(id);
 
     if (!result.escalation) {
@@ -683,7 +683,7 @@ adminRouter.post(
   zValidator('json', ResolveEscalationSchema),
   async (c) => {
     try {
-      const id = c.req.param('id');
+      const id = c.req.param('id')!;
       const body = c.req.valid('json');
       const user = c.get('user');
 

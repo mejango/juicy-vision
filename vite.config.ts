@@ -75,19 +75,28 @@ export default defineConfig({
     outDir: 'dist',
     assetsDir: 'assets',
     sourcemap: false,
-    minify: 'esbuild',
+    minify: 'oxc',
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-ui': ['react-markdown', 'react-syntax-highlighter', 'remark-gfm'],
-          'vendor-state': ['zustand', '@tanstack/react-query'],
-          'vendor-web3': ['viem'],
-          // Keep Recharts' mutually dependent cartesian modules together.
-          // Splitting these across lazy page chunks can create a circular
-          // execution-order dependency in Rollup's output.
-          'vendor-charts': ['recharts'],
+        // Vite 8's Rolldown bundler accepts a chunk classifier rather than
+        // Rollup's object shorthand.
+        manualChunks(id) {
+          const groups: Record<string, string[]> = {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-ui': ['react-markdown', 'react-syntax-highlighter', 'remark-gfm'],
+            'vendor-state': ['zustand', '@tanstack/react-query'],
+            'vendor-web3': ['viem'],
+            // Keep Recharts' mutually dependent cartesian modules together.
+            // Splitting these across lazy page chunks can create a circular
+            // execution-order dependency in Rolldown's output.
+            'vendor-charts': ['recharts'],
+          }
+          for (const [chunk, packages] of Object.entries(groups)) {
+            if (packages.some(packageName => id.includes(`/node_modules/${packageName}/`))) {
+              return chunk
+            }
+          }
         }
       }
     }

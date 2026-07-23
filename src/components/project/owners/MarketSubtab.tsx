@@ -245,7 +245,7 @@ function LpOwnersPie({ snapshot, symbol, isDark }: { snapshot: LpPositionsSnapsh
     positions: owner.positions,
   }))
 
-  const PieTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
+  const PieTooltip = ({ active, payload }: TooltipContentProps) => {
     if (!active || !payload?.length) return null
     const item = payload[0].payload as PieDatum
     return (
@@ -360,7 +360,7 @@ function LpDepthChart({
     { price: ceiling, label: 'ceiling', color: CHART_COLORS.secondary },
   ].filter(marker => inRange(marker.price))
 
-  const DepthTooltip = ({ active, payload }: TooltipContentProps<number, string>) => {
+  const DepthTooltip = ({ active, payload }: TooltipContentProps) => {
     if (!active || !payload?.length) return null
     const band = payload[0].payload as DepthBand
     const hasLiquidity = band.liq > 0 || band.pairWei > 0n || band.tokenWei > 0n

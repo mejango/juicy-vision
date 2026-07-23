@@ -171,7 +171,7 @@ projectConversations.get(
   requireAuth,
   async (c) => {
     const address = await getAddressFromContext(c);
-    const conversationId = c.req.param('id');
+    const conversationId = c.req.param('id')!;
 
     if (!address) {
       return c.json({ success: false, error: 'Address required' }, 401);
@@ -211,7 +211,7 @@ projectConversations.get(
   requireAuth,
   async (c) => {
     const address = await getAddressFromContext(c);
-    const conversationId = c.req.param('id');
+    const conversationId = c.req.param('id')!;
     const limit = parseInt(c.req.query('limit') || '100');
     const beforeId = c.req.query('beforeId');
 
@@ -256,7 +256,7 @@ projectConversations.post(
   async (c) => {
     const address = await getAddressFromContext(c);
     const userId = getUserIdFromContext(c);
-    const conversationId = c.req.param('id');
+    const conversationId = c.req.param('id')!;
     const { content } = c.req.valid('json');
 
     if (!address) {
@@ -375,7 +375,7 @@ projectConversations.post(
   zValidator('json', archiveSchema),
   async (c) => {
     const address = await getAddressFromContext(c);
-    const conversationId = c.req.param('id');
+    const conversationId = c.req.param('id')!;
     const { archived } = c.req.valid('json');
 
     if (!address) {
@@ -411,8 +411,8 @@ projectConversations.get(
   requireAuth,
   async (c) => {
     const address = await getAddressFromContext(c);
-    const projectId = parseInt(c.req.param('projectId'));
-    const chainId = parseInt(c.req.param('chainId'));
+    const projectId = parseInt(c.req.param('projectId')!);
+    const chainId = parseInt(c.req.param('chainId')!);
     const limit = parseInt(c.req.query('limit') || '50');
     const offset = parseInt(c.req.query('offset') || '0');
 

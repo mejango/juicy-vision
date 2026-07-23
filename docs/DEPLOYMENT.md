@@ -29,7 +29,7 @@ Every production release must satisfy all of these:
 
 ## Toolchains
 
-- Node `22.23.1` and npm `10.9.8` (`.nvmrc` and `packageManager`)
+- Node `26.5.0` and npm `12.0.1` (`.nvmrc` and `packageManager`)
 - Deno `2.9.3`
 - Ubuntu `24.04` in GitHub Actions
 

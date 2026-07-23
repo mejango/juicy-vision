@@ -25,7 +25,7 @@ deno --version
 
 ### Node.js (for frontend)
 
-The frontend uses Node.js 22 and npm 10. Use the versions pinned by `.nvmrc`
+The frontend uses Node.js 26.5 and npm 12. Use the versions pinned by `.nvmrc`
 and the `packageManager` field in `package.json` so local installs match CI:
 ```bash
 # With nvm installed
@@ -33,9 +33,9 @@ nvm use
 
 # Check versions
 node --version
-# v22.23.1
+# v26.5.0
 npm --version
-# 10.9.8
+# 12.0.1
 ```
 
 ## Quick Start

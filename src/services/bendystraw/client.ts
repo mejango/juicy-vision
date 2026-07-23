@@ -1,4 +1,4 @@
-import { GraphQLClient, RequestDocument, Variables } from 'graphql-request'
+import { GraphQLClient, type RequestDocument, type Variables } from '../graphqlClient'
 import { createPublicClient, erc20Abi, http, isAddress } from 'viem'
 import type { JBChainId } from '@bananapus/nana-sdk-core'
 import { tokenCurrencyId } from '@bananapus/nana-sdk-core/v6'

@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import Stripe from 'npm:stripe@20.2.0';
+import Stripe from 'stripe';
 import { getConfig, validateConfigForStripe } from '../utils/config.ts';
 import { logger } from '../utils/logger.ts';
 import {

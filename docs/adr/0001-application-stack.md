@@ -41,19 +41,17 @@ This fits the product:
 
 ## Dependency support boundary
 
-The locked application currently resolves React 18.3, Vite 6.4, TypeScript
-5.6, ESLint 9.39, wagmi 2.19, and viem 2.55. Registry compatibility review found
-a coherent next target of React 19.2, Vite 8.1, plugin-react 6, PWA plugin 1.3,
-Vitest 4.1, and TypeScript 5.9. TypeScript 7 is outside the supported
-typescript-eslint range, and wagmi 3 is an API migration rather than a routine
-security update.
+The locked application resolves React 19.2, Vite 8.1, Vitest 4.1, ESLint 10.7,
+wagmi 3.7, and viem 2.55. TypeScript 7 supplies the native `tsc` binary while
+the `typescript` package name remains on 5.9.3 for typescript-eslint, AST
+consumers, and WalletConnect's optional Coinbase/Solana tooling. This split
+keeps those compiler-API and peer ranges supported without holding the source
+compiler on TypeScript 5.
 
-That coordinated upgrade must be one isolated dependency PR with a regenerated
-lockfile and the complete type, unit, build, bundle, browser, and wallet-boundary
-suite. Partial Vite upgrades are prohibited because the installed React, PWA,
-and polyfill plugins declare older peer ranges. Registry installation was not
-available during this infrastructure change, so no unverified major upgrade was
-forced into the release work.
+Major dependency changes remain coordinated changes with a regenerated lockfile
+and the complete type, unit, build, bundle, browser, and wallet-boundary suite.
+Partial Vite upgrades are prohibited when React, PWA, or related plugins do not
+declare compatible peer ranges.
 
 The browser Node-polyfill plugin has no direct source consumer and is a removal
 candidate in that PR. It stays removed only if the production build and browser

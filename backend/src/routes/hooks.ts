@@ -148,7 +148,7 @@ hooksRouter.get(
       return c.json({ success: false, error: 'User address required' }, 400);
     }
 
-    const projectId = c.req.param('id');
+    const projectId = c.req.param('id')!;
 
     try {
       const project = await getProjectWithFiles(projectId, userAddress);
@@ -175,7 +175,7 @@ hooksRouter.patch(
       return c.json({ success: false, error: 'User address required' }, 400);
     }
 
-    const projectId = c.req.param('id');
+    const projectId = c.req.param('id')!;
     const data = c.req.valid('json');
 
     try {
@@ -202,7 +202,7 @@ hooksRouter.delete(
       return c.json({ success: false, error: 'User address required' }, 400);
     }
 
-    const projectId = c.req.param('id');
+    const projectId = c.req.param('id')!;
 
     try {
       const deleted = await deleteProject(projectId, userAddress);
@@ -233,7 +233,7 @@ hooksRouter.put(
       return c.json({ success: false, error: 'User address required' }, 400);
     }
 
-    const projectId = c.req.param('id');
+    const projectId = c.req.param('id')!;
     const { files } = c.req.valid('json');
 
     try {
@@ -265,7 +265,7 @@ hooksRouter.put(
       return c.json({ success: false, error: 'User address required' }, 400);
     }
 
-    const projectId = c.req.param('id');
+    const projectId = c.req.param('id')!;
     // Get the file path from the wildcard
     const url = new URL(c.req.url);
     const pathMatch = url.pathname.match(/\/projects\/[^/]+\/files\/(.+)/);
@@ -303,7 +303,7 @@ hooksRouter.delete(
       return c.json({ success: false, error: 'User address required' }, 400);
     }
 
-    const projectId = c.req.param('id');
+    const projectId = c.req.param('id')!;
     const url = new URL(c.req.url);
     const pathMatch = url.pathname.match(/\/projects\/[^/]+\/files\/(.+)/);
     const filePath = pathMatch?.[1] || '';
@@ -398,7 +398,7 @@ hooksRouter.get(
       return c.json({ success: false, error: 'User address required' }, 400);
     }
 
-    const jobId = c.req.param('id');
+    const jobId = c.req.param('id')!;
 
     try {
       const job = await getJob(jobId, userAddress);
@@ -424,7 +424,7 @@ hooksRouter.get(
       return c.json({ success: false, error: 'User address required' }, 400);
     }
 
-    const jobId = c.req.param('id');
+    const jobId = c.req.param('id')!;
 
     // Verify job exists and belongs to user
     const job = await getJob(jobId, userAddress);
@@ -491,7 +491,7 @@ hooksRouter.post(
       return c.json({ success: false, error: 'User address required' }, 400);
     }
 
-    const projectId = c.req.param('id');
+    const projectId = c.req.param('id')!;
 
     try {
       const project = await getProjectWithFiles(projectId, userAddress);
@@ -520,7 +520,7 @@ hooksRouter.get(
       return c.json({ success: false, error: 'User address required' }, 400);
     }
 
-    const projectId = c.req.param('id');
+    const projectId = c.req.param('id')!;
 
     try {
       // Verify project ownership
@@ -552,7 +552,7 @@ hooksRouter.post(
       return c.json({ success: false, error: 'User address required' }, 400);
     }
 
-    const projectId = c.req.param('id');
+    const projectId = c.req.param('id')!;
 
     try {
       const project = await getProjectWithFiles(projectId, userAddress);
@@ -592,7 +592,7 @@ hooksRouter.post(
       return c.json({ success: false, error: 'User address required' }, 400);
     }
 
-    const projectId = c.req.param('id');
+    const projectId = c.req.param('id')!;
     const { deployedAddresses } = c.req.valid('json');
 
     try {

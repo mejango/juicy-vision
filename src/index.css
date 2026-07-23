@@ -1,6 +1,5 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.js";
 
 @layer base {
   html {
@@ -303,3 +302,62 @@
   box-shadow: 0 0 6px rgba(245, 166, 35, 0.25), inset 0 0 0 1px rgba(245, 166, 35, 0.3);
 }
 
+/* Sanitized project metadata rich text. The HTML boundary only permits these
+   semantic elements, and this keeps their presentation consistent with the
+   former plain-text description while restoring author-supplied structure. */
+.project-rich-content {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.project-rich-content > * + * {
+  margin-top: 0.75rem;
+}
+
+.project-rich-content h1,
+.project-rich-content h2,
+.project-rich-content h3,
+.project-rich-content h4,
+.project-rich-content strong {
+  color: inherit;
+  font-weight: 600;
+}
+
+.project-rich-content ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+
+.project-rich-content ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+}
+
+.project-rich-content blockquote {
+  border-left: 2px solid #F5A623;
+  padding-left: 0.75rem;
+}
+
+.project-rich-content pre,
+.project-rich-content code {
+  font-family: 'Space Mono', Menlo, monospace;
+}
+
+.project-rich-content pre {
+  overflow-x: auto;
+  padding: 0.75rem;
+}
+
+.dark .project-rich-content pre {
+  background: #2a2a2a;
+}
+
+.light .project-rich-content pre {
+  background: #e5e5e5;
+}
+
+.project-rich-content a {
+  color: #F5A623;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

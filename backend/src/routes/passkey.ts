@@ -274,7 +274,7 @@ passkeyRouter.get('/list', requireAuth, async (c) => {
 // DELETE /passkey/:id - Delete a passkey
 passkeyRouter.delete('/:id', requireAuth, async (c) => {
   const user = c.get('user');
-  const credentialId = c.req.param('id');
+  const credentialId = c.req.param('id')!;
 
   try {
     await deletePasskey(user.id, credentialId);
@@ -296,7 +296,7 @@ passkeyRouter.patch(
   zValidator('json', RenameSchema),
   async (c) => {
     const user = c.get('user');
-    const credentialId = c.req.param('id');
+    const credentialId = c.req.param('id')!;
     const { displayName } = c.req.valid('json');
 
     try {
@@ -409,7 +409,7 @@ passkeyRouter.post(
 // GET /passkey/wallet/:credentialId - Look up wallet for a credential
 // SECURITY: Rate limited to prevent credential ID enumeration attacks
 passkeyRouter.get('/wallet/:credentialId', rateLimitMiddleware('passkeyAuth'), async (c) => {
-  const credentialId = c.req.param('credentialId');
+  const credentialId = c.req.param('credentialId')!;
 
   try {
     const result = await queryOne<{

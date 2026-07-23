@@ -165,7 +165,7 @@ const BLOCKED_RPC_METHODS = new Set([
 
 proxyRouter.post('/rpc/:chainId', async (c) => {
   const config = getConfig();
-  const chainId = parseInt(c.req.param('chainId'), 10);
+  const chainId = parseInt(c.req.param('chainId')!, 10);
 
   if (!chainId || isNaN(chainId)) {
     return c.json({ error: 'Invalid chainId' }, 400);

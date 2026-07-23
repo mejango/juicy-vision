@@ -161,7 +161,7 @@ terminalRouter.get('/devices', requireAuth, async (c) => {
 // GET /api/terminal/devices/:id - Get a specific device
 terminalRouter.get('/devices/:id', requireAuth, async (c) => {
   const user = c.get('user');
-  const deviceId = c.req.param('id');
+  const deviceId = c.req.param('id')!;
 
   try {
     const device = await getDevice(deviceId);
@@ -194,7 +194,7 @@ terminalRouter.patch(
   zValidator('json', UpdateDeviceSchema),
   async (c) => {
     const user = c.get('user');
-    const deviceId = c.req.param('id');
+    const deviceId = c.req.param('id')!;
     const updates = c.req.valid('json');
 
     try {
@@ -217,7 +217,7 @@ terminalRouter.patch(
 // POST /api/terminal/devices/:id/regenerate-key - Regenerate API key
 terminalRouter.post('/devices/:id/regenerate-key', requireAuth, async (c) => {
   const user = c.get('user');
-  const deviceId = c.req.param('id');
+  const deviceId = c.req.param('id')!;
 
   try {
     const apiKey = await regenerateApiKey(deviceId, user.id);
@@ -238,7 +238,7 @@ terminalRouter.post('/devices/:id/regenerate-key', requireAuth, async (c) => {
 // DELETE /api/terminal/devices/:id - Delete a device
 terminalRouter.delete('/devices/:id', requireAuth, async (c) => {
   const user = c.get('user');
-  const deviceId = c.req.param('id');
+  const deviceId = c.req.param('id')!;
 
   try {
     const deleted = await deleteDevice(deviceId, user.id);
@@ -309,7 +309,7 @@ terminalRouter.post(
 
 // GET /api/terminal/session/:id - Get session status (terminal or consumer)
 terminalRouter.get('/session/:id', optionalAuth, async (c) => {
-  const sessionId = c.req.param('id');
+  const sessionId = c.req.param('id')!;
 
   try {
     const session = await getSessionWithDetails(sessionId);
@@ -332,7 +332,7 @@ terminalRouter.get('/session/:id', optionalAuth, async (c) => {
 // DELETE /api/terminal/session/:id - Cancel a pending session
 terminalRouter.delete('/session/:id', requireTerminalAuth, async (c) => {
   const device = c.get('terminalDevice')!;
-  const sessionId = c.req.param('id');
+  const sessionId = c.req.param('id')!;
 
   try {
     const cancelled = await cancelSession(sessionId, device.id);
@@ -349,7 +349,7 @@ terminalRouter.delete('/session/:id', requireTerminalAuth, async (c) => {
 
 // GET /api/terminal/session/:id/status - Poll session status (for terminals)
 terminalRouter.get('/session/:id/status', async (c) => {
-  const sessionId = c.req.param('id');
+  const sessionId = c.req.param('id')!;
 
   try {
     const session = await getSession(sessionId);
@@ -389,7 +389,7 @@ terminalRouter.post(
   zValidator('json', PayWithJuiceSchema),
   async (c) => {
     const user = c.get('user');
-    const sessionId = c.req.param('id');
+    const sessionId = c.req.param('id')!;
     const { memo } = c.req.valid('json');
 
     try {
@@ -427,7 +427,7 @@ terminalRouter.post(
 
 // GET /api/terminal/session/:id/pay/wallet - Get wallet payment params
 terminalRouter.get('/session/:id/pay/wallet', async (c) => {
-  const sessionId = c.req.param('id');
+  const sessionId = c.req.param('id')!;
 
   try {
     const params = await getWalletPaymentParams(sessionId);
@@ -454,7 +454,7 @@ terminalRouter.post(
   '/session/:id/pay/wallet/start',
   zValidator('json', StartWalletPaymentSchema),
   async (c) => {
-    const sessionId = c.req.param('id');
+    const sessionId = c.req.param('id')!;
     const { payerAddress } = c.req.valid('json');
 
     try {
@@ -484,7 +484,7 @@ terminalRouter.post(
   '/session/:id/pay/wallet/confirm',
   zValidator('json', ConfirmWalletPaymentSchema),
   async (c) => {
-    const sessionId = c.req.param('id');
+    const sessionId = c.req.param('id')!;
     const { txHash, tokensIssued } = c.req.valid('json');
 
     try {
@@ -515,7 +515,7 @@ terminalRouter.post(
   '/session/:id/pay/wallet/reset',
   zValidator('json', ResetWalletPaymentSchema),
   async (c) => {
-    const sessionId = c.req.param('id');
+    const sessionId = c.req.param('id')!;
     const { payerAddress, txHash, errorMessage } = c.req.valid('json');
 
     try {
@@ -583,7 +583,7 @@ terminalRouter.get(
   requireUserOrTerminalAuth,
   zValidator('query', DeviceSessionsQuerySchema),
   async (c) => {
-    const deviceId = c.req.param('id');
+    const deviceId = c.req.param('id')!;
     const { limit } = c.req.valid('query');
 
     // Verify access

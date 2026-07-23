@@ -514,7 +514,7 @@ debugRouter.get('/ai/invocations', async (c) => {
 
 // GET /debug/ai/chat/:chatId - Tool usage for a specific chat
 debugRouter.get('/ai/chat/:chatId', async (c) => {
-  const chatId = c.req.param('chatId');
+  const chatId = c.req.param('chatId')!;
   const usage = getChatToolUsage(chatId);
   return c.json({ success: true, data: usage });
 });

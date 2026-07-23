@@ -8,7 +8,7 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import Stripe from 'npm:stripe@20.2.0';
+import Stripe from 'stripe';
 import { requireAuth } from '../middleware/auth.ts';
 import { getConfig, validateConfigForStripe } from '../utils/config.ts';
 import {
@@ -129,7 +129,7 @@ juiceRouter.post(
       // This provides a hosted/embeddable checkout with automatic payment method handling
       const session = await stripe.checkout.sessions.create({
         mode: 'payment',
-        ui_mode: 'embedded',
+        ui_mode: 'embedded_page',
         line_items: [
           {
             price_data: {
@@ -347,7 +347,7 @@ juiceRouter.post(
 // DELETE /api/juice/cash-out/:id - Cancel a pending cash out
 juiceRouter.delete('/cash-out/:id', requireAuth, async (c) => {
   const user = c.get('user');
-  const cashOutId = c.req.param('id');
+  const cashOutId = c.req.param('id')!;
 
   try {
     await cancelCashOut(cashOutId, user.id);

@@ -7,6 +7,7 @@ import { getSafetyPublicClient } from '../../utils/transactionSafety'
 import { truncateAddress } from '../../utils/ens'
 import { IpfsImage } from '../ui/IpfsMedia'
 import { ExplainerMessage } from '../ui/ExplainerMessage'
+import { RichContent } from '../ui/RichContent'
 
 // Overview tab — 1:1 port of website/src/discover.js renderAboutSection (:6825):
 // About card (logo, tagline, description, links, Edit) + Other info panel
@@ -64,54 +65,6 @@ export function authorityRowsDiverged(rows: readonly AuthorityRow[]): boolean {
   if (known.length === 0) return false
   const first = known[0].owner!.toLowerCase()
   return known.some(row => row.owner!.toLowerCase() !== first)
-}
-
-// --- Description rendering -------------------------------------------------
-// The website renders sanitized rich text; juicy's security posture is plain
-// text only (no dangerouslySetInnerHTML) with bare URLs linkified.
-
-function stripHtmlTags(html: string): string {
-  const withLineBreaks = html
-    .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/p>/gi, '\n\n')
-  const text = withLineBreaks.replace(/<[^>]*>/g, '')
-  return text.replace(/\n{3,}/g, '\n\n').trim()
-}
-
-const URL_PATTERN = /https?:\/\/[^\s<>"')]+/g
-
-/** Split plain text into text/link segments; only http(s) URLs become anchors. */
-function linkifySegments(text: string): Array<{ type: 'text' | 'link'; value: string }> {
-  const segments: Array<{ type: 'text' | 'link'; value: string }> = []
-  let lastIndex = 0
-  for (const match of text.matchAll(URL_PATTERN)) {
-    const index = match.index ?? 0
-    if (index > lastIndex) segments.push({ type: 'text', value: text.slice(lastIndex, index) })
-    segments.push({ type: 'link', value: match[0] })
-    lastIndex = index + match[0].length
-  }
-  if (lastIndex < text.length) segments.push({ type: 'text', value: text.slice(lastIndex) })
-  return segments
-}
-
-function LinkifiedParagraph({ text, isDark }: { text: string; isDark: boolean }) {
-  return (
-    <p className={`text-sm whitespace-pre-line ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-      {linkifySegments(text).map((segment, i) => segment.type === 'link' ? (
-        <a
-          key={i}
-          href={segment.value}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-juice-orange hover:underline break-all"
-        >
-          {segment.value}
-        </a>
-      ) : (
-        <span key={i}>{segment.value}</span>
-      ))}
-    </p>
-  )
 }
 
 // --- Project links (website renderProjectLinks :6873) ----------------------
@@ -197,9 +150,6 @@ export default function OverviewTab({
 
   const tagline = project.metadata?.projectTagline || project.metadata?.tagline
   const description = project.description || project.metadata?.description
-  const paragraphs = description
-    ? stripHtmlTags(description).split(/\n{2,}/).map(p => p.trim()).filter(Boolean)
-    : []
   const links = projectLinkEntries(project)
 
   const hasErc20 = Boolean(
@@ -241,12 +191,11 @@ export default function OverviewTab({
           </div>
         )}
 
-        {paragraphs.length > 0 ? (
-          <div className="space-y-3">
-            {paragraphs.map((paragraph, i) => (
-              <LinkifiedParagraph key={i} text={paragraph} isDark={isDark} />
-            ))}
-          </div>
+        {description ? (
+          <RichContent
+            html={description}
+            className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}
+          />
         ) : (
           <p className={`text-sm italic ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
             No description yet.

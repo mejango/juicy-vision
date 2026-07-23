@@ -58,7 +58,7 @@ eventsRouter.patch(
   '/sessions/:sessionId/outcome',
   zValidator('json', UpdateOutcomeSchema),
   async (c) => {
-    const sessionId = c.req.param('sessionId');
+    const sessionId = c.req.param('sessionId')!;
     const body = c.req.valid('json');
 
     await updateChatSessionOutcome(sessionId, body);
@@ -76,7 +76,7 @@ eventsRouter.post(
   '/sessions/:sessionId/end',
   zValidator('json', EndSessionSchema),
   async (c) => {
-    const sessionId = c.req.param('sessionId');
+    const sessionId = c.req.param('sessionId')!;
     const body = c.req.valid('json');
 
     await endChatSession(sessionId, body.rating, body.feedback);
@@ -97,8 +97,8 @@ const StoreMessageSchema = z.object({
     .array(
       z.object({
         tool: z.string(),
-        input: z.record(z.unknown()),
-        output: z.record(z.unknown()).optional(),
+        input: z.record(z.string(), z.unknown()),
+        output: z.record(z.string(), z.unknown()).optional(),
         success: z.boolean().optional(),
         latencyMs: z.number().optional(),
       }),
@@ -134,7 +134,7 @@ eventsRouter.patch(
   '/messages/:messageId/feedback',
   zValidator('json', FeedbackSchema),
   async (c) => {
-    const messageId = c.req.param('messageId');
+    const messageId = c.req.param('messageId')!;
     const body = c.req.valid('json');
 
     await updateMessageFeedback(messageId, body);
@@ -150,7 +150,7 @@ eventsRouter.patch(
 const SingleEventSchema = z.object({
   sessionId: z.string().uuid().nullable(),
   eventType: z.string(),
-  eventData: z.record(z.unknown()),
+  eventData: z.record(z.string(), z.unknown()),
   privacyMode: z.enum(['open_book', 'anonymous', 'private', 'ghost']),
 });
 
@@ -223,7 +223,7 @@ eventsRouter.post(
   requireAdmin,
   zValidator('json', ReviewCorrectionSchema),
   async (c) => {
-    const correctionId = c.req.param('id');
+    const correctionId = c.req.param('id')!;
     const body = c.req.valid('json');
 
     await reviewCorrection(correctionId, body.status, body.reviewNotes);

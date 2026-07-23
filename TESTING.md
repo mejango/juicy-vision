@@ -4,16 +4,26 @@ Juicy Vision protects the transaction trust boundary at four layers: contract-de
 
 ## Supported toolchain
 
-- Frontend: Node `22.23.1` from `.nvmrc` and npm `10.9.x` (`npm@10.9.8` is pinned in `package.json`).
+- Frontend: Node `26.5.0` from `.nvmrc` and npm `12.0.x` (`npm@12.0.1` is pinned in `package.json`).
 - Backend: Deno `2.9.3` in CI.
 - Install frontend dependencies with `npm ci`; do not update the lockfile as part of a test run.
+
+TypeScript 7 supplies the `tsc` binary through the `@typescript/native` npm
+alias. The `typescript` package name intentionally remains on TypeScript 5.9.3
+so typescript-eslint, the AST-based wallet inventory, and WalletConnect's
+optional Coinbase/Solana tooling share a supported compiler API. Source
+typechecks and builds still use the TypeScript 7 CLI. WalletConnect's AppKit
+also pins an older optional Base Account package than wagmi accepts, so the
+lockfile overrides that shared optional package to compatible `2.5.7` while
+preserving WalletConnect QR/mobile-wallet connectivity.
 
 ## Frontend gates
 
 | Gate | Command | User expectation protected |
 |---|---|---|
+| Toolchain consistency | `npm run check:toolchain` | Node, npm, TypeScript, CI, and the frontend image cannot drift onto incompatible versions independently. |
 | Lint | `npm run lint:ci` | The complete frontend tree must pass with zero warnings; there is no warning budget to hide new debt. |
-| Dependency tree | `npm run deps:check` | The clean locked install contains no invalid peer edges or extraneous packages. |
+| Direct dependency tree | `npm run deps:check` | The clean locked install contains every declared direct runtime and tooling dependency at a valid version. |
 | Runtime audit | `npm run audit:prod` | High and critical advisories in packages shipped to users block CI; development-only tooling is reported separately. |
 | TypeScript | `npm run typecheck` | Component, service, hook, transaction, Playwright fixture, configuration, and e2e interfaces remain compatible. |
 | Protocol parity | `npm run check:protocol` | App contract addresses and chain capabilities match the pinned deploy-all-v6 fixture. |
@@ -33,6 +43,7 @@ The frontend CI-equivalent sequence is:
 
 ```bash
 npm ci
+npm run check:toolchain
 npm run deps:check
 npm run audit:prod
 npm run lint:ci
