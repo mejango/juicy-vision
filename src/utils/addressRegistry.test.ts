@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { Address, PublicClient } from 'viem'
+import { zeroAddress, type Address, type PublicClient } from 'viem'
 import {
   requireRecognizedClone,
   requireRecognized721CloneIdentity,
@@ -123,6 +123,13 @@ describe('address registry clone recognition', () => {
   it('blocks instances from unknown deployers', async () => {
     await expect(requireRecognized721Clone(reader(UNKNOWN), INSTANCE))
       .rejects.toThrow(/not recognized/i)
+  })
+
+  it('rejects a missing clone address before reading a registry', async () => {
+    const client = reader(TIERS_DEPLOYER)
+    await expect(requireRecognized721Clone(client, zeroAddress))
+      .rejects.toThrow(/721 hook is missing/i)
+    expect(client.readContract).not.toHaveBeenCalled()
   })
 
   it('derives the registry from a known deployer', async () => {

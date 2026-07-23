@@ -120,6 +120,7 @@ export default defineConfig({
     // Mock browser APIs
     alias: {
       '@/': resolve(__dirname, './src/'),
+      'virtual:pwa-register': resolve(__dirname, './src/test/pwa-register.ts'),
     },
   },
   resolve: {

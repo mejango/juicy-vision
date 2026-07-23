@@ -33,9 +33,9 @@ nvm use
 
 # Check versions
 node --version
-# v22.16.0
+# v22.23.1
 npm --version
-# 10.9.2
+# 10.9.8
 ```
 
 ## Quick Start

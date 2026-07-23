@@ -3,7 +3,7 @@
 The canonical release, migration, health, rollback, scheduler, and configuration
 runbook is [`../docs/DEPLOYMENT.md`](../docs/DEPLOYMENT.md).
 
-Backend-specific local checks use Deno 2.6.5:
+Backend-specific local checks use Deno 2.9.3:
 
 ```sh
 deno task fmt:check

@@ -4,8 +4,8 @@ Juicy Vision protects the transaction trust boundary at four layers: contract-de
 
 ## Supported toolchain
 
-- Frontend: Node `22.16.0` from `.nvmrc` and npm `10.9.x` (`npm@10.9.2` is pinned in `package.json`).
-- Backend: Deno `2.6.5` in CI.
+- Frontend: Node `22.23.1` from `.nvmrc` and npm `10.9.x` (`npm@10.9.8` is pinned in `package.json`).
+- Backend: Deno `2.9.3` in CI.
 - Install frontend dependencies with `npm ci`; do not update the lockfile as part of a test run.
 
 ## Frontend gates

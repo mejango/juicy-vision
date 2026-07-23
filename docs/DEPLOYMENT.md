@@ -29,8 +29,8 @@ Every production release must satisfy all of these:
 
 ## Toolchains
 
-- Node `22.16.0` and npm `10.9.2` (`.nvmrc` and `packageManager`)
-- Deno `2.6.5`
+- Node `22.23.1` and npm `10.9.8` (`.nvmrc` and `packageManager`)
+- Deno `2.9.3`
 - Ubuntu `24.04` in GitHub Actions
 
 Use the lockfiles. CI uses `npm ci` and Deno `--frozen`; a lockfile drift is a

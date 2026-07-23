@@ -4,12 +4,33 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 10
+      day: wednesday
+      time: '09:00'
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 1
+    cooldown:
+      default-days: 7
+      semver-minor-days: 14
+      semver-patch-days: 7
     versioning-strategy: increase-if-necessary
+    allow:
+      - dependency-name: '*'
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
+    # Recharts 3.10 changes tooltip/legend types used by four chart surfaces;
+    # keep it on the reviewed line until that UI migration is covered.
+    ignore:
+      - dependency-name: recharts
+        versions: ['>=3.10.0 <4']
     groups:
-      frontend-minor-patch:
+      npm-routine:
+        applies-to: version-updates
         patterns: ['*']
         update-types: ['minor', 'patch']
+      npm-security:
+        applies-to: security-updates
+        patterns: ['*']
     commit-message:
       prefix: deps
 
@@ -17,46 +38,57 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+      day: wednesday
+      time: '09:00'
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 1
+    cooldown:
+      default-days: 7
+      semver-minor-days: 14
+      semver-patch-days: 7
+    allow:
+      - dependency-name: '*'
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
     groups:
-      actions-minor-patch:
+      actions-routine:
+        applies-to: version-updates
         patterns: ['*']
         update-types: ['minor', 'patch']
+      actions-security:
+        applies-to: security-updates
+        patterns: ['*']
     commit-message:
       prefix: ci
 
   - package-ecosystem: docker
-    directory: /
+    directories:
+      - /
+      - /backend
+      - /backend/src/db
     schedule:
       interval: weekly
-    open-pull-requests-limit: 5
+      day: wednesday
+      time: '09:00'
+      timezone: America/Sao_Paulo
+    open-pull-requests-limit: 1
+    cooldown:
+      default-days: 7
+      semver-minor-days: 14
+      semver-patch-days: 7
+    allow:
+      - dependency-name: '*'
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-patch
     groups:
-      frontend-image-minor-patch:
+      docker-routine:
+        applies-to: version-updates
         patterns: ['*']
         update-types: ['minor', 'patch']
-    commit-message:
-      prefix: build
-
-  - package-ecosystem: docker
-    directory: /backend
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    groups:
-      backend-image-minor-patch:
+      docker-security:
+        applies-to: security-updates
         patterns: ['*']
-        update-types: ['minor', 'patch']
-    commit-message:
-      prefix: build
-
-  - package-ecosystem: docker
-    directory: /backend/src/db
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 5
-    groups:
-      development-database-minor-patch:
-        patterns: ['*']
-        update-types: ['minor', 'patch']
     commit-message:
       prefix: build
