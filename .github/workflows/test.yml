@@ -311,9 +311,13 @@ jobs:
           fi
 
           api_probe='const urls=["http://127.0.0.1:8080/livez","http://127.0.0.1:8080/readyz"];for(const url of urls){const response=await fetch(url);if(!response.ok){console.error(`${url}: ${response.status} ${await response.text()}`);Deno.exit(1)}}'
+          run_api_probe() {
+            docker exec --interactive "$api_name" \
+              deno run --no-config --no-lock --allow-net=127.0.0.1:8080 - \
+              <<<"$api_probe"
+          }
           for attempt in {1..30}; do
-            if docker exec "$api_name" deno eval --allow-net=127.0.0.1:8080 "$api_probe" \
-              >/dev/null 2>&1; then
+            if run_api_probe >/dev/null 2>&1; then
               break
             fi
             if [[ "$(docker inspect --format '{{.State.Running}}' "$api_name")" != true ]]; then
@@ -322,7 +326,7 @@ jobs:
             fi
             sleep 1
           done
-          if ! docker exec "$api_name" deno eval --allow-net=127.0.0.1:8080 "$api_probe"; then
+          if ! run_api_probe; then
             docker logs "$api_name"
             exit 1
           fi

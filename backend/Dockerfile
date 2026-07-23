@@ -28,7 +28,7 @@ COPY --from=cache --chown=deno:deno /app /app
 USER deno
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
-  CMD ["deno", "eval", "--allow-net=127.0.0.1:8080", "const r=await fetch('http://127.0.0.1:8080/livez');if(!r.ok)Deno.exit(1)"]
+  CMD ["deno", "eval", "const r=await fetch('http://127.0.0.1:8080/livez');if(!r.ok)Deno.exit(1)"]
 
 # Migrations are an explicit one-shot: `deno task migrate`. The API container
 # has no Docker socket, subprocess, or filesystem-write capability.

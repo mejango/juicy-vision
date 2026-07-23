@@ -151,7 +151,7 @@ requirePattern(
 )
 requirePattern(
   '.github/workflows/test.yml',
-  /api_probe='[^'\n]*http:\/\/127\.0\.0\.1:8080\/livez[^'\n]*http:\/\/127\.0\.0\.1:8080\/readyz[^'\n]*'[\s\S]*?if ! docker exec "\$api_name" deno eval --allow-net=127\.0\.0\.1:8080 "\$api_probe"; then/,
+  /api_probe='[^'\n]*http:\/\/127\.0\.0\.1:8080\/livez[^'\n]*http:\/\/127\.0\.0\.1:8080\/readyz[^'\n]*'[\s\S]*?run_api_probe\(\)\s*{[\s\S]*?docker exec --interactive "\$api_name"[\s\S]*?deno run --no-config --no-lock --allow-net=127\.0\.0\.1:8080 -[\s\S]*?<<<"\$api_probe"[\s\S]*?}[\s\S]*?if ! run_api_probe; then/,
   'the isolated backend container smoke test must verify liveness and readiness from inside the API container',
 )
 
