@@ -18,11 +18,13 @@ updates:
         update-types:
           - version-update:semver-minor
           - version-update:semver-patch
-    # Recharts 3.9 changes tooltip/legend types used by four chart surfaces;
-    # keep it pinned to the reviewed line until that UI migration is covered.
+    # Newer Recharts 3.6 releases change tooltip/legend types used by four
+    # chart surfaces; keep the exact reviewed line until that migration lands.
     ignore:
       - dependency-name: recharts
         versions: ['>=3.6.1 <4']
+      # npm alias supplied by @wagmi/connectors, not a registry name.
+      - dependency-name: cbw-sdk
     groups:
       npm-routine:
         applies-to: version-updates
