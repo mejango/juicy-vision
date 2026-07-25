@@ -59,6 +59,7 @@ interface DataPoint {
   cashOutPrice?: number
   cashOutMinPrice?: number
   poolPrice?: number
+  cashOutChangeReason?: string
 }
 
 interface Ruleset {
@@ -96,6 +97,50 @@ function findApplicableTaxRate(timestamp: number, taxSnapshots: CashOutTaxSnapsh
     if (sorted[i].start <= timestamp) return sorted[i].cashOutTax
   }
   return null
+}
+
+type CashOutObservation = {
+  balance: bigint
+  tokenSupply: bigint
+  cashOutTax: number
+  price: number
+}
+
+function explainCashOutChange(
+  previous: CashOutObservation | undefined,
+  current: CashOutObservation,
+): string {
+  if (!previous) return 'First indexed cash-out price observation.'
+  const causes: string[] = []
+  const balanceRose = current.balance > previous.balance
+  const balanceFell = current.balance < previous.balance
+  const supplyRose = current.tokenSupply > previous.tokenSupply
+  const supplyFell = current.tokenSupply < previous.tokenSupply
+
+  if (balanceRose && supplyRose) causes.push('a payment added backing and issued tokens')
+  else if (balanceFell && supplyFell) causes.push('a cash out removed backing and burned tokens')
+  else {
+    if (balanceRose) causes.push('funds were added to the project')
+    if (balanceFell) causes.push('a payout reduced project backing')
+    if (supplyRose) causes.push('token supply increased')
+    if (supplyFell) causes.push('tokens were burned')
+  }
+  if (current.cashOutTax !== previous.cashOutTax) {
+    const pct = (value: number) => `${(value / 100).toFixed(2).replace(/\.?0+$/, '')}%`
+    causes.push(`the cash-out tax changed from ${pct(previous.cashOutTax)} to ${pct(current.cashOutTax)}`)
+  }
+  const direction = current.price > previous.price
+    ? 'rose'
+    : current.price < previous.price
+      ? 'fell'
+      : 'was unchanged'
+  if (!causes.length) {
+    return `Cash-out price ${direction}; the indexed backing, supply, and tax inputs did not change.`
+  }
+  const joined = causes.length === 1
+    ? causes[0]
+    : `${causes.slice(0, -1).join(', ')} and ${causes[causes.length - 1]}`
+  return `Cash-out price ${direction} because ${joined}.`
 }
 
 export default function TokenPriceChart({
@@ -371,7 +416,8 @@ export default function TokenPriceChart({
     const balanceDecimals = accountingToken.decimals
 
     if (moments.length > 0 && taxSnapshots.length > 0) {
-      for (const moment of moments) {
+      let previous: CashOutObservation | undefined
+      for (const moment of [...moments].sort((a, b) => a.timestamp - b.timestamp)) {
         const dayTs = toBucketBoundary(moment.timestamp)
         if (dayTs < rangeStart) continue
 
@@ -387,6 +433,14 @@ export default function TokenPriceChart({
           const existing = dataByDay.get(dayTs) || { timestamp: dayTs }
           existing.cashOutPrice = floorPrice
           if (minPrice > 0) existing.cashOutMinPrice = minPrice
+          const observation = {
+            balance,
+            tokenSupply: supply,
+            cashOutTax: taxRate,
+            price: floorPrice,
+          }
+          existing.cashOutChangeReason = explainCashOutChange(previous, observation)
+          previous = observation
           dataByDay.set(dayTs, existing)
         }
       }
@@ -525,6 +579,11 @@ export default function TokenPriceChart({
             <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Cash out min:</span>
             <span className="font-mono">{formatPrice(data.cashOutMinPrice)} {isUsdBased ? 'USDC' : 'ETH'}</span>
           </div>
+        )}
+        {data.cashOutChangeReason && showCashOut && (
+          <p className={`mt-2 max-w-xs text-xs leading-snug ${isDark ? 'text-zinc-300' : 'text-gray-600'}`}>
+            {data.cashOutChangeReason}
+          </p>
         )}
       </TooltipShell>
     )

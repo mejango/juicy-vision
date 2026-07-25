@@ -141,6 +141,7 @@ describe('formatting', () => {
     expect(formatCutPercent(75_000_000)).toBe('7.5%')
     expect(formatCutPercent(0)).toBe('0%')
     expect(formatCutPercent(12_340_000)).toBe('1.23%')
+    expect(formatCutPercent(9_496)).toBe('0.0009496%')
   })
 
   it('percentFromBasisPoints renders out-of-10000 values', () => {

@@ -30,6 +30,14 @@ import {
   USDC_ADDRESSES,
   type SupportedChainId,
 } from '../constants'
+import { formatCutPercent } from './revnetStages'
+
+function formatCarouselCutPercent(value: number): string {
+  const percent = value / 1e7
+  return percent === 0 || Math.abs(percent) >= 0.01
+    ? `${percent.toFixed(2)}%`
+    : formatCutPercent(value)
+}
 
 // Data layer for the project-page Rulesets carousel — a 1:1 port of the
 // website's renderRulesetsFundsSection data model (website/src/discover.js).
@@ -345,7 +353,7 @@ export function rulesetRows(
       value: `${r.weight === 0n ? '0' : formatTokenAmount(r.weight, 18)} / ${baseUnit}`,
     },
     { section: 'TOKEN', label: 'Reserved rate', value: percentOutOf10000(m.reservedPercent) },
-    { section: 'TOKEN', label: 'Issuance cut percent', value: `${(r.weightCutPercent / 1e7).toFixed(2)}%` },
+    { section: 'TOKEN', label: 'Issuance cut percent', value: formatCarouselCutPercent(r.weightCutPercent) },
     { section: 'TOKEN', label: 'Cash out tax rate', value: percentOutOf10000(m.cashOutTaxRate) },
     // The v6 flag is scoped-to-local-balances; the website row is the inverse.
     { section: 'TOKEN', label: 'Cash outs use total surplus', value: enabled(!m.scopeCashOutsToLocalBalances) },

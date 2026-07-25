@@ -131,7 +131,12 @@ export function formatIssuanceRate(n: number): string {
 /** Cut percent formatted compactly (no trailing zeros): 380000000 → "38%", 75000000 → "7.5%". */
 export function formatCutPercent(weightCutPercent: number): string {
   const v = weightCutPercent / (WEIGHT_CUT_SCALE / 100)
-  return v.toFixed(2).replace(/\.?0+$/, '') + '%'
+  if (!Number.isFinite(v) || v === 0) return '0%'
+  const magnitude = Math.abs(v)
+  const decimals = magnitude >= 0.01
+    ? 2
+    : Math.min(8, Math.max(2, Math.ceil(-Math.log10(magnitude)) + 3))
+  return v.toFixed(decimals).replace(/\.?0+$/, '') + '%'
 }
 
 /** reservedPercent / cashOutTaxRate (out of 10_000) → "5%" / "2.50%" / "—". */
