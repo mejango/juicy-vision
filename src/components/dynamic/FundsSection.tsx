@@ -892,7 +892,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
                       </button>
                       {/* Tooltip for disabled state */}
                       {(!userTokenBalanceAvailable || userTokenBalance === 0n || !!configurationError) && (
-                        <div className={`absolute bottom-full left-0 mb-1 px-2 py-1 text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap ${
+                        <div className={`absolute bottom-full left-0 mb-1 px-2 py-1 text-xs opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap ${
                           isDark ? 'bg-juice-dark border border-white/20 text-gray-300' : 'bg-white border border-gray-200 text-gray-600 shadow-sm'
                         }`}>
                           {configurationError
