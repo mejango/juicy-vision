@@ -164,7 +164,7 @@ describe('TokenPriceChart', () => {
     } as any)
     vi.mocked(bendystraw.fetchProjectTokenSupply).mockResolvedValue('10138952920494645629')
     vi.mocked(bendystraw.fetchPendingReservedTokens).mockResolvedValue('0')
-    vi.mocked(bendystraw.calculateFloorPrice).mockReturnValue(0.000064)
+    vi.mocked(bendystraw.calculateFloorPrice).mockReturnValue(1.3)
     render(<TokenPriceChart projectId="1" />)
 
     await waitFor(() => {
@@ -182,6 +182,29 @@ describe('TokenPriceChart', () => {
     const yAxis = screen.getByTestId('y-axis')
     expect(yAxis.getAttribute('data-domain')).toBe(JSON.stringify([0, 2 * 1.05]))
     expect(yAxis.getAttribute('data-allow-overflow')).toBe('true')
+  })
+
+  it('hides the payment-asymptote line when the current cash-out quote is below it', async () => {
+    vi.mocked(bendystraw.fetchProjectWithRuleset).mockResolvedValue({
+      ...mockProject,
+      currentRuleset: { ...mockProject.currentRuleset, cashOutTaxRate: 4000 },
+    } as any)
+    vi.mocked(bendystraw.fetchSuckerGroupBalance).mockResolvedValue({
+      totalBalance: '1013906664594272',
+      currency: 1,
+      decimals: 18,
+    } as any)
+    vi.mocked(bendystraw.fetchProjectTokenSupply).mockResolvedValue('10138952920494645629')
+    vi.mocked(bendystraw.fetchPendingReservedTokens).mockResolvedValue('0')
+    vi.mocked(bendystraw.calculateFloorPrice).mockReturnValue(0.000064)
+
+    render(<TokenPriceChart projectId="1" />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('line-cashOutPrice')).toBeInTheDocument()
+    })
+
+    expect(screen.queryByTestId('line-cashOutMinPrice')).not.toBeInTheDocument()
   })
 
   it('renders overlay lines before the issuance line', async () => {

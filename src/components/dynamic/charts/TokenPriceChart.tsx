@@ -536,7 +536,14 @@ export default function TokenPriceChart({
   // Get current prices
   const currentIssuancePrice = chartData.length > 0 ? chartData[chartData.length - 1]?.issuancePrice : undefined
   const currentCashOutPrice = chartData.length > 0 ? chartData[chartData.length - 1]?.cashOutPrice : undefined
+  const currentCashOutMinPrice = chartData.length > 0 ? chartData[chartData.length - 1]?.cashOutMinPrice : undefined
   const currentPoolPrice = chartData.length > 0 ? chartData[chartData.length - 1]?.poolPrice : undefined
+  const showCashOutMin =
+    currentCashOutPrice !== undefined &&
+    currentCashOutMinPrice !== undefined &&
+    currentCashOutPrice > 0 &&
+    currentCashOutMinPrice > 0 &&
+    currentCashOutPrice > currentCashOutMinPrice
 
   // Format price for display
   const formatPrice = (value: number) => {
@@ -590,7 +597,7 @@ export default function TokenPriceChart({
             <span className="font-mono">{formatPrice(data.cashOutPrice)} {isUsdBased ? 'USDC' : 'ETH'}</span>
           </div>
         )}
-        {data.cashOutMinPrice !== undefined && showCashOut && (
+        {data.cashOutMinPrice !== undefined && showCashOut && showCashOutMin && (
           <div className="flex items-center gap-2 whitespace-nowrap">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CHART_COLORS.cashOut, opacity: 0.55 }} />
             <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Min cash out:</span>
@@ -758,7 +765,7 @@ export default function TokenPriceChart({
                   )}
 
                   {/* Payment asymptote: issuance price × the post-tax factor. */}
-                  {showCashOut && hasCashOutMinData && (
+                  {showCashOut && hasCashOutMinData && showCashOutMin && (
                     <Line
                       type="stepAfter"
                       dataKey="cashOutMinPrice"
