@@ -3,7 +3,6 @@ import { render, screen, waitFor } from '@testing-library/react'
 import TokenPriceChart from './TokenPriceChart'
 import { useThemeStore } from '../../../stores'
 import * as bendystraw from '../../../services/bendystraw'
-import * as bendystrawClient from '../../../services/bendystraw/client'
 import * as uniswap from '../../../services/uniswap'
 
 // Mock bendystraw service
@@ -21,11 +20,6 @@ vi.mock('../../../services/bendystraw', () => ({
   fetchAllRulesets: vi.fn(),
   fetchIndexedAmmPriceHistory: vi.fn(),
   isRevnetProject: vi.fn(),
-}))
-
-// The min-price helper is imported straight from the client module, not the barrel
-vi.mock('../../../services/bendystraw/client', () => ({
-  calculateFloorMinPrice: vi.fn(),
 }))
 
 // Mock uniswap service
@@ -158,7 +152,7 @@ describe('TokenPriceChart', () => {
     expect(yAxis.getAttribute('data-allow-overflow')).toBe('false')
   })
 
-  it('renders the dashed cash-out minimum line behind the issuance line, keeping the issuance-anchored domain', async () => {
+  it('renders the dashed payment-asymptote line behind the issuance line, keeping the issuance-anchored domain', async () => {
     vi.mocked(bendystraw.fetchProjectWithRuleset).mockResolvedValue({
       ...mockProject,
       currentRuleset: { ...mockProject.currentRuleset, cashOutTaxRate: 4000 },
@@ -171,8 +165,6 @@ describe('TokenPriceChart', () => {
     vi.mocked(bendystraw.fetchProjectTokenSupply).mockResolvedValue('10138952920494645629')
     vi.mocked(bendystraw.fetchPendingReservedTokens).mockResolvedValue('0')
     vi.mocked(bendystraw.calculateFloorPrice).mockReturnValue(0.000064)
-    vi.mocked(bendystrawClient.calculateFloorMinPrice).mockReturnValue(0.00006)
-
     render(<TokenPriceChart projectId="1" />)
 
     await waitFor(() => {

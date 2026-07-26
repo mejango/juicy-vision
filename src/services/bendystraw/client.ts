@@ -3710,9 +3710,9 @@ export function calculateCashOutValue(
   return (base * (MAX_CASH_OUT_TAX_RATE - rate + curvedRate)) / MAX_CASH_OUT_TAX_RATE
 }
 
-// The floor's asymptote: (1 − tax) × balance ÷ supply — the 1-token cash-out return without
-// the own-share bonus. The live quote approaches it from above as supply grows; payments can
-// only raise it, only payouts lower it.
+// The current cash-out curve's backing asymptote: (1 − tax) × balance ÷ supply,
+// without the one-token own-share bonus. This is distinct from the chart's
+// payment asymptote, which is based on the issuance price.
 export function calculateFloorMinPrice(
   balance: bigint,
   totalSupply: bigint,

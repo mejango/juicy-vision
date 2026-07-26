@@ -86,7 +86,7 @@ export function ChartState({
 // Outer container for custom recharts tooltips
 export function TooltipShell({ isDark, children }: { isDark: boolean; children: ReactNode }) {
   return (
-    <div className={`px-3 py-2 border shadow-lg text-sm ${
+    <div className={`w-max px-3 py-2 border shadow-lg text-sm ${
       isDark
         ? 'bg-zinc-900 border-zinc-700 text-white'
         : 'bg-white border-gray-200 text-gray-900'

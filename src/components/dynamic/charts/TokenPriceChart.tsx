@@ -26,7 +26,6 @@ import {
   type SuckerGroupMoment,
   type CashOutTaxSnapshot,
 } from '../../../services/bendystraw'
-import { calculateFloorMinPrice } from '../../../services/bendystraw/client'
 import {
   fetchPoolPriceHistory,
   shouldUseHourlyData,
@@ -116,9 +115,24 @@ function explainCashOutChange(
   const balanceFell = current.balance < previous.balance
   const supplyRose = current.tokenSupply > previous.tokenSupply
   const supplyFell = current.tokenSupply < previous.tokenSupply
+  const ratioLeft = current.balance * previous.tokenSupply
+  const ratioRight = previous.balance * current.tokenSupply
+  const backingRatio = ratioLeft > ratioRight ? 1 : ratioLeft < ratioRight ? -1 : 0
 
-  if (balanceRose && supplyRose) causes.push('a payment added backing and issued tokens')
-  else if (balanceFell && supplyFell) causes.push('a cash out removed backing and burned tokens')
+  if (balanceRose && supplyRose) {
+    causes.push(backingRatio < 0
+      ? 'a payment increased token supply faster than backing, diluting backing per token'
+      : backingRatio > 0
+        ? 'a payment increased backing faster than token supply'
+        : 'a payment added backing and tokens at the same backing-per-token ratio')
+  }
+  else if (balanceFell && supplyFell) {
+    causes.push(backingRatio > 0
+      ? 'a cash out burned supply faster than it removed backing, increasing backing per remaining token'
+      : backingRatio < 0
+        ? 'a cash out removed backing faster than it burned supply'
+        : 'a cash out removed backing and supply at the same ratio')
+  }
   else {
     if (balanceRose) causes.push('funds were added to the project')
     if (balanceFell) causes.push('a payout reduced project backing')
@@ -406,6 +420,11 @@ export default function TokenPriceChart({
         if (price !== undefined && isFinite(price)) {
           const existing = dataByDay.get(dayTs) || { timestamp: dayTs }
           existing.issuancePrice = price
+          const taxRate = findApplicableTaxRate(t, taxSnapshots)
+          if (taxRate !== null) {
+            existing.cashOutMinPrice =
+              price * (1 - Math.max(0, Math.min(10_000, taxRate)) / 10_000)
+          }
           dataByDay.set(dayTs, existing)
         }
       }
@@ -427,12 +446,10 @@ export default function TokenPriceChart({
 
         if (taxRate === null) continue
         const floorPrice = calculateFloorPrice(balance, supply, taxRate, balanceDecimals)
-        const minPrice = calculateFloorMinPrice(balance, supply, taxRate, balanceDecimals)
 
         if (floorPrice > 0) {
           const existing = dataByDay.get(dayTs) || { timestamp: dayTs }
           existing.cashOutPrice = floorPrice
-          if (minPrice > 0) existing.cashOutMinPrice = minPrice
           const observation = {
             balance,
             tokenSupply: supply,
@@ -553,30 +570,30 @@ export default function TokenPriceChart({
           })}
         </div>
         {data.issuancePrice !== undefined && showIssuance && (
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 whitespace-nowrap">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CHART_COLORS.issuance }} />
             <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Issuance:</span>
             <span className="font-mono">{formatPrice(data.issuancePrice)} {isUsdBased ? 'USDC' : 'ETH'}</span>
           </div>
         )}
         {data.poolPrice !== undefined && showPool && (
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 whitespace-nowrap">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CHART_COLORS.pool }} />
             <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Pool:</span>
             <span className="font-mono">{formatPrice(data.poolPrice)} {isUsdBased ? 'USDC' : 'ETH'}</span>
           </div>
         )}
         {data.cashOutPrice !== undefined && showCashOut && (
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-1 whitespace-nowrap">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CHART_COLORS.cashOut }} />
             <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Cash-out baseline:</span>
             <span className="font-mono">{formatPrice(data.cashOutPrice)} {isUsdBased ? 'USDC' : 'ETH'}</span>
           </div>
         )}
         {data.cashOutMinPrice !== undefined && showCashOut && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 whitespace-nowrap">
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CHART_COLORS.cashOut, opacity: 0.55 }} />
-            <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Cash out min:</span>
+            <span className={isDark ? 'text-zinc-400' : 'text-gray-500'}>Min cash out:</span>
             <span className="font-mono">{formatPrice(data.cashOutMinPrice)} {isUsdBased ? 'USDC' : 'ETH'}</span>
           </div>
         )}
@@ -740,7 +757,7 @@ export default function TokenPriceChart({
                     />
                   )}
 
-                  {/* Cash out minimum: the floor's asymptote, always at or below the cash out quote */}
+                  {/* Payment asymptote: issuance price × the post-tax factor. */}
                   {showCashOut && hasCashOutMinData && (
                     <Line
                       type="stepAfter"
