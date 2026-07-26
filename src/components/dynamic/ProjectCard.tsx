@@ -187,6 +187,15 @@ const CHAIN_INFO: Record<string, { name: string; slug: string }> = {
   '421614': { name: 'Arb Sepolia', slug: 'arbsepolia' },
 }
 
+function payChainName(chainId: string): string {
+  const compactNames: Record<string, string> = {
+    '11155420': 'OP Sep',
+    '84532': 'Base Sep',
+    '421614': 'Arb Sep',
+  }
+  return compactNames[chainId] ?? CHAIN_INFO[chainId]?.name ?? `Chain ${chainId}`
+}
+
 type PayCardPreview =
   | { status: 'idle' }
   | { status: 'loading' }
@@ -1846,7 +1855,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
             disabled={Boolean(isPaymentLocked) || !canSelectChain}
             className={`flex items-center gap-1 font-semibold underline underline-offset-2 ${selectorColor} ${disabledColor}`}
           >
-            {selectedChainInfo.name}
+            {payChainName(selectedChainId)}
             {canSelectChain && (
               <svg className={`h-3 w-3 transition-transform ${chainDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -1877,7 +1886,7 @@ export default function ProjectCard({ projectId, chainId: initialChainId = '1', 
                           : 'text-gray-700 hover:bg-gray-50'
                     }`}
                   >
-                    {info.name}
+                    {payChainName(chain.chainId.toString())}
                     {chain.projectId !== 0 && chain.projectId.toString() !== projectId && (
                       <span className={`ml-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                         (#{chain.projectId})
