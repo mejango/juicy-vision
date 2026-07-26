@@ -188,8 +188,27 @@ export async function resolveProjectMetadataForDisplay(args: {
   const hasEmbeddedMetadata = !!embedded && Object.keys(embedded).length > 0
   const hasIndexedMetadata = hasMetadataValues(indexed)
 
+  let onchainUri: string | undefined
+  if (args.loadOnchainMetadataUri) {
+    onchainUri = await args.loadOnchainMetadataUri()
+    if (onchainUri && onchainUri !== args.indexedMetadataUri) {
+      const fromOnchain = parseProjectMetadata(await fetchMetadata(onchainUri))
+      if (fromOnchain) {
+        return {
+          metadata: fillMissingMetadata(fromOnchain, indexed),
+          metadataUri: onchainUri,
+          source: 'onchain',
+        }
+      }
+    }
+  }
+
   if (hasEmbeddedMetadata) {
-    return { metadata: indexed, metadataUri: args.indexedMetadataUri, source: 'bendystraw' }
+    return {
+      metadata: indexed,
+      metadataUri: onchainUri ?? args.indexedMetadataUri,
+      source: onchainUri ? 'onchain' : 'bendystraw',
+    }
   }
   if (args.indexedMetadataUri) {
     const fromIndexedUri = parseProjectMetadata(await fetchMetadata(args.indexedMetadataUri))
@@ -201,16 +220,13 @@ export async function resolveProjectMetadataForDisplay(args: {
       }
     }
   }
-  if (args.loadOnchainMetadataUri) {
-    const onchainUri = await args.loadOnchainMetadataUri()
-    if (onchainUri) {
-      const fromOnchain = parseProjectMetadata(await fetchMetadata(onchainUri))
-      if (fromOnchain) {
-        return {
-          metadata: fillMissingMetadata(indexed, fromOnchain),
-          metadataUri: onchainUri,
-          source: hasIndexedMetadata ? 'bendystraw' : 'onchain',
-        }
+  if (onchainUri) {
+    const fromOnchain = parseProjectMetadata(await fetchMetadata(onchainUri))
+    if (fromOnchain) {
+      return {
+        metadata: fillMissingMetadata(fromOnchain, indexed),
+        metadataUri: onchainUri,
+        source: 'onchain',
       }
     }
   }

@@ -2,38 +2,41 @@ import { describe, expect, it, vi } from 'vitest'
 import { resolveProjectMetadataForDisplay } from './client'
 
 describe('project metadata display precedence', () => {
-  it('uses Bendystraw metadata without consulting the controller fallback', async () => {
+  it('uses live controller metadata when its URI is newer than Bendystraw', async () => {
     const loadOnchainMetadataUri = vi.fn().mockResolvedValue('ipfs://onchain')
-    const fetchMetadata = vi.fn()
+    const fetchMetadata = vi.fn().mockResolvedValue({
+      name: 'Live name',
+      logoUri: 'ipfs://live-logo',
+    })
     await expect(resolveProjectMetadataForDisplay({
       indexedMetadata: JSON.stringify({ name: 'Indexed name', logoUri: 'ipfs://logo' }),
       indexedMetadataUri: 'ipfs://indexed',
       loadOnchainMetadataUri,
       fetchMetadata,
     })).resolves.toMatchObject({
-      metadata: { name: 'Indexed name' },
-      metadataUri: 'ipfs://indexed',
-      source: 'bendystraw',
+      metadata: { name: 'Live name', logoUri: 'ipfs://live-logo' },
+      metadataUri: 'ipfs://onchain',
+      source: 'onchain',
     })
-    expect(loadOnchainMetadataUri).not.toHaveBeenCalled()
-    expect(fetchMetadata).not.toHaveBeenCalled()
+    expect(loadOnchainMetadataUri).toHaveBeenCalledOnce()
+    expect(fetchMetadata).toHaveBeenCalledWith('ipfs://onchain')
   })
 
-  it('loads Bendystraw metadataUri before the onchain fallback', async () => {
-    const loadOnchainMetadataUri = vi.fn().mockResolvedValue('ipfs://onchain')
+  it('uses Bendystraw metadata without refetching when the live URI matches', async () => {
+    const loadOnchainMetadataUri = vi.fn().mockResolvedValue('ipfs://indexed')
     const fetchMetadata = vi.fn(async uri => uri === 'ipfs://indexed'
       ? { name: 'Indexed URI name' }
       : { name: 'Onchain name' })
     await expect(resolveProjectMetadataForDisplay({
-      indexedMetadata: null,
+      indexedMetadata: { name: 'Indexed name' },
       indexedMetadataUri: 'ipfs://indexed',
       loadOnchainMetadataUri,
       fetchMetadata,
     })).resolves.toMatchObject({
-      metadata: { name: 'Indexed URI name' },
-      source: 'bendystraw',
+      metadata: { name: 'Indexed name' },
+      source: 'onchain',
     })
-    expect(loadOnchainMetadataUri).not.toHaveBeenCalled()
+    expect(fetchMetadata).not.toHaveBeenCalled()
   })
 
   it('fills parsed Bendystraw JSON from its denormalized metadata fields', async () => {
@@ -75,7 +78,7 @@ describe('project metadata display precedence', () => {
     expect(loadOnchainMetadataUri).toHaveBeenCalledOnce()
   })
 
-  it('keeps indexed fields primary while filling their gaps from the controller URI', async () => {
+  it('keeps live fields primary while filling their gaps from the index', async () => {
     const fetchMetadata = vi.fn(async () => ({
       name: 'Controller name',
       description: 'Controller description',
@@ -88,16 +91,16 @@ describe('project metadata display precedence', () => {
       fetchMetadata,
     })).resolves.toMatchObject({
       metadata: {
-        name: 'Indexed name',
+        name: 'Controller name',
         description: 'Controller description',
         logoUri: 'ipfs://indexed-logo',
         infoUri: 'https://controller.example',
       },
-      source: 'bendystraw',
+      source: 'onchain',
     })
   })
 
-  it('uses the current controller URI only when indexed metadata is unavailable', async () => {
+  it('uses the current controller URI when indexed metadata is unavailable', async () => {
     const loadOnchainMetadataUri = vi.fn().mockResolvedValue('ipfs://onchain')
     const fetchMetadata = vi.fn(async uri => uri === 'ipfs://onchain' ? { name: 'Live fallback' } : null)
     await expect(resolveProjectMetadataForDisplay({
@@ -110,8 +113,7 @@ describe('project metadata display precedence', () => {
       metadataUri: 'ipfs://onchain',
       source: 'onchain',
     })
-    expect(fetchMetadata).toHaveBeenNthCalledWith(1, 'ipfs://missing')
-    expect(fetchMetadata).toHaveBeenNthCalledWith(2, 'ipfs://onchain')
+    expect(fetchMetadata).toHaveBeenCalledWith('ipfs://onchain')
   })
 
   it('drops malformed known fields from user-controlled metadata', async () => {
