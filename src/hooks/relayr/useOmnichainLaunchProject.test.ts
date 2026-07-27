@@ -21,6 +21,7 @@ const mockBuildLaunch721 = vi.fn()
 const mockFetchCreationFee = vi.fn()
 const mockGetProjectIdsFromReceipts = vi.fn()
 const mockSafetyCall = vi.fn()
+const mockRunGuardedTx = vi.fn()
 
 let mockManagedWalletState = {
   address: MANAGED,
@@ -45,6 +46,15 @@ vi.mock('viem', async (importOriginal) => ({
 vi.mock('../useManagedWallet', () => ({
   useManagedWallet: vi.fn(() => mockManagedWalletState),
   createManagedRelayrBundle: (...args: unknown[]) => mockCreateManagedRelayrBundle(...args),
+}))
+
+vi.mock('../useGuardedTx', () => ({
+  useGuardedTx: vi.fn(() => ({
+    activeAddress: mockManagedWalletState.isManagedMode ? MANAGED : WALLET,
+    isManagedMode: mockManagedWalletState.isManagedMode,
+    isSafeMode: false,
+    run: mockRunGuardedTx,
+  })),
 }))
 
 vi.mock('../../services/relayr', () => ({
@@ -90,6 +100,7 @@ const mockSetProcessing = vi.fn()
 const mockSetError = vi.fn()
 const mockInitializeBundle = vi.fn()
 const mockUpdateFromStatus = vi.fn()
+const mockSetDirectCompleted = vi.fn()
 
 vi.mock('./useRelayrBundle', () => ({
   useRelayrBundle: vi.fn(() => ({
@@ -99,6 +110,7 @@ vi.mock('./useRelayrBundle', () => ({
     _initializeBundle: mockInitializeBundle,
     _setCreating: mockSetCreating,
     _setProcessing: mockSetProcessing,
+    _setDirectCompleted: mockSetDirectCompleted,
     _setError: mockSetError,
   })),
 }))
@@ -139,6 +151,7 @@ describe('useOmnichainLaunchProject', () => {
       isManagedMode: false,
     }
     mockFetchCreationFee.mockResolvedValue(FEE)
+    mockRunGuardedTx.mockResolvedValue('0xabc')
     mockBuildLaunch.mockImplementation(({ chainIds }: { chainIds: number[] }) => (
       recognizedTransactions(chainIds)
     ))
@@ -151,6 +164,20 @@ describe('useOmnichainLaunchProject', () => {
     mockCreateBalanceBundle.mockResolvedValue({ bundle_uuid: 'wallet-bundle' })
     mockCreateManagedRelayrBundle.mockResolvedValue({ bundleId: 'managed-bundle' })
     mockGetProjectIdsFromReceipts.mockResolvedValue({})
+  })
+
+  it('submits a one-chain launch directly without creating a Relayr bundle', async () => {
+    const params = { ...defaultParams, chainIds: [1] }
+    const { result } = renderHook(() => useOmnichainLaunchProject())
+
+    await act(async () => {
+      await result.current.launch(params)
+    })
+
+    expect(mockRunGuardedTx).toHaveBeenCalledOnce()
+    expect(mockSetDirectCompleted).toHaveBeenCalledWith(1, 0, '0xabc')
+    expect(mockCreateManagedRelayrBundle).not.toHaveBeenCalled()
+    expect(mockCreateBalanceBundle).not.toHaveBeenCalled()
   })
 
   it('starts idle with no invented project IDs', () => {

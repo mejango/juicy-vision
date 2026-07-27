@@ -65,9 +65,9 @@ npm run dev
 ```
 
 **Services:**
-- Frontend: http://localhost:3000
-- Backend: http://localhost:3001
-- Debug Dashboard: http://localhost:3001/api/debug
+- Frontend: http://localhost:3003
+- Backend: http://localhost:3004
+- Debug Dashboard: http://localhost:3004/api/debug
 
 ## Restarting Services
 
@@ -99,7 +99,7 @@ as a one-shot command avoids startup races between API replicas.
 
 ```bash
 # Kill existing process and restart
-lsof -ti:3001 | xargs kill -9 2>/dev/null
+lsof -ti:3004 | xargs kill -9 2>/dev/null
 cd backend && deno task dev
 ```
 
@@ -107,7 +107,7 @@ cd backend && deno task dev
 
 ```bash
 # Kill existing process and restart
-lsof -ti:3000 | xargs kill -9 2>/dev/null
+lsof -ti:3003 | xargs kill -9 2>/dev/null
 npm run dev
 ```
 
@@ -117,7 +117,7 @@ npm run dev
 
 ```bash
 # Development only - clears all data but keeps tables
-curl -X POST http://localhost:3001/api/debug/reset-db
+curl -X POST http://localhost:3004/api/debug/reset-db
 ```
 
 This truncates all tables while preserving the schema. The endpoint is **blocked in production**.
@@ -136,7 +136,7 @@ docker run -d --name juicyvision-db \
   postgres:16.14-alpine3.24@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
 
 # Stop the backend, initialize the fresh schema, then restart it
-lsof -ti:3001 | xargs kill -9 2>/dev/null
+lsof -ti:3004 | xargs kill -9 2>/dev/null
 cd backend
 DATABASE_URL=postgresql://juicy:juicy123@localhost:5432/juicyvision deno task migrate
 deno task dev
@@ -159,7 +159,7 @@ Backend configuration is in `backend/.env`. Create it from the example and fill 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PORT` | `3001` | Backend server port |
+| `PORT` | `3004` | Backend server port |
 | `DENO_ENV` | `development` | Environment (`development` or `production`) |
 | `TESTNET_MODE` | `false` | Use testnet chains instead of mainnet |
 

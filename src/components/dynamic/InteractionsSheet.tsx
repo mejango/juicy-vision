@@ -218,7 +218,7 @@ function getProjectInteractions(projectId: string, chainId: string): Interaction
     {
       id: 'manage',
       title: 'Manage',
-      description: 'Owner actions',
+      description: 'Project owner actions',
       interactions: [
         {
           id: 'payouts',

@@ -31,6 +31,7 @@ vi.mock('../../services/omnichainDeployer', () => ({
 
 // Mock managed wallet hook
 const mockCreateManagedRelayrBundle = vi.fn()
+const mockRunGuardedTx = vi.fn()
 
 vi.mock('../useManagedWallet', () => ({
   useManagedWallet: vi.fn(() => ({
@@ -38,6 +39,15 @@ vi.mock('../useManagedWallet', () => ({
     isLoading: false,
   })),
   createManagedRelayrBundle: (...args: unknown[]) => mockCreateManagedRelayrBundle(...args),
+}))
+
+vi.mock('../useGuardedTx', () => ({
+  useGuardedTx: vi.fn(() => ({
+    activeAddress: MANAGED_ACCOUNT,
+    isManagedMode: true,
+    isSafeMode: false,
+    run: mockRunGuardedTx,
+  })),
 }))
 
 vi.mock('../../utils/transactionSafety', () => ({
@@ -82,6 +92,7 @@ const mockSetProcessing = vi.fn()
 const mockSetError = vi.fn()
 const mockInitializeBundle = vi.fn()
 const mockUpdateFromStatus = vi.fn()
+const mockSetDirectCompleted = vi.fn()
 
 vi.mock('./useRelayrBundle', () => ({
   useRelayrBundle: vi.fn(() => ({
@@ -91,6 +102,7 @@ vi.mock('./useRelayrBundle', () => ({
     _initializeBundle: mockInitializeBundle,
     _setCreating: mockSetCreating,
     _setProcessing: mockSetProcessing,
+    _setDirectCompleted: mockSetDirectCompleted,
     _setError: mockSetError,
   })),
 }))
@@ -118,6 +130,7 @@ describe('useOmnichainDeployRevnet', () => {
     mockCreateManagedRelayrBundle.mockResolvedValue({
       bundleId: 'test-bundle-id',
     })
+    mockRunGuardedTx.mockResolvedValue('0xabc')
   })
 
   const defaultParams: OmnichainDeployRevnetParams = {
@@ -137,6 +150,23 @@ describe('useOmnichainDeployRevnet', () => {
     tagline: 'A test revenue network',
     projectUri: 'ipfs://bafybeigdyrzt5sfp7udm7hu76uh7y26nf3gq2t5lz2wqzzx4m6w6v7s7qm',
   }
+
+  it('submits a one-chain deployment directly without creating a Relayr bundle', async () => {
+    mockBuildOmnichainDeployRevnetTransactions.mockResolvedValue({
+      transactions: validTransactions([1]),
+      predictedProjectIds: { 1: 7 },
+      predictedTokenAddress: '0x0000000000000000000000000000000000000000',
+    })
+    const { result } = renderHook(() => useOmnichainDeployRevnet())
+
+    await act(async () => {
+      await result.current.deploy({ ...defaultParams, chainIds: [1] })
+    })
+
+    expect(mockRunGuardedTx).toHaveBeenCalledOnce()
+    expect(mockSetDirectCompleted).toHaveBeenCalledWith(1, 7, '0xabc')
+    expect(mockCreateManagedRelayrBundle).not.toHaveBeenCalled()
+  })
 
   describe('initial state', () => {
     it('returns correct initial state', () => {

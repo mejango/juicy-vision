@@ -14,11 +14,11 @@
  * CURRENT set, aborting if it drifted from that preloaded snapshot.
  */
 
-import { useCallback, useEffect, useState } from 'react'
-import { isAddress, type Address } from 'viem'
-import { useThemeStore } from '../../../stores'
-import { ExplainerMessage } from '../../ui/ExplainerMessage'
-import { useGuardedTx } from '../../../hooks/useGuardedTx'
+import { useCallback, useEffect, useState } from "react";
+import { isAddress, type Address } from "viem";
+import { useThemeStore } from "../../../stores";
+import { ExplainerMessage } from "../../ui/ExplainerMessage";
+import { useGuardedTx } from "../../../hooks/useGuardedTx";
 import {
   buildSetPermissionsRequest,
   canEditPermissions,
@@ -34,28 +34,36 @@ import {
   selectedPermissionIds,
   type PermissionSelection,
   type ProjectOperator,
-} from '../../../services/permissionsAdmin'
-import { BackOfficeCard, BackOfficeModal, ChainRunRows, DangerGate, chainName, shortAddress, type ChainRunState } from './shared'
+} from "../../../services/permissionsAdmin";
+import {
+  BackOfficeCard,
+  BackOfficeModal,
+  ChainRunRows,
+  DangerGate,
+  chainName,
+  shortAddress,
+  type ChainRunState,
+} from "./shared";
 
 export interface PermissionsCardProps {
   /** Home-chain project id — used ONLY for the indexer operators-list query
    *  (which is keyed by the home project). Every on-chain read/write resolves
    *  the id ON its chain via `resolveProjectId`. */
-  projectId: number
+  projectId: number;
   /** Resolve the project's id ON a given chain (V6 ids differ per chain); null = not on that chain. */
-  resolveProjectId: (chainId: number) => bigint | null
-  chainIds: number[]
-  isRevnet: boolean
+  resolveProjectId: (chainId: number) => bigint | null;
+  chainIds: number[];
+  isRevnet: boolean;
 }
 
 // ─── Editor modal (custom projects only) ─────────────────────────────────────
 
 interface ChainSnapshot {
-  chainId: number
+  chainId: number;
   /** The grantor baked into the calldata — the project owner at review time. */
-  owner: Address
+  owner: Address;
   /** The operator's on-chain permission ids at review time (the preloaded snapshot). */
-  permissionIds: number[]
+  permissionIds: number[];
 }
 
 function SetPermissionsModal({
@@ -65,103 +73,127 @@ function SetPermissionsModal({
   onClose,
   onChanged,
 }: {
-  resolveProjectId: (chainId: number) => bigint | null
-  chainIds: number[]
+  resolveProjectId: (chainId: number) => bigint | null;
+  chainIds: number[];
   /** null → adding a new operator. */
-  existingOperator: Address | null
-  onClose: () => void
-  onChanged: () => void
+  existingOperator: Address | null;
+  onClose: () => void;
+  onChanged: () => void;
 }) {
-  const { theme } = useThemeStore()
-  const isDark = theme === 'dark'
-  const { activeAddress, run } = useGuardedTx()
+  const { theme } = useThemeStore();
+  const isDark = theme === "dark";
+  const { activeAddress, run } = useGuardedTx();
 
-  const editing = existingOperator !== null
-  const [operatorInput, setOperatorInput] = useState(existingOperator ?? '')
-  const [selection, setSelection] = useState<PermissionSelection | null>(editing ? null : preloadPermissionSelection([]))
-  const [snapshots, setSnapshots] = useState<Record<number, ChainSnapshot> | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
-  const [gateChecked, setGateChecked] = useState(false)
-  const [rootConfirmed, setRootConfirmed] = useState(false)
-  const [statuses, setStatuses] = useState<Record<number, ChainRunState>>({})
+  const editing = existingOperator !== null;
+  const [operatorInput, setOperatorInput] = useState(existingOperator ?? "");
+  const [selection, setSelection] = useState<PermissionSelection | null>(
+    editing ? null : preloadPermissionSelection([]),
+  );
+  const [snapshots, setSnapshots] = useState<Record<
+    number,
+    ChainSnapshot
+  > | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [gateChecked, setGateChecked] = useState(false);
+  const [rootConfirmed, setRootConfirmed] = useState(false);
+  const [statuses, setStatuses] = useState<Record<number, ChainRunState>>({});
 
-  const trimmedOperator = operatorInput.trim()
-  const operatorValid = isAddress(trimmedOperator)
-  const operator = operatorValid ? (trimmedOperator as Address) : null
+  const trimmedOperator = operatorInput.trim();
+  const operatorValid = isAddress(trimmedOperator);
+  const operator = operatorValid ? (trimmedOperator as Address) : null;
 
   // Snapshot the reviewed state per chain: the owner (grantor) and the
   // operator's CURRENT on-chain permission ids. For an edit, the checklist
   // preloads from the union of those per-chain sets (on-chain truth, not the
   // indexer); for a new operator the snapshot is whatever it already holds
   // (normally nothing).
-  const loadSnapshots = useCallback(async (op: Address) => {
-    setSnapshots(null)
-    setLoadError(null)
-    try {
-      const loaded = await Promise.all(
-        chainIds.map(async (chainId): Promise<ChainSnapshot | null> => {
-          // This chain's OWN project id (V6 ids differ per chain); a chain that
-          // isn't this project's is skipped, never read/written with the home id.
-          const pid = resolveProjectId(chainId)
-          if (pid == null) return null
-          const owner = await readProjectOwner(chainId, pid)
-          const permissionIds = await readPermissionIds({ chainId, operator: op, account: owner, projectId: pid })
-          return { chainId, owner, permissionIds }
-        }),
-      )
-      const byChain: Record<number, ChainSnapshot> = {}
-      const union = new Set<number>()
-      for (const snapshot of loaded) {
-        if (!snapshot) continue
-        byChain[snapshot.chainId] = snapshot
-        for (const id of snapshot.permissionIds) union.add(id)
+  const loadSnapshots = useCallback(
+    async (op: Address) => {
+      setSnapshots(null);
+      setLoadError(null);
+      try {
+        const loaded = await Promise.all(
+          chainIds.map(async (chainId): Promise<ChainSnapshot | null> => {
+            // This chain's OWN project id (V6 ids differ per chain); a chain that
+            // isn't this project's is skipped, never read/written with the home id.
+            const pid = resolveProjectId(chainId);
+            if (pid == null) return null;
+            const owner = await readProjectOwner(chainId, pid);
+            const permissionIds = await readPermissionIds({
+              chainId,
+              operator: op,
+              account: owner,
+              projectId: pid,
+            });
+            return { chainId, owner, permissionIds };
+          }),
+        );
+        const byChain: Record<number, ChainSnapshot> = {};
+        const union = new Set<number>();
+        for (const snapshot of loaded) {
+          if (!snapshot) continue;
+          byChain[snapshot.chainId] = snapshot;
+          for (const id of snapshot.permissionIds) union.add(id);
+        }
+        setSnapshots(byChain);
+        // Merge-with-existing preload: the replacement set starts from what the
+        // operator already holds so a single add doesn't silently revoke the rest.
+        setSelection(preloadPermissionSelection([...union]));
+      } catch (error) {
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Could not read the current permissions.",
+        );
       }
-      setSnapshots(byChain)
-      // Merge-with-existing preload: the replacement set starts from what the
-      // operator already holds so a single add doesn't silently revoke the rest.
-      setSelection(preloadPermissionSelection([...union]))
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'Could not read the current permissions.')
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resolveProjectId, chainIds.join(',')])
+    },
+    [resolveProjectId, chainIds],
+  );
 
   useEffect(() => {
-    if (editing && existingOperator) void loadSnapshots(existingOperator)
-  }, [editing, existingOperator, loadSnapshots])
+    if (editing && existingOperator) void loadSnapshots(existingOperator);
+  }, [editing, existingOperator, loadSnapshots]);
 
   // New operator: snapshot once the address is valid (re-run when it changes).
   useEffect(() => {
-    if (!editing && operator) void loadSnapshots(operator)
-  }, [editing, operator, loadSnapshots])
+    if (!editing && operator) void loadSnapshots(operator);
+  }, [editing, operator, loadSnapshots]);
 
-  const ids = selection ? selectedPermissionIds(selection) : []
+  const ids = selection ? selectedPermissionIds(selection) : [];
   // ROOT (id 1) grants EVERYTHING — one mis-click hands over the whole project.
   // Require an explicit second confirmation before it can be submitted.
-  const rootSelected = ids.includes(JB_ROOT_PERMISSION_ID)
-  const rootBlocked = rootSelected && !rootConfirmed
-  const anyRunning = Object.values(statuses).some(status => status.kind === 'running')
-  const ready = !!operator && !!selection && !!snapshots && !loadError
+  const rootSelected = ids.includes(JB_ROOT_PERMISSION_ID);
+  const rootBlocked = rootSelected && !rootConfirmed;
+  const anyRunning = Object.values(statuses).some(
+    (status) => status.kind === "running",
+  );
+  const ready = !!operator && !!selection && !!snapshots && !loadError;
 
   const setStatus = (chainId: number, status: ChainRunState) =>
-    setStatuses(previous => ({ ...previous, [chainId]: status }))
+    setStatuses((previous) => ({ ...previous, [chainId]: status }));
 
   const execute = async (chainId: number) => {
     if (!activeAddress) {
-      setStatus(chainId, { kind: 'error', message: 'Connect a wallet first.' })
-      return
+      setStatus(chainId, { kind: "error", message: "Connect a wallet first." });
+      return;
     }
-    if (!operator || !snapshots) return
-    const snapshot = snapshots[chainId]
+    if (!operator || !snapshots) return;
+    const snapshot = snapshots[chainId];
     if (!snapshot) {
-      setStatus(chainId, { kind: 'error', message: `No reviewed snapshot for ${chainName(chainId)}. Reopen to refresh.` })
-      return
+      setStatus(chainId, {
+        kind: "error",
+        message: `No reviewed snapshot for ${chainName(chainId)}. Reopen to refresh.`,
+      });
+      return;
     }
     // This chain's OWN project id (V6 ids differ per chain); no id → skip it.
-    const pid = resolveProjectId(chainId)
+    const pid = resolveProjectId(chainId);
     if (pid == null) {
-      setStatus(chainId, { kind: 'error', message: `This project is not on ${chainName(chainId)}.` })
-      return
+      setStatus(chainId, {
+        kind: "error",
+        message: `This project is not on ${chainName(chainId)}.`,
+      });
+      return;
     }
     try {
       const request = buildSetPermissionsRequest({
@@ -170,73 +202,92 @@ function SetPermissionsModal({
         operator,
         projectId: pid,
         permissionIds: ids,
-      })
+      });
       const txHash = await run({
         chainId,
         to: request.to,
         data: request.data,
         review: {
-          title: 'Review operator permissions',
-          label: `Replace ${shortAddress(operator)}'s project permissions with ${ids.length} selected permission${ids.length === 1 ? '' : 's'}`,
-          contractName: 'JBPermissions',
+          title: "Review project operator permissions",
+          label: `Replace ${shortAddress(operator)}'s project permissions with ${ids.length} selected permission${ids.length === 1 ? "" : "s"}`,
+          contractName: "JBPermissions",
           ...request.review,
         },
         // Reviewed-state re-verification: abort when the operator's CURRENT
         // set drifted from the preloaded snapshot (someone else changed it —
         // this tx would silently clobber theirs), or the owner changed.
         reverify: async () => {
-          const owner = await readProjectOwner(chainId, pid)
+          const owner = await readProjectOwner(chainId, pid);
           if (owner.toLowerCase() !== snapshot.owner.toLowerCase()) {
-            throw new Error(`The project owner on ${chainName(chainId)} changed since review. Reopen to refresh.`)
+            throw new Error(
+              `The project owner on ${chainName(chainId)} changed since review. Reopen to refresh.`,
+            );
           }
-          const current = await readPermissionIds({ chainId, operator, account: owner, projectId: pid })
+          const current = await readPermissionIds({
+            chainId,
+            operator,
+            account: owner,
+            projectId: pid,
+          });
           if (permissionSetsDiffer(current, snapshot.permissionIds)) {
             throw new Error(
               `The operator's permissions on ${chainName(chainId)} changed since review — setting them now would overwrite that change. Reopen to refresh.`,
-            )
+            );
           }
         },
-        onPhase: phase => setStatus(chainId, { kind: 'running', phase }),
-      })
-      setStatus(chainId, { kind: 'done', txHash })
-      onChanged()
+        onPhase: (phase) => setStatus(chainId, { kind: "running", phase }),
+      });
+      setStatus(chainId, { kind: "done", txHash });
+      onChanged();
     } catch (error) {
       setStatus(chainId, {
-        kind: 'error',
-        message: error instanceof Error ? error.message : 'Setting the permissions failed.',
-      })
+        kind: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Setting the permissions failed.",
+      });
     }
-  }
+  };
 
   return (
     <BackOfficeModal
-      title={editing ? 'Edit permissions' : 'Add operator'}
+      title={editing ? "Edit permissions" : "Add project operator"}
       onClose={onClose}
       busy={anyRunning}
       isDark={isDark}
     >
-      <p className={`text-sm leading-relaxed ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-        Grants the checked permissions to the operator for this project. Setting permissions REPLACES the
-        operator's current set on each chain — unchecking a box revokes that power, and clearing every box
-        removes the operator.
+      <p
+        className={`text-sm leading-relaxed ${isDark ? "text-gray-400" : "text-gray-600"}`}
+      >
+        Grants the checked permissions to the operator for this project. Setting
+        permissions REPLACES the operator's current set on each chain —
+        unchecking a box revokes that power, and clearing every box removes the
+        operator.
       </p>
 
       <div className="space-y-1">
-        <label className={`block text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Operator</label>
+        <label
+          className={`block text-sm font-medium ${isDark ? "text-gray-300" : "text-gray-700"}`}
+        >
+          Project operator
+        </label>
         <input
           type="text"
           value={operatorInput}
-          onChange={event => setOperatorInput(event.target.value)}
+          onChange={(event) => setOperatorInput(event.target.value)}
           disabled={editing}
-          placeholder="0x… operator address"
+          placeholder="0x… project operator address"
           spellCheck={false}
           className={`w-full px-3 py-2 text-sm font-mono border bg-transparent outline-none disabled:opacity-60 ${
             isDark
-              ? 'border-white/20 text-white placeholder-gray-600 focus:border-white/40'
-              : 'border-gray-300 text-gray-900 placeholder-gray-400 focus:border-gray-500'
+              ? "border-white/20 text-white placeholder-gray-600 focus:border-white/40"
+              : "border-gray-300 text-gray-900 placeholder-gray-400 focus:border-gray-500"
           }`}
         />
-        {trimmedOperator && !operatorValid ? <p className="text-sm text-red-400">Not a valid address.</p> : null}
+        {trimmedOperator && !operatorValid ? (
+          <p className="text-sm text-red-400">Not a valid address.</p>
+        ) : null}
       </div>
 
       {loadError ? (
@@ -246,66 +297,105 @@ function SetPermissionsModal({
       ) : null}
 
       {operator && !selection ? (
-        <div className={`h-20 animate-pulse ${isDark ? 'bg-white/5' : 'bg-gray-100'}`} />
+        <div
+          className={`h-20 animate-pulse ${isDark ? "bg-white/5" : "bg-gray-100"}`}
+        />
       ) : null}
 
       {selection ? (
         <div className="space-y-1">
-          <div className={`text-sm font-medium ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>Permissions</div>
-          <div className={`max-h-72 overflow-y-auto border divide-y ${
-            isDark ? 'border-white/10 divide-white/5' : 'border-gray-200 divide-gray-100'
-          }`}>
-            {PERMISSIONS.map(info => (
-              <label key={info.id} className="flex items-start gap-3 px-3 py-2 cursor-pointer">
+          <div
+            className={`text-sm font-medium ${isDark ? "text-gray-300" : "text-gray-700"}`}
+          >
+            Permissions
+          </div>
+          <div
+            className={`max-h-72 overflow-y-auto border divide-y ${
+              isDark
+                ? "border-white/10 divide-white/5"
+                : "border-gray-200 divide-gray-100"
+            }`}
+          >
+            {PERMISSIONS.map((info) => (
+              <label
+                key={info.id}
+                className="flex items-start gap-3 px-3 py-2 cursor-pointer"
+              >
                 <input
                   type="checkbox"
                   checked={!!selection[info.id]}
-                  onChange={event =>
-                    setSelection(previous => (previous ? { ...previous, [info.id]: event.target.checked } : previous))
+                  onChange={(event) =>
+                    setSelection((previous) =>
+                      previous
+                        ? { ...previous, [info.id]: event.target.checked }
+                        : previous,
+                    )
                   }
                   className="mt-0.5 w-4 h-4"
                 />
                 <span className="min-w-0">
-                  <span className={`block text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {info.label} <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>#{info.id}</span>
+                  <span
+                    className={`block text-sm ${isDark ? "text-white" : "text-gray-900"}`}
+                  >
+                    {info.label}{" "}
+                    <span
+                      className={isDark ? "text-gray-500" : "text-gray-400"}
+                    >
+                      #{info.id}
+                    </span>
                   </span>
-                  <span className={`block text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                  <span
+                    className={`block text-xs ${isDark ? "text-gray-500" : "text-gray-500"}`}
+                  >
                     {info.description}
                   </span>
                 </span>
               </label>
             ))}
           </div>
-          <p className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+          <p
+            className={`text-xs ${isDark ? "text-gray-500" : "text-gray-500"}`}
+          >
             {ids.length
-              ? `This replaces the operator's set with ${ids.length} permission${ids.length === 1 ? '' : 's'}.`
-              : 'No boxes checked — this removes the operator entirely.'}
+              ? `This replaces the operator's set with ${ids.length} permission${ids.length === 1 ? "" : "s"}.`
+              : "No boxes checked — this removes the project operator entirely."}
           </p>
         </div>
       ) : null}
 
       {rootSelected ? (
-        <div className={`border p-3 space-y-2 ${isDark ? 'border-red-500/50 bg-red-500/10' : 'border-red-400 bg-red-50'}`} role="alert">
-          <p className={`text-sm font-semibold ${isDark ? 'text-red-300' : 'text-red-700'}`}>
-            Full control (root) selected — this grants the operator EVERY permission on the project, equivalent to
-            handing over ownership. Anyone with root can drain funds, mint tokens, and re-permission others.
+        <div
+          className={`border p-3 space-y-2 ${isDark ? "border-red-500/50 bg-red-500/10" : "border-red-400 bg-red-50"}`}
+          role="alert"
+        >
+          <p
+            className={`text-sm font-semibold ${isDark ? "text-red-300" : "text-red-700"}`}
+          >
+            Full control (root) selected — this grants the operator EVERY
+            permission on the project, equivalent to handing over ownership.
+            Anyone with root can drain funds, mint tokens, and re-permission
+            others.
           </p>
-          <label className={`flex items-start gap-2 text-sm cursor-pointer ${isDark ? 'text-red-200' : 'text-red-800'}`}>
+          <label
+            className={`flex items-start gap-2 text-sm cursor-pointer ${isDark ? "text-red-200" : "text-red-800"}`}
+          >
             <input
               type="checkbox"
               checked={rootConfirmed}
-              onChange={event => setRootConfirmed(event.target.checked)}
+              onChange={(event) => setRootConfirmed(event.target.checked)}
               className="mt-0.5 w-4 h-4"
             />
-            <span>I understand I am granting FULL CONTROL (root) and intend to.</span>
+            <span>
+              I understand I am granting FULL CONTROL (root) and intend to.
+            </span>
           </label>
         </div>
       ) : null}
 
       <DangerGate
         isDark={isDark}
-        text="Granting permissions lets the operator act on the project's behalf for the checked powers. Verify the address — a wrong or malicious operator can use these powers against the project. You can change or revoke them here at any time."
-        confirmLabel="I've verified the operator address and the permissions I'm granting."
+        text="Granting permissions lets the project operator act on the project's behalf for the checked powers. Verify the address — a wrong or malicious project operator can use these powers against the project. You can change or revoke them here at any time."
+        confirmLabel="I've verified the project operator address and the permissions I'm granting."
         checked={gateChecked}
         onChange={setGateChecked}
       />
@@ -317,98 +407,130 @@ function SetPermissionsModal({
         disabled={!ready || !gateChecked || rootBlocked || anyRunning}
         disabledReason={
           !operator
-            ? 'Enter a valid operator address first'
+            ? "Enter a valid project operator address first"
             : !ready
-              ? 'Reading current permissions…'
+              ? "Reading current permissions…"
               : rootBlocked
-                ? 'Confirm the full-control (root) grant to proceed'
-                : 'Tick the confirmation box to proceed'
+                ? "Confirm the full-control (root) grant to proceed"
+                : "Tick the confirmation box to proceed"
         }
         isDark={isDark}
       />
     </BackOfficeModal>
-  )
+  );
 }
 
 // ─── Card ────────────────────────────────────────────────────────────────────
 
-export function PermissionsCard({ projectId, resolveProjectId, chainIds, isRevnet }: PermissionsCardProps) {
-  const { theme } = useThemeStore()
-  const isDark = theme === 'dark'
+export function PermissionsCard({
+  projectId,
+  resolveProjectId,
+  chainIds,
+  isRevnet,
+}: PermissionsCardProps) {
+  const { theme } = useThemeStore();
+  const isDark = theme === "dark";
 
-  const [operators, setOperators] = useState<ProjectOperator[] | null>(null)
-  const [failed, setFailed] = useState(false)
-  const [editor, setEditor] = useState<{ operator: Address | null } | null>(null)
-  const [refreshNonce, setRefreshNonce] = useState(0)
+  const [operators, setOperators] = useState<ProjectOperator[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [editor, setEditor] = useState<{ operator: Address | null } | null>(
+    null,
+  );
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
-  const editable = canEditPermissions(isRevnet)
+  const editable = canEditPermissions(isRevnet);
 
   useEffect(() => {
-    let cancelled = false
-    setFailed(false)
+    let cancelled = false;
+    setFailed(false);
     // Each chain queried with its own project id (V6 ids differ per chain);
     // a chain with no resolvable id is skipped, never read with the home id.
     const chainProjects = chainIds
-      .map(chainId => ({ chainId, projectId: resolveProjectId(chainId) }))
-      .filter((cp): cp is { chainId: number; projectId: bigint } => cp.projectId != null)
+      .map((chainId) => ({ chainId, projectId: resolveProjectId(chainId) }))
+      .filter(
+        (cp): cp is { chainId: number; projectId: bigint } =>
+          cp.projectId != null,
+      );
     fetchPermissionOperators(chainProjects)
-      .then(result => {
-        if (!cancelled) setOperators(result)
+      .then((result) => {
+        if (!cancelled) setOperators(result);
       })
       .catch(() => {
         if (!cancelled) {
-          setOperators(null)
-          setFailed(true)
+          setOperators(null);
+          setFailed(true);
         }
-      })
+      });
     return () => {
-      cancelled = true
-    }
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, chainIds.join(','), refreshNonce])
+  }, [projectId, chainIds.join(","), refreshNonce]);
 
   return (
     <BackOfficeCard title="Permissions" isDark={isDark}>
       <ExplainerMessage>
         {isRevnet
-          ? "What this revnet's operator is allowed to do. These powers come with the operator role (the default revnet powers plus any NFT powers granted when the revnet was deployed)."
-          : "Operators the owner has authorized to act on the project's behalf, and what each one can do. The owner can grant or revoke permissions at any time."}
+          ? "What this revnet's project operator is allowed to do. These powers come with the project operator role (the default revnet powers plus any NFT powers granted when the revnet was deployed)."
+          : "Project operators the project owner has authorized to act on the project's behalf, and what each one can do. The project owner can grant or revoke permissions at any time."}
       </ExplainerMessage>
 
       {failed ? (
-        <p className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Could not read permissions.</p>
+        <p className={`text-sm ${isDark ? "text-gray-500" : "text-gray-400"}`}>
+          Could not read permissions.
+        </p>
       ) : operators === null ? (
-        <div className={`h-10 animate-pulse ${isDark ? 'bg-white/5' : 'bg-gray-100'}`} />
+        <div
+          className={`h-10 animate-pulse ${isDark ? "bg-white/5" : "bg-gray-100"}`}
+        />
       ) : operators.length === 0 ? (
-        <p className={`text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-          {isRevnet ? 'No operator permissions found.' : 'No operators authorized yet.'}
+        <p className={`text-sm ${isDark ? "text-gray-500" : "text-gray-400"}`}>
+          {isRevnet
+            ? "No project operator permissions found."
+            : "No project operators authorized yet."}
         </p>
       ) : (
         <div className="space-y-3">
-          {operators.map(group => (
-            <div key={group.operator} className={`border p-3 space-y-2 ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          {operators.map((group) => (
+            <div
+              key={group.operator}
+              className={`border p-3 space-y-2 ${isDark ? "border-white/10" : "border-gray-200"}`}
+            >
               <div className="flex items-center gap-2">
-                <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`} title={group.operator}>
+                <span
+                  className={`text-sm font-mono ${isDark ? "text-white" : "text-gray-900"}`}
+                  title={group.operator}
+                >
                   {shortAddress(group.operator)}
                 </span>
                 {group.isRevnetOperator ? (
                   <span
                     className={`px-1.5 py-0.5 text-xs font-medium ${
-                      isDark ? 'bg-green-500/20 text-green-400' : 'bg-green-100 text-green-700'
+                      isDark
+                        ? "bg-green-500/20 text-green-400"
+                        : "bg-green-100 text-green-700"
                     }`}
                   >
-                    Operator
+                    Project operator
                   </span>
                 ) : null}
-                <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  {group.chains.map(chainName).join(', ')}
+                <span
+                  className={`text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`}
+                >
+                  {group.chains.map(chainName).join(", ")}
                 </span>
               </div>
               <div className="space-y-1">
-                {group.permissionIds.map(id => (
+                {group.permissionIds.map((id) => (
                   <div key={id} className="text-sm">
-                    <span className={isDark ? 'text-gray-200' : 'text-gray-800'}>{permissionLabel(id)}</span>{' '}
-                    <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+                    <span
+                      className={isDark ? "text-gray-200" : "text-gray-800"}
+                    >
+                      {permissionLabel(id)}
+                    </span>{" "}
+                    <span
+                      className={`text-xs ${isDark ? "text-gray-500" : "text-gray-500"}`}
+                    >
                       {permissionDescription(id)}
                     </span>
                   </div>
@@ -418,7 +540,9 @@ export function PermissionsCard({ projectId, resolveProjectId, chainIds, isRevne
                 <button
                   onClick={() => setEditor({ operator: group.operator })}
                   className={`text-sm underline decoration-dotted underline-offset-2 transition-colors ${
-                    isDark ? 'text-juice-cyan hover:text-white' : 'text-cyan-700 hover:text-gray-900'
+                    isDark
+                      ? "text-juice-cyan hover:text-white"
+                      : "text-cyan-700 hover:text-gray-900"
                   }`}
                 >
                   Edit permissions
@@ -433,7 +557,9 @@ export function PermissionsCard({ projectId, resolveProjectId, chainIds, isRevne
         <button
           onClick={() => setEditor({ operator: null })}
           className={`text-sm underline decoration-dotted underline-offset-2 transition-colors ${
-            isDark ? 'text-juice-cyan hover:text-white' : 'text-cyan-700 hover:text-gray-900'
+            isDark
+              ? "text-juice-cyan hover:text-white"
+              : "text-cyan-700 hover:text-gray-900"
           }`}
         >
           + Add operator
@@ -446,9 +572,9 @@ export function PermissionsCard({ projectId, resolveProjectId, chainIds, isRevne
           chainIds={chainIds}
           existingOperator={editor.operator}
           onClose={() => setEditor(null)}
-          onChanged={() => setRefreshNonce(nonce => nonce + 1)}
+          onChanged={() => setRefreshNonce((nonce) => nonce + 1)}
         />
       ) : null}
     </BackOfficeCard>
-  )
+  );
 }

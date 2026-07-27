@@ -65,11 +65,11 @@
 #
 # Using curl with the development secret:
 #
-# curl -X POST http://localhost:3001/api/cron/transfers \
+# curl -X POST http://localhost:3004/api/cron/transfers \
 #   -H "X-Cron-Secret: dev-cron-secret"
 #
-# curl -X POST http://localhost:3001/api/cron/maintenance \
+# curl -X POST http://localhost:3004/api/cron/maintenance \
 #   -H "X-Cron-Secret: dev-cron-secret"
 #
-# curl http://localhost:3001/api/cron/health \
+# curl http://localhost:3004/api/cron/health \
 #   -H "X-Cron-Secret: dev-cron-secret"

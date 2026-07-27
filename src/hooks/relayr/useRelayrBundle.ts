@@ -118,6 +118,34 @@ export function useRelayrBundle(): UseRelayrBundleReturn {
   }, [])
 
   /**
+   * Complete a single-chain operation that was submitted directly instead of
+   * through Relayr. The synthetic ID keeps existing completion/persistence
+   * consumers working without registering a fake Relayr activity.
+   */
+  const setDirectCompleted = useCallback((
+    chainId: number,
+    projectId: number,
+    txHash: string,
+  ) => {
+    const directId = `direct:${chainId}:${txHash}`
+    bundleIdRef.current = directId
+    setBundleState({
+      bundleId: directId,
+      status: 'completed',
+      chainStates: [{
+        chainId,
+        projectId,
+        status: 'confirmed',
+        txHash,
+      }],
+      paymentOptions: [],
+      selectedPaymentChain: null,
+      paymentTxHash: txHash,
+      error: null,
+    })
+  }, [])
+
+  /**
    * Set error state
    */
   const setError = useCallback((error: string) => {
@@ -302,6 +330,7 @@ export function useRelayrBundle(): UseRelayrBundleReturn {
     _initializeBundle: initializeBundle,
     _setCreating: setCreating,
     _setProcessing: setProcessing,
+    _setDirectCompleted: setDirectCompleted,
     _setError: setError,
     _setExpired: setExpired,
   }), [
@@ -318,12 +347,14 @@ export function useRelayrBundle(): UseRelayrBundleReturn {
     initializeBundle,
     setCreating,
     setProcessing,
+    setDirectCompleted,
     setError,
     setExpired,
   ]) as UseRelayrBundleReturn & {
     _initializeBundle: typeof initializeBundle
     _setCreating: typeof setCreating
     _setProcessing: typeof setProcessing
+    _setDirectCompleted: typeof setDirectCompleted
     _setError: typeof setError
     _setExpired: typeof setExpired
   }

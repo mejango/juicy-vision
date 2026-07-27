@@ -493,7 +493,7 @@ function LaunchProjectSummary({ details, isDark }: { details: LaunchProjectDetai
         </li>
         <li className="flex items-start gap-2">
           <span className="shrink-0">-</span>
-          <span>Owner: {truncateAddress(details.owner)}</span>
+          <span>Project owner: {truncateAddress(details.owner)}</span>
         </li>
         {details.initialIssuance && (
           <li className="flex items-start gap-2">

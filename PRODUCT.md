@@ -102,7 +102,7 @@ Juicy Vision supports four distinct privacy modes for different user needs:
 - severity prioritization (critical/high/medium/low) for prompt improvement suggestions
 
 ## Environment Features
-- Docker Compose for local dev (PostgreSQL 16, backend on port 3001)
+- Docker Compose for local dev (PostgreSQL 16, backend on port 3004)
 - Vite build with manual code splitting (vendor-react, vendor-ui, vendor-state, vendor-web3)
 - GitHub Actions CI/CD: frontend tests, E2E tests, backend deploy to GCP Cloud Run
 - frontend deployed to IPFS gateway

@@ -23,6 +23,7 @@ import { RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constan
 import { isIpfsUri } from '../../utils/ipfs'
 import { requireTransactionReview } from '../../utils/transactionReview'
 import { isSafeAppActive } from '../../services/safeApp'
+import { useGuardedTx } from '../useGuardedTx'
 
 // Relayr app ID for sponsored bundles
 const RELAYR_APP_ID = import.meta.env.VITE_RELAYR_APP_ID || 'juicy-vision'
@@ -177,6 +178,7 @@ export function useOmnichainSetUri(
   // Get wallet address
   const { address: managedAddress, isManagedMode } = useManagedWallet()
   const { address: connectedAddress } = useAccount()
+  const { activeAddress: guardedAddress, run: runGuardedTx } = useGuardedTx()
   const latestManagedAddress = useRef(managedAddress)
   const latestConnectedAddress = useRef(connectedAddress)
   latestManagedAddress.current = managedAddress
@@ -204,6 +206,7 @@ export function useOmnichainSetUri(
     ) => void
     _setCreating: () => void
     _setProcessing: (txHash: string) => void
+    _setDirectCompleted: (chainId: number, projectId: number, txHash: string) => void
     _setError: (error: string) => void
   }
   const { bundleState, reset: resetBundle } = bundle
@@ -323,14 +326,19 @@ export function useOmnichainSetUri(
       return
     }
 
+    const isSingleChain = chainProjectMappings.length === 1
     const useServerSigning = isManagedMode && !forceSelfCustody
-    if (!useServerSigning && isSafeAppActive()) {
+    if (!isSingleChain && !useServerSigning && isSafeAppActive()) {
       bundle._setError(
         'A Safe cannot authorize Relayr ERC-2771 requests as an EOA. Use a managed account for this Relayr update, or submit a single-chain owner action through the Safe proposal flow.',
       )
       return
     }
-    const signerAddress = useServerSigning ? managedAddress : connectedAddress
+    const signerAddress = isSingleChain
+      ? guardedAddress
+      : useServerSigning
+        ? managedAddress
+        : connectedAddress
 
     if (!signerAddress) {
       bundle._setError('No wallet address available')
@@ -405,6 +413,43 @@ export function useOmnichainSetUri(
       // expose an execution state or request authorization from the user.
       assertSignerUnchanged()
       bundle._setCreating()
+
+      if (isSingleChain) {
+        const transaction = transactions[0]
+        const mapping = mappingsWithControllers[0]
+        if (!transaction || !mapping) {
+          throw new Error('Missing single-chain metadata transaction')
+        }
+        const hash = await runGuardedTx({
+          chainId: transaction.chain,
+          to: transaction.target as Address,
+          data: transaction.data as Hex,
+          value: BigInt(transaction.value),
+          reverify: async () => {
+            assertSignerUnchanged()
+            const publicClient = getSafetyPublicClient(mapping.chainId)
+            const currentController = await getProjectController(
+              publicClient,
+              BigInt(mapping.projectId),
+            )
+            if (currentController.toLowerCase() !== mapping.controller?.toLowerCase()) {
+              throw new Error(`The project controller changed on chain ${mapping.chainId}`)
+            }
+          },
+          review: {
+            title: 'Review project metadata update',
+            description: 'Review the exact single-chain metadata update before submitting it directly.',
+            label: 'Set project metadata',
+            contractName: 'JBController',
+          },
+        })
+        bundle._setDirectCompleted(
+          mapping.chainId,
+          Number(mapping.projectId),
+          hash,
+        )
+        return
+      }
 
       if (useServerSigning) {
         // Server-side signing with smart account routing via ERC-2771
@@ -603,6 +648,8 @@ export function useOmnichainSetUri(
     deploymentKey,
     persistedResult,
     resumedInProgress,
+    guardedAddress,
+    runGuardedTx,
   ])
 
   const reset = useCallback(() => {

@@ -203,8 +203,8 @@ describe('LaunchProjectModal', () => {
     it('shows project owner', () => {
       render(<LaunchProjectModal {...defaultProps} />)
 
-      // Component shows "Project Owner (Wallet)" when using wallet address
-      expect(screen.getByText('Project Owner (Wallet)')).toBeInTheDocument()
+      // Component shows "Project owner (Wallet)" when using wallet address
+      expect(screen.getByText('Project owner (Wallet)')).toBeInTheDocument()
       expect(screen.getByText('0x123456...567890')).toBeInTheDocument()
     })
   })

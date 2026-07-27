@@ -1,13 +1,22 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useThemeStore } from '../../stores'
-import { CHAINS, MAINNET_CHAINS, JB_CONTRACTS, ZERO_ADDRESS } from '../../constants'
-import { fetchRevnetOperator, type Project, type ConnectedChain } from '../../services/bendystraw'
-import { getSafetyPublicClient } from '../../utils/transactionSafety'
-import { truncateAddress } from '../../utils/ens'
-import { IpfsImage } from '../ui/IpfsMedia'
-import { ExplainerMessage } from '../ui/ExplainerMessage'
-import { RichContent } from '../ui/RichContent'
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
+import { useThemeStore } from "../../stores";
+import {
+  CHAINS,
+  MAINNET_CHAINS,
+  JB_CONTRACTS,
+  ZERO_ADDRESS,
+} from "../../constants";
+import {
+  fetchRevnetOperator,
+  type Project,
+  type ConnectedChain,
+} from "../../services/bendystraw";
+import { getSafetyPublicClient } from "../../utils/transactionSafety";
+import { truncateAddress } from "../../utils/ens";
+import { IpfsImage } from "../ui/IpfsMedia";
+import { ExplainerMessage } from "../ui/ExplainerMessage";
+import { RichContent } from "../ui/RichContent";
 
 // Overview tab — 1:1 port of website/src/discover.js renderAboutSection (:6825):
 // About card (logo, tagline, description, links, Edit) + Other info panel
@@ -16,77 +25,101 @@ import { RichContent } from '../ui/RichContent'
 // dashboard passes juicy's existing PriceChart through the `priceChart` slot.
 
 interface OverviewTabProps {
-  project: Project
-  chainId: number
-  projectId: number
-  connectedChains: ConnectedChain[]
-  isRevnet: boolean
+  project: Project;
+  chainId: number;
+  projectId: number;
+  connectedChains: ConnectedChain[];
+  isRevnet: boolean;
   /** Revnet operator on the current chain (already resolved by the dashboard). */
-  revnetOperator?: string | null
+  revnetOperator?: string | null;
   /** Render the Edit button (dashboard wires it to the SetUriForm modal). */
-  canEdit: boolean
-  onEditMetadata: () => void
+  canEdit: boolean;
+  onEditMetadata: () => void;
   /** Revnets render this first — pass juicy's PriceChart, do not rebuild it. */
-  priceChart?: ReactNode
+  priceChart?: ReactNode;
   /** Optional ProjectSummary block, composed like the previous About tab did. */
-  summary?: ReactNode
+  summary?: ReactNode;
 }
 
 interface AuthorityRow {
-  chainId: number
-  name: string
-  owner: string | null
+  chainId: number;
+  name: string;
+  owner: string | null;
 }
 
-const JB_PROJECTS_OWNER_OF_ABI = [{
-  type: 'function',
-  name: 'ownerOf',
-  stateMutability: 'view',
-  inputs: [{ name: 'tokenId', type: 'uint256' }],
-  outputs: [{ name: '', type: 'address' }],
-}] as const
+const JB_PROJECTS_OWNER_OF_ABI = [
+  {
+    type: "function",
+    name: "ownerOf",
+    stateMutability: "view",
+    inputs: [{ name: "tokenId", type: "uint256" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+] as const;
 
 function chainNameOf(chainId: number): string {
-  return CHAINS[chainId]?.name || MAINNET_CHAINS[chainId]?.name || `Chain ${chainId}`
+  return (
+    CHAINS[chainId]?.name || MAINNET_CHAINS[chainId]?.name || `Chain ${chainId}`
+  );
 }
 
 function chainSlugOf(chainId: number): string | null {
-  return CHAINS[chainId]?.slug || MAINNET_CHAINS[chainId]?.slug || null
+  return CHAINS[chainId]?.slug || MAINNET_CHAINS[chainId]?.slug || null;
 }
 
 function explorerAddressUrl(chainId: number, address: string): string | null {
-  const explorer = CHAINS[chainId]?.explorer || MAINNET_CHAINS[chainId]?.explorer
-  return explorer ? `${explorer}/address/${address}` : null
+  const explorer =
+    CHAINS[chainId]?.explorer || MAINNET_CHAINS[chainId]?.explorer;
+  return explorer ? `${explorer}/address/${address}` : null;
 }
 
 /** True when the per-chain owner/operator reads disagree (website authorityRowsDiverged :7018). */
 export function authorityRowsDiverged(rows: readonly AuthorityRow[]): boolean {
-  const known = rows.filter(row => row.owner)
-  if (known.length === 0) return false
-  const first = known[0].owner!.toLowerCase()
-  return known.some(row => row.owner!.toLowerCase() !== first)
+  const known = rows.filter((row) => row.owner);
+  if (known.length === 0) return false;
+  const first = known[0].owner!.toLowerCase();
+  return known.some((row) => row.owner!.toLowerCase() !== first);
 }
 
 // --- Project links (website renderProjectLinks :6873) ----------------------
 
 function projectLinkEntries(project: Project): Array<[string, string]> {
-  const meta = project.metadata
-  const entries: Array<[string, string]> = []
-  const infoUri = meta?.infoUri
-  if (infoUri) entries.push(['Website', infoUri.startsWith('http') ? infoUri : `https://${infoUri}`])
+  const meta = project.metadata;
+  const entries: Array<[string, string]> = [];
+  const infoUri = meta?.infoUri;
+  if (infoUri)
+    entries.push([
+      "Website",
+      infoUri.startsWith("http") ? infoUri : `https://${infoUri}`,
+    ]);
   if (meta?.twitter) {
-    const handle = String(meta.twitter).replace(/^@/, '')
-    entries.push(['X', /^https?:/.test(handle) ? handle : `https://x.com/${handle}`])
+    const handle = String(meta.twitter).replace(/^@/, "");
+    entries.push([
+      "X",
+      /^https?:/.test(handle) ? handle : `https://x.com/${handle}`,
+    ]);
   }
   if (meta?.discord) {
-    const discord = String(meta.discord)
-    entries.push(['Discord', /^https?:/.test(discord) ? discord : `https://${discord.replace(/^\/+/, '')}`])
+    const discord = String(meta.discord);
+    entries.push([
+      "Discord",
+      /^https?:/.test(discord)
+        ? discord
+        : `https://${discord.replace(/^\/+/, "")}`,
+    ]);
   }
   if (meta?.telegram) {
-    const tg = String(meta.telegram)
-    entries.push(['Telegram', /^https?:/.test(tg) ? tg : (tg.startsWith('t.me') ? `https://${tg}` : `https://t.me/${tg.replace(/^@/, '')}`)])
+    const tg = String(meta.telegram);
+    entries.push([
+      "Telegram",
+      /^https?:/.test(tg)
+        ? tg
+        : tg.startsWith("t.me")
+          ? `https://${tg}`
+          : `https://t.me/${tg.replace(/^@/, "")}`,
+    ]);
   }
-  return entries
+  return entries;
 }
 
 export default function OverviewTab({
@@ -101,65 +134,82 @@ export default function OverviewTab({
   priceChart,
   summary,
 }: OverviewTabProps) {
-  const { theme } = useThemeStore()
-  const navigate = useNavigate()
-  const isDark = theme === 'dark'
+  const { theme } = useThemeStore();
+  const navigate = useNavigate();
+  const isDark = theme === "dark";
 
-  const chains = useMemo<ConnectedChain[]>(() => (
-    connectedChains.length > 0 ? connectedChains : [{ chainId, projectId }]
-  ), [connectedChains, chainId, projectId])
+  const chains = useMemo<ConnectedChain[]>(
+    () =>
+      connectedChains.length > 0 ? connectedChains : [{ chainId, projectId }],
+    [connectedChains, chainId, projectId],
+  );
 
   // Per-chain owner/operator — only fetched when the project spans chains,
   // to detect (and break down) divergent control.
-  const [authorityRows, setAuthorityRows] = useState<AuthorityRow[] | null>(null)
+  const [authorityRows, setAuthorityRows] = useState<AuthorityRow[] | null>(
+    null,
+  );
 
   useEffect(() => {
     if (chains.length <= 1) {
-      setAuthorityRows(null)
-      return
+      setAuthorityRows(null);
+      return;
     }
-    let cancelled = false
+    let cancelled = false;
     async function loadAuthorityRows() {
-      const rows = await Promise.all(chains.map(async (chain): Promise<AuthorityRow> => {
-        const name = chainNameOf(chain.chainId)
-        try {
-          if (isRevnet) {
-            const operator = await fetchRevnetOperator(String(chain.projectId), chain.chainId)
-            return { chainId: chain.chainId, name, owner: operator }
+      const rows = await Promise.all(
+        chains.map(async (chain): Promise<AuthorityRow> => {
+          const name = chainNameOf(chain.chainId);
+          try {
+            if (isRevnet) {
+              const operator = await fetchRevnetOperator(
+                String(chain.projectId),
+                chain.chainId,
+              );
+              return { chainId: chain.chainId, name, owner: operator };
+            }
+            const owner = await getSafetyPublicClient(
+              chain.chainId,
+            ).readContract({
+              address: JB_CONTRACTS.JBProjects,
+              abi: JB_PROJECTS_OWNER_OF_ABI,
+              functionName: "ownerOf",
+              args: [BigInt(chain.projectId)],
+            });
+            return { chainId: chain.chainId, name, owner };
+          } catch {
+            return { chainId: chain.chainId, name, owner: null };
           }
-          const owner = await getSafetyPublicClient(chain.chainId).readContract({
-            address: JB_CONTRACTS.JBProjects,
-            abi: JB_PROJECTS_OWNER_OF_ABI,
-            functionName: 'ownerOf',
-            args: [BigInt(chain.projectId)],
-          })
-          return { chainId: chain.chainId, name, owner }
-        } catch {
-          return { chainId: chain.chainId, name, owner: null }
-        }
-      }))
-      if (!cancelled) setAuthorityRows(rows)
+        }),
+      );
+      if (!cancelled) setAuthorityRows(rows);
     }
-    loadAuthorityRows()
-    return () => { cancelled = true }
-  }, [chains, isRevnet])
+    loadAuthorityRows();
+    return () => {
+      cancelled = true;
+    };
+  }, [chains, isRevnet]);
 
-  const authorityLabel = isRevnet ? 'Operator' : 'Owner'
-  const authorityAddress = isRevnet ? (revnetOperator ?? null) : (project.owner || null)
-  const diverged = authorityRows ? authorityRowsDiverged(authorityRows) : false
+  const authorityLabel = isRevnet ? "Project operator" : "Project owner";
+  const authorityAddress = isRevnet
+    ? (revnetOperator ?? null)
+    : project.owner || null;
+  const diverged = authorityRows ? authorityRowsDiverged(authorityRows) : false;
 
-  const tagline = project.metadata?.projectTagline || project.metadata?.tagline
-  const description = project.description || project.metadata?.description
-  const links = projectLinkEntries(project)
+  const tagline = project.metadata?.projectTagline || project.metadata?.tagline;
+  const description = project.description || project.metadata?.description;
+  const links = projectLinkEntries(project);
 
   const hasErc20 = Boolean(
-    project.token && project.token.toLowerCase() !== ZERO_ADDRESS.toLowerCase() && project.tokenSymbol
-  )
+    project.token &&
+    project.token.toLowerCase() !== ZERO_ADDRESS.toLowerCase() &&
+    project.tokenSymbol,
+  );
 
-  const cardClass = `p-4 border ${isDark ? 'border-white/10 bg-white/5' : 'border-gray-200 bg-gray-50'}`
-  const cardTitleClass = `text-xs font-semibold uppercase tracking-wider mb-3 ${isDark ? 'text-gray-500' : 'text-gray-400'}`
-  const infoLabelClass = `text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`
-  const infoValueClass = `text-sm ${isDark ? 'text-gray-200' : 'text-gray-700'}`
+  const cardClass = `p-4 border ${isDark ? "border-white/10 bg-white/5" : "border-gray-200 bg-gray-50"}`;
+  const cardTitleClass = `text-xs font-semibold uppercase tracking-wider mb-3 ${isDark ? "text-gray-500" : "text-gray-400"}`;
+  const infoLabelClass = `text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`;
+  const infoValueClass = `text-sm ${isDark ? "text-gray-200" : "text-gray-700"}`;
 
   return (
     <div className="space-y-6">
@@ -179,14 +229,16 @@ export default function OverviewTab({
         {project.logoUri && (
           <IpfsImage
             uri={project.logoUri}
-            alt={project.name || ''}
+            alt={project.name || ""}
             className="w-20 h-20 object-cover mb-3"
             fallback={null}
           />
         )}
 
         {tagline && (
-          <div className={`text-sm font-medium mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          <div
+            className={`text-sm font-medium mb-2 ${isDark ? "text-white" : "text-gray-900"}`}
+          >
             {tagline}
           </div>
         )}
@@ -194,10 +246,12 @@ export default function OverviewTab({
         {description ? (
           <RichContent
             html={description}
-            className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}
+            className={`text-sm ${isDark ? "text-gray-300" : "text-gray-600"}`}
           />
         ) : (
-          <p className={`text-sm italic ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+          <p
+            className={`text-sm italic ${isDark ? "text-gray-500" : "text-gray-400"}`}
+          >
             No description yet.
           </p>
         )}
@@ -211,7 +265,7 @@ export default function OverviewTab({
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className={`hover:underline break-all ${isDark ? 'text-gray-300' : 'text-gray-600'}`}
+                  className={`hover:underline break-all ${isDark ? "text-gray-300" : "text-gray-600"}`}
                 >
                   {url}
                 </a>
@@ -221,7 +275,9 @@ export default function OverviewTab({
         )}
 
         {canEdit && (
-          <div className={`mt-4 pt-3 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+          <div
+            className={`mt-4 pt-3 border-t ${isDark ? "border-white/10" : "border-gray-200"}`}
+          >
             <button
               onClick={onEditMetadata}
               className="text-xs font-medium text-juice-orange hover:underline"
@@ -242,19 +298,23 @@ export default function OverviewTab({
           {/* Per-chain project IDs */}
           <div>
             <div className={`${infoLabelClass} mb-1`}>
-              {chains.length > 1 ? 'Project IDs' : 'Project ID'}
+              {chains.length > 1 ? "Project IDs" : "Project ID"}
             </div>
             <div className="space-y-1">
-              {chains.map(chain => {
-                const slug = chainSlugOf(chain.chainId)
+              {chains.map((chain) => {
+                const slug = chainSlugOf(chain.chainId);
                 const row = (
                   <span className="flex items-baseline gap-1.5">
-                    <span className={infoValueClass}>{chainNameOf(chain.chainId)}</span>
-                    <span className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                    <span className={infoValueClass}>
+                      {chainNameOf(chain.chainId)}
+                    </span>
+                    <span
+                      className={`text-sm font-mono ${isDark ? "text-white" : "text-gray-900"}`}
+                    >
                       #{chain.projectId}
                     </span>
                   </span>
-                )
+                );
                 return slug ? (
                   <button
                     key={chain.chainId}
@@ -266,7 +326,7 @@ export default function OverviewTab({
                   </button>
                 ) : (
                   <div key={chain.chainId}>{row}</div>
-                )
+                );
               })}
             </div>
           </div>
@@ -281,7 +341,9 @@ export default function OverviewTab({
                 </div>
                 <div>
                   <div className={infoLabelClass}>Token address</div>
-                  <div className={`text-xs font-mono break-all ${isDark ? 'text-gray-200' : 'text-gray-700'}`}>
+                  <div
+                    className={`text-xs font-mono break-all ${isDark ? "text-gray-200" : "text-gray-700"}`}
+                  >
                     {project.token}
                   </div>
                 </div>
@@ -294,7 +356,9 @@ export default function OverviewTab({
                     {/* JB omnichain ERC-20s share one deterministic address on every chain. */}
                     <div className={infoLabelClass}>Token on</div>
                     <div className={infoValueClass}>
-                      {chains.map(chain => chainNameOf(chain.chainId)).join(', ')}
+                      {chains
+                        .map((chain) => chainNameOf(chain.chainId))
+                        .join(", ")}
                     </div>
                   </div>
                 )}
@@ -312,18 +376,23 @@ export default function OverviewTab({
             <div className={`${infoLabelClass} mb-1`}>{authorityLabel}</div>
             {diverged && authorityRows ? (
               <div className="space-y-1">
-                <div className={`text-xs font-medium ${isDark ? 'text-amber-300' : 'text-amber-700'}`}>
+                <div
+                  className={`text-xs font-medium ${isDark ? "text-amber-300" : "text-amber-700"}`}
+                >
                   {authorityLabel} differs by chain
                 </div>
-                {authorityRows.map(row => (
-                  <div key={row.chainId} className="flex items-baseline gap-1.5 text-xs">
+                {authorityRows.map((row) => (
+                  <div
+                    key={row.chainId}
+                    className="flex items-baseline gap-1.5 text-xs"
+                  >
                     <span className={infoLabelClass}>{row.name}</span>
                     {row.owner ? (
                       <a
-                        href={explorerAddressUrl(row.chainId, row.owner) ?? '#'}
+                        href={explorerAddressUrl(row.chainId, row.owner) ?? "#"}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className={`font-mono hover:underline ${isDark ? 'text-gray-200' : 'text-gray-700'}`}
+                        className={`font-mono hover:underline ${isDark ? "text-gray-200" : "text-gray-700"}`}
                       >
                         {truncateAddress(row.owner)}
                       </a>
@@ -335,10 +404,10 @@ export default function OverviewTab({
               </div>
             ) : authorityAddress ? (
               <a
-                href={explorerAddressUrl(chainId, authorityAddress) ?? '#'}
+                href={explorerAddressUrl(chainId, authorityAddress) ?? "#"}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={`text-xs font-mono break-all hover:underline ${isDark ? 'text-gray-200' : 'text-gray-700'}`}
+                className={`text-xs font-mono break-all hover:underline ${isDark ? "text-gray-200" : "text-gray-700"}`}
               >
                 {authorityAddress}
               </a>
@@ -349,5 +418,5 @@ export default function OverviewTab({
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -358,11 +358,11 @@ export function rulesetRows(
     // The v6 flag is scoped-to-local-balances; the website row is the inverse.
     { section: 'TOKEN', label: 'Cash outs use total surplus', value: enabled(!m.scopeCashOutsToLocalBalances) },
     { section: 'TOKEN', label: 'Base currency', value: baseUnit },
-    { section: 'TOKEN', label: 'Owner token minting', value: enabled(m.allowOwnerMinting) },
+    { section: 'TOKEN', label: 'Project owner token minting', value: enabled(m.allowOwnerMinting) },
     { section: 'TOKEN', label: 'Token transfers', value: m.pauseCreditTransfers ? 'Disabled' : 'Enabled' },
     { section: 'OTHER RULES', label: 'Payments to this project', value: m.pausePay ? 'Disabled' : 'Enabled' },
     { section: 'OTHER RULES', label: 'Hold fees', value: enabled(m.holdFees) },
-    { section: 'OTHER RULES', label: 'Owner must send payouts', value: enabled(m.ownerMustSendPayouts) },
+    { section: 'OTHER RULES', label: 'Project owner must send payouts', value: enabled(m.ownerMustSendPayouts) },
     { section: 'OTHER RULES', label: 'Set payment terminals', value: enabled(m.allowSetTerminals) },
     { section: 'OTHER RULES', label: 'Set controller', value: enabled(m.allowSetController) },
     { section: 'OTHER RULES', label: 'Migrate payment terminal', value: enabled(m.allowTerminalMigration) },

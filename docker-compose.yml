@@ -22,9 +22,20 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     ports:
-      - "3001:3001"
+      - "3004:3004"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "deno",
+          "eval",
+          "const r=await fetch('http://127.0.0.1:3004/livez');if(!r.ok)Deno.exit(1)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     environment:
-      PORT: 3001
+      PORT: 3004
       DENO_ENV: development
       DATABASE_URL: postgresql://postgres:postgres@db:5432/juicyvision
       JWT_SECRET: dev-secret

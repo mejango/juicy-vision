@@ -1,22 +1,28 @@
-import { useState, useEffect, useCallback } from 'react'
-import { createPortal } from 'react-dom'
-import { formatUnits } from 'viem'
-import { useThemeStore } from '../../stores'
-import { getEffectiveTierPrice, type ResolvedNFTTier } from '../../services/nft'
-import { fetchMultiChainTierSupply, type MultiChainTierSupply } from '../../services/nft/multichain'
-import { isUsdcCurrency } from '../../utils/technicalDetails'
-import { IpfsMedia } from '../ui/IpfsMedia'
+import { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
+import { formatUnits } from "viem";
+import { useThemeStore } from "../../stores";
+import {
+  getEffectiveTierPrice,
+  type ResolvedNFTTier,
+} from "../../services/nft";
+import {
+  fetchMultiChainTierSupply,
+  type MultiChainTierSupply,
+} from "../../services/nft/multichain";
+import { isUsdcCurrency } from "../../utils/technicalDetails";
+import { IpfsMedia } from "../ui/IpfsMedia";
 
 interface TierDetailModalProps {
-  isOpen: boolean
-  onClose: () => void
-  tier: ResolvedNFTTier
-  imageUrl: string | null
-  ethPrice?: number
+  isOpen: boolean;
+  onClose: () => void;
+  tier: ResolvedNFTTier;
+  imageUrl: string | null;
+  ethPrice?: number;
   /** Product name from on-chain metadata (if tier.name is placeholder) */
-  productName?: string
+  productName?: string;
   /** Connected chains for multi-chain supply */
-  connectedChains?: Array<{ chainId: number; projectId: number }>
+  connectedChains?: Array<{ chainId: number; projectId: number }>;
 }
 
 export default function TierDetailModal({
@@ -28,74 +34,90 @@ export default function TierDetailModal({
   productName,
   connectedChains,
 }: TierDetailModalProps) {
-  const { theme } = useThemeStore()
-  const isDark = theme === 'dark'
-  const [showTechnical, setShowTechnical] = useState(false)
-  const [multiChainSupply, setMultiChainSupply] = useState<MultiChainTierSupply | null>(null)
+  const { theme } = useThemeStore();
+  const isDark = theme === "dark";
+  const [showTechnical, setShowTechnical] = useState(false);
+  const [multiChainSupply, setMultiChainSupply] =
+    useState<MultiChainTierSupply | null>(null);
 
-  const isMultiChain = connectedChains && connectedChains.length > 1
+  const isMultiChain = connectedChains && connectedChains.length > 1;
 
   // Fetch multi-chain supply when modal opens (background update, no loading state)
   useEffect(() => {
-    if (!isOpen || !isMultiChain || multiChainSupply) return
+    if (!isOpen || !isMultiChain || multiChainSupply) return;
 
     // Fetch in background - we already have tier data to show
     fetchMultiChainTierSupply(tier.tierId, connectedChains)
       .then(setMultiChainSupply)
-      .catch(console.error)
-  }, [isOpen, isMultiChain, tier.tierId, connectedChains, multiChainSupply])
+      .catch(console.error);
+  }, [isOpen, isMultiChain, tier.tierId, connectedChains, multiChainSupply]);
 
   // Reset multi-chain data when modal closes
   useEffect(() => {
     if (!isOpen) {
-      setMultiChainSupply(null)
+      setMultiChainSupply(null);
     }
-  }, [isOpen])
+  }, [isOpen]);
 
   // Escape key to close
-  const handleEscape = useCallback((e: KeyboardEvent) => {
-    if (e.key === 'Escape') onClose()
-  }, [onClose])
+  const handleEscape = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    },
+    [onClose],
+  );
 
   useEffect(() => {
     if (isOpen) {
-      document.addEventListener('keydown', handleEscape)
-      document.body.style.overflow = 'hidden'
+      document.addEventListener("keydown", handleEscape);
+      document.body.style.overflow = "hidden";
     }
     return () => {
-      document.removeEventListener('keydown', handleEscape)
-      document.body.style.overflow = ''
-    }
-  }, [isOpen, handleEscape])
+      document.removeEventListener("keydown", handleEscape);
+      document.body.style.overflow = "";
+    };
+  }, [isOpen, handleEscape]);
 
-  if (!isOpen) return null
+  if (!isOpen) return null;
 
   // Price display: USD-based tiers show USD primary, ETH-based show ETH primary
-  const isUsdBased = tier.currency === 2 || isUsdcCurrency(tier.currency)
-  const pricingRecognized = tier.currency === 1 || isUsdBased
-  const priceInPricingCurrency = parseFloat(formatUnits(
-    getEffectiveTierPrice(tier),
-    tier.pricingDecimals,
-  ))
-  const priceEth = isUsdBased ? 0 : priceInPricingCurrency
+  const isUsdBased = tier.currency === 2 || isUsdcCurrency(tier.currency);
+  const pricingRecognized = tier.currency === 1 || isUsdBased;
+  const priceInPricingCurrency = parseFloat(
+    formatUnits(getEffectiveTierPrice(tier), tier.pricingDecimals),
+  );
+  const priceEth = isUsdBased ? 0 : priceInPricingCurrency;
   const priceUsd = isUsdBased
     ? priceInPricingCurrency
-    : (ethPrice ? priceEth * ethPrice : null)
-  const displayName = /^Tier \d+$/.test(tier.name) ? (productName || tier.name) : tier.name
-  const isSvgImage = imageUrl?.startsWith('data:image/svg') || imageUrl?.endsWith('.svg')
+    : ethPrice
+      ? priceEth * ethPrice
+      : null;
+  const displayName = /^Tier \d+$/.test(tier.name)
+    ? productName || tier.name
+    : tier.name;
+  const isSvgImage =
+    imageUrl?.startsWith("data:image/svg") || imageUrl?.endsWith(".svg");
 
   // For multi-chain projects, only show inventory once cross-chain data is loaded
   // For single-chain, use tier data directly
-  const inventoryLoading = isMultiChain && !multiChainSupply
-  const remainingSupply = isMultiChain ? multiChainSupply?.totalRemaining : tier.remainingSupply
-  const initialSupply = isMultiChain ? multiChainSupply?.totalInitial : tier.initialSupply
-  const soldOut = remainingSupply === 0
-  const isLowStock = remainingSupply !== undefined && remainingSupply > 0 && remainingSupply <= 10
+  const inventoryLoading = isMultiChain && !multiChainSupply;
+  const remainingSupply = isMultiChain
+    ? multiChainSupply?.totalRemaining
+    : tier.remainingSupply;
+  const initialSupply = isMultiChain
+    ? multiChainSupply?.totalInitial
+    : tier.initialSupply;
+  const soldOut = remainingSupply === 0;
+  const isLowStock =
+    remainingSupply !== undefined &&
+    remainingSupply > 0 &&
+    remainingSupply <= 10;
 
   // Calculate supply percentage for visual indicator
-  const supplyPercent = initialSupply && initialSupply > 0 && remainingSupply !== undefined
-    ? (remainingSupply / initialSupply) * 100
-    : 0
+  const supplyPercent =
+    initialSupply && initialSupply > 0 && remainingSupply !== undefined
+      ? (remainingSupply / initialSupply) * 100
+      : 0;
 
   return createPortal(
     <div
@@ -103,12 +125,14 @@ export default function TierDetailModal({
       onClick={onClose}
     >
       {/* Backdrop */}
-      <div className={`absolute inset-0 ${isDark ? 'bg-black/90' : 'bg-black/80'}`} />
+      <div
+        className={`absolute inset-0 ${isDark ? "bg-black/90" : "bg-black/80"}`}
+      />
 
       {/* Content */}
       <div
         className={`relative w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto hide-scrollbar border-4 border-juice-orange ${
-          isDark ? 'bg-juice-dark' : 'bg-white'
+          isDark ? "bg-juice-dark" : "bg-white"
         }`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -116,16 +140,30 @@ export default function TierDetailModal({
         <button
           onClick={onClose}
           className={`absolute top-4 right-4 z-10 p-2 transition-colors ${
-            isDark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+            isDark
+              ? "text-gray-400 hover:text-white"
+              : "text-gray-500 hover:text-gray-900"
           }`}
         >
-          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          <svg
+            className="w-6 h-6"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
           </svg>
         </button>
 
         {/* Image - full width */}
-        <div className={`aspect-square max-h-[50vh] w-full overflow-hidden ${isSvgImage ? 'bg-white' : isDark ? 'bg-black' : 'bg-gray-100'}`}>
+        <div
+          className={`aspect-square max-h-[50vh] w-full overflow-hidden ${isSvgImage ? "bg-white" : isDark ? "bg-black" : "bg-gray-100"}`}
+        >
           {imageUrl ? (
             <img
               src={imageUrl}
@@ -133,10 +171,14 @@ export default function TierDetailModal({
               className="w-full h-full object-contain"
             />
           ) : (
-            <div className={`w-full h-full flex items-center justify-center ${
-              isDark ? 'bg-white/5' : 'bg-gray-100'
-            }`}>
-              <span className={`text-6xl font-bold ${isDark ? 'text-gray-600' : 'text-gray-300'}`}>
+            <div
+              className={`w-full h-full flex items-center justify-center ${
+                isDark ? "bg-white/5" : "bg-gray-100"
+              }`}
+            >
+              <span
+                className={`text-6xl font-bold ${isDark ? "text-gray-600" : "text-gray-300"}`}
+              >
                 #{tier.tierId}
               </span>
             </div>
@@ -146,27 +188,37 @@ export default function TierDetailModal({
         {/* Info section */}
         <div className="p-6">
           {/* Name */}
-          <h2 className={`text-2xl font-bold mb-2 ${isDark ? 'text-white' : 'text-gray-900'}`}>
+          <h2
+            className={`text-2xl font-bold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}
+          >
             {displayName}
           </h2>
 
           {/* Price */}
           <div className="mb-4">
             {!pricingRecognized ? (
-              <span className={`text-sm font-medium ${isDark ? 'text-amber-400' : 'text-amber-700'}`}>
+              <span
+                className={`text-sm font-medium ${isDark ? "text-amber-400" : "text-amber-700"}`}
+              >
                 Pricing unavailable
               </span>
             ) : isUsdBased ? (
-              <span className={`text-xl font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              <span
+                className={`text-xl font-mono font-semibold ${isDark ? "text-white" : "text-gray-900"}`}
+              >
                 ${priceUsd?.toFixed(2)}
               </span>
             ) : (
               <>
-                <span className={`text-xl font-mono font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                <span
+                  className={`text-xl font-mono font-semibold ${isDark ? "text-white" : "text-gray-900"}`}
+                >
                   {priceEth.toFixed(4)} ETH
                 </span>
                 {priceUsd && (
-                  <span className={`text-sm ml-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  <span
+                    className={`text-sm ml-2 ${isDark ? "text-gray-400" : "text-gray-500"}`}
+                  >
                     ~${priceUsd.toFixed(2)}
                   </span>
                 )}
@@ -176,7 +228,9 @@ export default function TierDetailModal({
 
           {/* Description */}
           {tier.description && (
-            <p className={`text-sm mb-6 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
+            <p
+              className={`text-sm mb-6 ${isDark ? "text-gray-300" : "text-gray-600"}`}
+            >
               {tier.description}
             </p>
           )}
@@ -197,37 +251,59 @@ export default function TierDetailModal({
           {/* Inventory - prominent only when low/sold out */}
           {inventoryLoading ? (
             /* Loading state for multi-chain inventory */
-            <div className={`mb-6 text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Inventory</span>{' '}
-              <span className={`font-mono ${isDark ? 'text-gray-600' : 'text-gray-300'}`}>loading...</span>
+            <div
+              className={`mb-6 text-sm ${isDark ? "text-gray-400" : "text-gray-500"}`}
+            >
+              <span className={isDark ? "text-gray-500" : "text-gray-400"}>
+                Inventory
+              </span>{" "}
+              <span
+                className={`font-mono ${isDark ? "text-gray-600" : "text-gray-300"}`}
+              >
+                loading...
+              </span>
             </div>
-          ) : (soldOut || isLowStock) ? (
-            <div className={`mb-6 p-4 ${
-              soldOut
-                ? 'bg-red-500/10 border border-red-500/30'
-                : 'bg-orange-500/10 border border-orange-500/30'
-            }`}>
+          ) : soldOut || isLowStock ? (
+            <div
+              className={`mb-6 p-4 ${
+                soldOut
+                  ? "bg-red-500/10 border border-red-500/30"
+                  : "bg-orange-500/10 border border-orange-500/30"
+              }`}
+            >
               <div className="flex items-center justify-between mb-2">
-                <span className={`text-sm font-medium ${soldOut ? 'text-red-400' : 'text-orange-400'}`}>
-                  {soldOut ? 'Sold Out' : 'Running Low!'}
+                <span
+                  className={`text-sm font-medium ${soldOut ? "text-red-400" : "text-orange-400"}`}
+                >
+                  {soldOut ? "Sold Out" : "Running Low!"}
                 </span>
-                <span className={`font-mono text-lg font-semibold ${soldOut ? 'text-red-400' : 'text-orange-400'}`}>
+                <span
+                  className={`font-mono text-lg font-semibold ${soldOut ? "text-red-400" : "text-orange-400"}`}
+                >
                   {remainingSupply} / {initialSupply}
                 </span>
               </div>
               {/* Progress bar */}
-              <div className={`h-2 w-full overflow-hidden ${isDark ? 'bg-white/10' : 'bg-gray-200'}`}>
+              <div
+                className={`h-2 w-full overflow-hidden ${isDark ? "bg-white/10" : "bg-gray-200"}`}
+              >
                 <div
-                  className={`h-full ${soldOut ? 'bg-red-500' : 'bg-orange-500'}`}
+                  className={`h-full ${soldOut ? "bg-red-500" : "bg-orange-500"}`}
                   style={{ width: `${supplyPercent}%` }}
                 />
               </div>
             </div>
           ) : (
             /* Subtle inventory display when plenty in stock */
-            <div className={`mb-6 text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-              <span className={isDark ? 'text-gray-500' : 'text-gray-400'}>Inventory</span>{' '}
-              <span className="font-mono">{remainingSupply} / {initialSupply}</span>
+            <div
+              className={`mb-6 text-sm ${isDark ? "text-gray-400" : "text-gray-500"}`}
+            >
+              <span className={isDark ? "text-gray-500" : "text-gray-400"}>
+                Inventory
+              </span>{" "}
+              <span className="font-mono">
+                {remainingSupply} / {initialSupply}
+              </span>
             </div>
           )}
 
@@ -236,77 +312,173 @@ export default function TierDetailModal({
             <button
               onClick={() => setShowTechnical(!showTechnical)}
               className={`flex items-center gap-1.5 py-2 transition-colors ${
-                isDark ? 'text-gray-600 hover:text-gray-400' : 'text-gray-400 hover:text-gray-500'
+                isDark
+                  ? "text-gray-600 hover:text-gray-400"
+                  : "text-gray-400 hover:text-gray-500"
               }`}
             >
               <span className="text-[10px] uppercase tracking-wider">
                 Technical Details
               </span>
               <svg
-                className={`w-3 h-3 transition-transform ${showTechnical ? 'rotate-180' : ''}`}
+                className={`w-3 h-3 transition-transform ${showTechnical ? "rotate-180" : ""}`}
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
               </svg>
             </button>
 
             {showTechnical && (
-              <div className={`pt-2 text-[11px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              <div
+                className={`pt-2 text-[11px] ${isDark ? "text-gray-500" : "text-gray-400"}`}
+              >
                 {/* Compact key:value layout */}
                 <div className="flex flex-wrap gap-x-4 gap-y-1">
-                  <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Tier</span> #{tier.tierId}</span>
-                  <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Category</span> {tier.category}</span>
-                  <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Currency</span> {tier.currency === 1 ? 'ETH' : isUsdBased ? 'USD' : `Unrecognized (${tier.currency})`}</span>
+                  <span>
+                    <span
+                      className={isDark ? "text-gray-600" : "text-gray-400"}
+                    >
+                      Tier
+                    </span>{" "}
+                    #{tier.tierId}
+                  </span>
+                  <span>
+                    <span
+                      className={isDark ? "text-gray-600" : "text-gray-400"}
+                    >
+                      Category
+                    </span>{" "}
+                    {tier.category}
+                  </span>
+                  <span>
+                    <span
+                      className={isDark ? "text-gray-600" : "text-gray-400"}
+                    >
+                      Currency
+                    </span>{" "}
+                    {tier.currency === 1
+                      ? "ETH"
+                      : isUsdBased
+                        ? "USD"
+                        : `Unrecognized (${tier.currency})`}
+                  </span>
                   {tier.reservedRate > 0 && (
-                    <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Reserved</span> 1/{tier.reservedRate}</span>
+                    <span>
+                      <span
+                        className={isDark ? "text-gray-600" : "text-gray-400"}
+                      >
+                        Reserved
+                      </span>{" "}
+                      1/{tier.reservedRate}
+                    </span>
                   )}
                   {tier.votingUnits > 0n && (
-                    <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Votes</span> {tier.votingUnits.toString()}</span>
+                    <span>
+                      <span
+                        className={isDark ? "text-gray-600" : "text-gray-400"}
+                      >
+                        Votes
+                      </span>{" "}
+                      {tier.votingUnits.toString()}
+                    </span>
                   )}
                   {(tier.discountPercent ?? 0) > 0 && (
-                    <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Discount</span> {((tier.discountPercent ?? 0) / 2).toLocaleString()}%</span>
+                    <span>
+                      <span
+                        className={isDark ? "text-gray-600" : "text-gray-400"}
+                      >
+                        Discount
+                      </span>{" "}
+                      {((tier.discountPercent ?? 0) / 2).toLocaleString()}%
+                    </span>
                   )}
                   {tier.mediaType && (
-                    <span><span className={isDark ? 'text-gray-600' : 'text-gray-400'}>Media</span> {tier.mediaType}</span>
+                    <span>
+                      <span
+                        className={isDark ? "text-gray-600" : "text-gray-400"}
+                      >
+                        Media
+                      </span>{" "}
+                      {tier.mediaType}
+                    </span>
                   )}
                 </div>
 
                 {/* Per-chain breakdown for multi-chain projects */}
-                {isMultiChain && multiChainSupply && multiChainSupply.perChain.length > 1 && (
-                  <div className="mt-2 pt-2 border-t border-dashed border-gray-700/30">
-                    <span className={`text-[10px] uppercase tracking-wider ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
-                      Inventory by Network
-                    </span>
-                    <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1">
-                      {multiChainSupply.perChain.map((chain) => (
-                        <span key={chain.chainId}>
-                          <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>{chain.chainName}</span>{' '}
-                          <span className={`font-mono ${chain.remaining === 0 ? 'text-red-400' : ''}`}>
-                            {chain.remaining}/{chain.initial}
+                {isMultiChain &&
+                  multiChainSupply &&
+                  multiChainSupply.perChain.length > 1 && (
+                    <div className="mt-2 pt-2 border-t border-dashed border-gray-700/30">
+                      <span
+                        className={`text-[10px] uppercase tracking-wider ${isDark ? "text-gray-600" : "text-gray-400"}`}
+                      >
+                        Inventory by Network
+                      </span>
+                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 mt-1">
+                        {multiChainSupply.perChain.map((chain) => (
+                          <span key={chain.chainId}>
+                            <span
+                              className={
+                                isDark ? "text-gray-600" : "text-gray-400"
+                              }
+                            >
+                              {chain.chainName}
+                            </span>{" "}
+                            <span
+                              className={`font-mono ${chain.remaining === 0 ? "text-red-400" : ""}`}
+                            >
+                              {chain.remaining}/{chain.initial}
+                            </span>
                           </span>
-                        </span>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
                 {/* Flags - compact inline */}
                 <div className="mt-2 pt-2 border-t border-dashed border-gray-700/30">
                   <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-                    <FlagRow label="Owner Mint" enabled={tier.allowOwnerMint} isDark={isDark} />
-                    <FlagRow label="Pausable" enabled={tier.transfersPausable} isDark={isDark} />
-                    <FlagRow label="Locked" enabled={tier.cannotBeRemoved ?? false} isDark={isDark} />
-                    <FlagRow label="Discount Locked" enabled={tier.cannotIncreaseDiscountPercent ?? false} isDark={isDark} />
+                    <FlagRow
+                      label="Project owner mint"
+                      enabled={tier.allowOwnerMint}
+                      isDark={isDark}
+                    />
+                    <FlagRow
+                      label="Pausable"
+                      enabled={tier.transfersPausable}
+                      isDark={isDark}
+                    />
+                    <FlagRow
+                      label="Locked"
+                      enabled={tier.cannotBeRemoved ?? false}
+                      isDark={isDark}
+                    />
+                    <FlagRow
+                      label="Discount Locked"
+                      enabled={tier.cannotIncreaseDiscountPercent ?? false}
+                      isDark={isDark}
+                    />
                   </div>
                 </div>
 
                 {/* IPFS info */}
                 {tier.encodedIPFSUri && (
                   <div className="mt-2 pt-2 border-t border-dashed border-gray-700/30">
-                    <span className={`text-[10px] uppercase tracking-wider ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>IPFS</span>{' '}
-                    <span className={`font-mono text-[10px] ${isDark ? 'text-gray-600' : 'text-gray-400'}`}>
+                    <span
+                      className={`text-[10px] uppercase tracking-wider ${isDark ? "text-gray-600" : "text-gray-400"}`}
+                    >
+                      IPFS
+                    </span>{" "}
+                    <span
+                      className={`font-mono text-[10px] ${isDark ? "text-gray-600" : "text-gray-400"}`}
+                    >
                       {tier.encodedIPFSUri}
                     </span>
                   </div>
@@ -317,18 +489,38 @@ export default function TierDetailModal({
         </div>
       </div>
     </div>,
-    document.body
-  )
+    document.body,
+  );
 }
 
 // Helper component for flag rows - compact inline format
-function FlagRow({ label, enabled, isDark }: { label: string; enabled: boolean; isDark: boolean }) {
+function FlagRow({
+  label,
+  enabled,
+  isDark,
+}: {
+  label: string;
+  enabled: boolean;
+  isDark: boolean;
+}) {
   return (
     <span>
-      <span className={isDark ? 'text-gray-600' : 'text-gray-400'}>{label}</span>{' '}
-      <span className={enabled ? (isDark ? 'text-green-500/70' : 'text-green-600') : (isDark ? 'text-gray-700' : 'text-gray-300')}>
-        {enabled ? 'on' : 'off'}
+      <span className={isDark ? "text-gray-600" : "text-gray-400"}>
+        {label}
+      </span>{" "}
+      <span
+        className={
+          enabled
+            ? isDark
+              ? "text-green-500/70"
+              : "text-green-600"
+            : isDark
+              ? "text-gray-700"
+              : "text-gray-300"
+        }
+      >
+        {enabled ? "on" : "off"}
       </span>
     </span>
-  )
+  );
 }

@@ -12,7 +12,7 @@
  *   ./scripts/test-ai-manual.ts
  */
 
-const BASE_URL = Deno.env.get('API_URL') || 'http://localhost:3001/api';
+const BASE_URL = Deno.env.get("API_URL") || "http://localhost:3004/api";
 const SESSION_ID = `ses_manual_test_${Date.now()}`;
 
 // ANSI colors
@@ -31,42 +31,45 @@ interface TestCase {
 
 const TEST_CASES: TestCase[] = [
   {
-    name: 'Tool: get_sucker_pairs',
-    prompt: 'What bridge destinations are available for project 1?',
-    shouldUseTool: 'get_sucker_pairs',
+    name: "Tool: get_sucker_pairs",
+    prompt: "What bridge destinations are available for project 1?",
+    shouldUseTool: "get_sucker_pairs",
   },
   {
-    name: 'Tool: get_bridge_transactions',
-    prompt: 'Show me pending bridge transactions for sucker group sg_nana',
-    shouldUseTool: 'get_bridge_transactions',
+    name: "Tool: get_bridge_transactions",
+    prompt: "Show me pending bridge transactions for sucker group sg_nana",
+    shouldUseTool: "get_bridge_transactions",
   },
   {
-    name: 'No Tool: Concept explanation',
-    prompt: 'Explain what a sucker is in Juicebox',
+    name: "No Tool: Concept explanation",
+    prompt: "Explain what a sucker is in Juicebox",
     shouldNotUseTool: true,
-    validate: (content) => content.toLowerCase().includes('bridge'),
+    validate: (content) => content.toLowerCase().includes("bridge"),
   },
   {
-    name: 'No Tool: Greeting',
-    prompt: 'Hi there!',
+    name: "No Tool: Greeting",
+    prompt: "Hi there!",
     shouldNotUseTool: true,
   },
   {
-    name: 'Error handling: Invalid project',
-    prompt: 'Get sucker pairs for project 999999999',
-    shouldUseTool: 'get_sucker_pairs',
+    name: "Error handling: Invalid project",
+    prompt: "Get sucker pairs for project 999999999",
+    shouldUseTool: "get_sucker_pairs",
     // Should handle gracefully, not crash
   },
 ];
 
 async function createChat(): Promise<string> {
   const res = await fetch(`${BASE_URL}/chat`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'X-Session-ID': SESSION_ID,
+      "Content-Type": "application/json",
+      "X-Session-ID": SESSION_ID,
     },
-    body: JSON.stringify({ name: `Manual Test ${new Date().toISOString()}`, isPublic: true }),
+    body: JSON.stringify({
+      name: `Manual Test ${new Date().toISOString()}`,
+      isPublic: true,
+    }),
   });
   const data = await res.json();
   if (!data.success) throw new Error(`Failed to create chat: ${data.error}`);
@@ -79,10 +82,10 @@ async function invokeAI(
 ): Promise<{ success: boolean; content?: string; error?: string }> {
   const start = Date.now();
   const res = await fetch(`${BASE_URL}/chat/${chatId}/ai/invoke`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      'X-Session-ID': SESSION_ID,
+      "Content-Type": "application/json",
+      "X-Session-ID": SESSION_ID,
     },
     body: JSON.stringify({ prompt }),
   });
@@ -97,7 +100,7 @@ async function invokeAI(
 }
 
 async function runTest(test: TestCase, chatId: string): Promise<boolean> {
-  console.log(`\n${cyan('▶')} ${test.name}`);
+  console.log(`\n${cyan("▶")} ${test.name}`);
   console.log(dim(`  Prompt: "${test.prompt.substring(0, 50)}..."`));
 
   try {
@@ -108,7 +111,7 @@ async function runTest(test: TestCase, chatId: string): Promise<boolean> {
       return false;
     }
 
-    const content = result.content || '';
+    const content = result.content || "";
 
     // Check tool usage
     if (test.shouldUseTool) {
@@ -122,7 +125,7 @@ async function runTest(test: TestCase, chatId: string): Promise<boolean> {
     }
 
     if (test.shouldNotUseTool) {
-      if (!content.includes('Using tool:')) {
+      if (!content.includes("Using tool:")) {
         console.log(green(`  ✓ No tool used (as expected)`));
       } else {
         console.log(red(`  ✗ Unexpectedly used a tool`));
@@ -150,9 +153,9 @@ async function runTest(test: TestCase, chatId: string): Promise<boolean> {
 }
 
 async function main() {
-  console.log('═══════════════════════════════════════════════════════════');
-  console.log('              AI AGENTIC LOOP - MANUAL TESTS');
-  console.log('═══════════════════════════════════════════════════════════');
+  console.log("═══════════════════════════════════════════════════════════");
+  console.log("              AI AGENTIC LOOP - MANUAL TESTS");
+  console.log("═══════════════════════════════════════════════════════════");
   console.log(`API: ${BASE_URL}`);
   console.log(`Session: ${SESSION_ID}`);
 
@@ -160,13 +163,13 @@ async function main() {
   try {
     await fetch(`${BASE_URL}/chat`);
   } catch {
-    console.log(red('\n✗ Cannot connect to server. Is it running?'));
+    console.log(red("\n✗ Cannot connect to server. Is it running?"));
     console.log(dim(`  Start with: cd backend && deno task dev`));
     Deno.exit(1);
   }
 
   // Create test chat
-  console.log('\nCreating test chat...');
+  console.log("\nCreating test chat...");
   const chatId = await createChat();
   console.log(dim(`Chat ID: ${chatId}`));
 
@@ -181,29 +184,35 @@ async function main() {
   }
 
   // Summary
-  console.log('\n═══════════════════════════════════════════════════════════');
+  console.log("\n═══════════════════════════════════════════════════════════");
   console.log(
     `Results: ${green(`${passed} passed`)}, ${
-      failed > 0 ? red(`${failed} failed`) : dim('0 failed')
+      failed > 0 ? red(`${failed} failed`) : dim("0 failed")
     }`,
   );
-  console.log('═══════════════════════════════════════════════════════════');
+  console.log("═══════════════════════════════════════════════════════════");
 
   // Check metrics
-  console.log('\n📊 Fetching AI metrics...');
+  console.log("\n📊 Fetching AI metrics...");
   try {
-    const metricsRes = await fetch(`${BASE_URL.replace('/api', '')}/api/debug/ai/metrics?hours=1`);
+    const metricsRes = await fetch(
+      `${BASE_URL.replace("/api", "")}/api/debug/ai/metrics?hours=1`,
+    );
     const metrics = await metricsRes.json();
     if (metrics.success) {
       console.log(`  Total invocations: ${metrics.data.totalInvocations}`);
-      console.log(`  Avg response time: ${Math.round(metrics.data.avgResponseTimeMs)}ms`);
-      console.log(`  Tool usage: ${JSON.stringify(metrics.data.toolUsageCounts)}`);
+      console.log(
+        `  Avg response time: ${Math.round(metrics.data.avgResponseTimeMs)}ms`,
+      );
+      console.log(
+        `  Tool usage: ${JSON.stringify(metrics.data.toolUsageCounts)}`,
+      );
       console.log(
         `  With tools: ${metrics.data.invocationsWithTools} / Without: ${metrics.data.invocationsWithoutTools}`,
       );
     }
   } catch {
-    console.log(dim('  (Could not fetch metrics)'));
+    console.log(dim("  (Could not fetch metrics)"));
   }
 
   Deno.exit(failed > 0 ? 1 : 0);

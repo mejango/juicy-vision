@@ -424,7 +424,7 @@ export default function LaunchProjectModal({
               {(!hasBothOptions || ownerChoice) && (
                 <div className={`p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
                   <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                    Project Owner {ownerChoice === 'managed' || (!hasBothOptions && isManagedMode) ? '(Smart Account)' : '(Wallet)'}
+                    Project owner {ownerChoice === 'managed' || (!hasBothOptions && isManagedMode) ? '(Smart Account)' : '(Wallet)'}
                   </div>
                   <div className="flex items-center justify-between">
                     <div className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
@@ -555,7 +555,7 @@ export default function LaunchProjectModal({
                 disabled={!canProceed || (hasBothOptions && !ownerChoice)}
                 className="flex-1 py-3 font-bold bg-juice-orange text-black hover:bg-juice-orange/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {hasBothOptions && !ownerChoice ? 'Choose Owner' : `Create Project${chainIds.length > 1 ? 's' : ''}`}
+                {hasBothOptions && !ownerChoice ? 'Choose project owner' : `Create Project${chainIds.length > 1 ? 's' : ''}`}
               </button>
             </div>
           )}

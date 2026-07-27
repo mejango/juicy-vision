@@ -30,6 +30,7 @@ import { JB_OMNICHAIN_DEPLOYER } from '../../constants'
 import { getSafetyPublicClient } from '../../utils/transactionSafety'
 import { requireTransactionReview } from '../../utils/transactionReview'
 import { isSafeAppActive } from '../../services/safeApp'
+import { useGuardedTx } from '../useGuardedTx'
 
 // Relayr app ID for sponsored bundles
 const RELAYR_APP_ID = import.meta.env.VITE_RELAYR_APP_ID || 'juicy-vision'
@@ -177,6 +178,7 @@ export function useOmnichainLaunchProject(
 
   // Wagmi hooks for ERC-2771 signing
   const { address: connectedAddress } = useAccount()
+  const { activeAddress: guardedAddress, run: runGuardedTx } = useGuardedTx()
   const latestManagedAddress = useRef(managedAddress)
   const latestConnectedAddress = useRef(connectedAddress)
   latestManagedAddress.current = managedAddress
@@ -208,6 +210,7 @@ export function useOmnichainLaunchProject(
     ) => void
     _setCreating: () => void
     _setProcessing: (txHash: string) => void
+    _setDirectCompleted: (chainId: number, projectId: number, txHash: string) => void
     _setError: (error: string) => void
   }
   const { bundleState, reset: resetBundle } = bundle
@@ -345,9 +348,10 @@ export function useOmnichainLaunchProject(
 
     // Determine if we should use managed mode
     // Managed mode is used when: in managed mode AND not forced to self-custody
+    const isSingleChain = chainIds.length === 1
     const useServerSigning = isManagedMode && !forceSelfCustody
 
-    if (!useServerSigning && isSafeAppActive()) {
+    if (!isSingleChain && !useServerSigning && isSafeAppActive()) {
       bundle._setError(
         'A Safe cannot authorize Relayr ERC-2771 requests as an EOA. Use a managed account for this Relayr launch, or leave Safe and connect the EOA that will own the project.',
       )
@@ -360,7 +364,11 @@ export function useOmnichainLaunchProject(
       bundle._setError('No owner address specified')
       return
     }
-    const signingOwner = useServerSigning ? managedAddress : connectedAddress
+    const signingOwner = isSingleChain
+      ? guardedAddress
+      : useServerSigning
+        ? managedAddress
+        : connectedAddress
     if (!signingOwner || projectOwner.toLowerCase() !== signingOwner.toLowerCase()) {
       bundle._setError('Project owner must match the active signing account')
       return
@@ -459,6 +467,32 @@ export function useOmnichainLaunchProject(
       bundle._setCreating()
 
       let bundleId: string
+
+      if (isSingleChain) {
+        const transaction = transactions[0]
+        if (!transaction) throw new Error('Missing single-chain launch transaction')
+        const hash = await runGuardedTx({
+          chainId: transaction.chain,
+          to: transaction.target as Address,
+          data: transaction.data as Hex,
+          value: BigInt(transaction.value),
+          reverify: async () => {
+            assertSigningOwnerUnchanged()
+            const freshFee = await fetchProjectCreationFee(transaction.chain)
+            if (freshFee !== BigInt(transaction.value)) {
+              throw new Error(`Project creation fee changed on chain ${transaction.chain}`)
+            }
+          },
+          review: {
+            title: 'Review project launch',
+            description: 'Review the exact single-chain project launch before submitting it directly.',
+            label: 'Launch project',
+            contractName: 'JBOmnichainDeployer',
+          },
+        })
+        bundle._setDirectCompleted(transaction.chain, 0, hash)
+        return
+      }
 
       if (useServerSigning) {
         // === SERVER SIGNING: Server-side ERC-2771 signing ===
@@ -650,7 +684,7 @@ export function useOmnichainLaunchProject(
       bundle._setError(errorMessage)
       onErrorRef.current?.(err instanceof Error ? err : new Error(errorMessage))
     }
-  }, [isManagedMode, managedAddress, connectedAddress, bundle, config, signTypedDataAsync, persistedResult, resumedInProgress, deploymentKey])
+  }, [isManagedMode, managedAddress, connectedAddress, guardedAddress, runGuardedTx, bundle, config, signTypedDataAsync, persistedResult, resumedInProgress, deploymentKey])
 
   const reset = useCallback(() => {
     resetBundle()

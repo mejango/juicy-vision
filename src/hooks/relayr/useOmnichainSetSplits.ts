@@ -21,6 +21,7 @@ import { getProjectController } from '../../utils/paymentTerminal'
 import { assertCurrentRulesetId } from '../../utils/projectTrust'
 import { buildSplitGroup } from '../../utils/splitSafety'
 import { fetchProjectSplits, type JBSplitData } from '../../services/bendystraw'
+import { useGuardedTx } from '../useGuardedTx'
 
 // Split data as used in the form
 export interface FormSplit {
@@ -158,9 +159,15 @@ export function useOmnichainSetSplits(
     ) => void
     _setCreating: () => void
     _setProcessing: (txHash: string) => void
+    _setDirectCompleted: (
+      chainId: number,
+      projectId: number,
+      txHash: string,
+    ) => void
     _setError: (error: string) => void
   }
   const { bundleState, reset, updateFromStatus } = bundle
+  const { run: runGuardedTx } = useGuardedTx()
 
   // Status polling
   const { data: statusData } = useRelayrStatus({
@@ -212,6 +219,11 @@ export function useOmnichainSetSplits(
     reservedSplits: FormSplit[]
   }) => {
     const { chainData, payoutSplits, reservedSplits } = params
+
+    if (chainData.length === 0 || new Set(chainData.map(chain => chain.chainId)).size !== chainData.length) {
+      bundle._setError('Split chains must be a non-empty unique list')
+      return
+    }
 
     // Validate wallet
     if (!isManagedMode || !managedAddress || !isAddress(managedAddress)) {
@@ -335,6 +347,48 @@ export function useOmnichainSetSplits(
       }))
 
       assertTransactionAccountUnchanged(activeAddress, latestManagedAddress.current)
+      if (relayrTransactions.length === 1) {
+        const transaction = relayrTransactions[0]
+        const reviewedChain = chainDataWithControllers[0]
+        if (!transaction || !reviewedChain) {
+          throw new Error('Missing single-chain split transaction')
+        }
+        const hash = await runGuardedTx({
+          chainId: transaction.chainId,
+          to: transaction.target as Address,
+          data: transaction.data as `0x${string}`,
+          value: BigInt(transaction.value),
+          reverify: async () => {
+            assertTransactionAccountUnchanged(activeAddress, latestManagedAddress.current)
+            await assertReviewedSplitsUnchanged(reviewedChain)
+            const currentController = await getProjectController(
+              reviewedChain.publicClient,
+              BigInt(reviewedChain.projectId),
+            )
+            if (currentController.toLowerCase() !== reviewedChain.controller.toLowerCase()) {
+              throw new Error(`The project controller changed on chain ${reviewedChain.chainId}`)
+            }
+            await assertCurrentRulesetId({
+              client: reviewedChain.publicClient,
+              projectId: BigInt(reviewedChain.projectId),
+              expectedRulesetId: BigInt(reviewedChain.rulesetId),
+            })
+          },
+          review: {
+            title: 'Review project split update',
+            description: 'Review the exact single-chain split update before submitting it directly.',
+            label: 'Set project splits',
+            contractName: 'JBController',
+          },
+        })
+        bundle._setDirectCompleted(
+          transaction.chainId,
+          reviewedChain.projectId,
+          hash,
+        )
+        return
+      }
+
       const result = await submitManagedSplitsBundle(
         relayrTransactions,
         activeAddress,
@@ -353,7 +407,7 @@ export function useOmnichainSetSplits(
       bundle._setError(errorMessage)
       onErrorRef.current?.(errorMessage)
     }
-  }, [isManagedMode, managedAddress, bundle])
+  }, [isManagedMode, managedAddress, bundle, runGuardedTx])
 
   const isExecuting = bundleState.status === 'creating' ||
     bundleState.status === 'awaiting_payment' ||

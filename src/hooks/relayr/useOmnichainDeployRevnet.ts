@@ -20,6 +20,7 @@ import { useRelayrBundle } from './useRelayrBundle'
 import { useRelayrStatus } from './useRelayrStatus'
 import type { JBSuckerBridge } from '../../utils/suckerConfig'
 import type { UseOmnichainTransactionOptions, BundleState } from './types'
+import { useGuardedTx } from '../useGuardedTx'
 
 export interface OmnichainDeployRevnetParams {
   chainIds: number[]
@@ -175,6 +176,7 @@ export function useOmnichainDeployRevnet(
   const { mode, isAuthenticated } = useAuthStore()
   const isManagedMode = mode === 'managed' && isAuthenticated()
   const { address: managedAddress } = useManagedWallet()
+  const { run: runGuardedTx } = useGuardedTx()
   const latestManagedAddress = useRef(managedAddress)
   latestManagedAddress.current = managedAddress
 
@@ -200,6 +202,7 @@ export function useOmnichainDeployRevnet(
     ) => void
     _setCreating: () => void
     _setProcessing: (txHash: string) => void
+    _setDirectCompleted: (chainId: number, projectId: number, txHash: string) => void
     _setError: (error: string) => void
   }
   const { bundleState, reset: resetBundle } = bundle
@@ -438,6 +441,37 @@ export function useOmnichainDeployRevnet(
       assertTransactionAccountUnchanged(operator, latestManagedAddress.current)
       bundle._setCreating()
 
+      if (chainIds.length === 1) {
+        const transaction = relayrTransactions[0]
+        if (!transaction) throw new Error('Missing single-chain revnet deployment')
+        const hash = await runGuardedTx({
+          chainId: transaction.chainId,
+          to: transaction.target as `0x${string}`,
+          data: transaction.data as `0x${string}`,
+          value: BigInt(transaction.value),
+          reverify: async () => {
+            assertTransactionAccountUnchanged(operator, latestManagedAddress.current)
+            const freshFee = await fetchProjectCreationFee(transaction.chainId)
+            if (freshFee !== BigInt(transaction.value)) {
+              throw new Error(`Project creation fee changed on chain ${transaction.chainId}`)
+            }
+          },
+          review: {
+            title: 'Review revnet deployment',
+            description: 'Review the exact single-chain revnet deployment before submitting it directly.',
+            label: 'Deploy revnet',
+            contractName: 'REVDeployer',
+          },
+        })
+        bundleSubmitted = true
+        bundle._setDirectCompleted(
+          transaction.chainId,
+          deployResponse.predictedProjectIds[transaction.chainId] ?? 0,
+          hash,
+        )
+        return
+      }
+
       // Use createManagedRelayrBundle with smart account routing
       // This ensures _msgSender() = smart account (project owner), not passkey EOA
       assertTransactionAccountUnchanged(operator, latestManagedAddress.current)
@@ -483,6 +517,7 @@ export function useOmnichainDeployRevnet(
     managedAddress,
     persistedResult,
     resumedInProgress,
+    runGuardedTx,
     bundle,
     deploymentKey,
     onError,

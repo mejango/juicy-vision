@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   getWalletSession,
   clearWalletSession,
@@ -9,302 +9,320 @@ import {
   verifySiweSignature,
   signInWithWalletClient,
   type WalletSession,
-} from './siwe'
-import { storage, STORAGE_KEYS } from './storage'
+} from "./siwe";
+import { storage, STORAGE_KEYS } from "./storage";
 
 // Mock fetch
-const mockFetch = vi.fn()
+const mockFetch = vi.fn();
 
 // Mock session service
-vi.mock('./session', () => ({
-  getSessionId: vi.fn(() => 'test-session-id'),
-}))
+vi.mock("./session", () => ({
+  getSessionId: vi.fn(() => "test-session-id"),
+}));
 
-describe('siwe service', () => {
+describe("siwe service", () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', mockFetch)
-    localStorage.clear()
-    vi.clearAllMocks()
+    vi.stubGlobal("fetch", mockFetch);
+    localStorage.clear();
+    vi.clearAllMocks();
     // Reset location for consistent test results
-    Object.defineProperty(window, 'location', {
+    Object.defineProperty(window, "location", {
       value: {
-        host: 'localhost:3000',
-        origin: 'http://localhost:3000',
+        host: "localhost:3003",
+        origin: "http://localhost:3003",
       },
       writable: true,
-    })
-  })
+    });
+  });
 
-  describe('getWalletSession', () => {
-    it('returns null when no session stored', () => {
-      expect(getWalletSession()).toBeNull()
-    })
+  describe("getWalletSession", () => {
+    it("returns null when no session stored", () => {
+      expect(getWalletSession()).toBeNull();
+    });
 
-    it('returns session when valid and not expired', () => {
+    it("returns session when valid and not expired", () => {
       const session: WalletSession = {
-        address: '0x1234567890123456789012345678901234567890',
-        token: 'valid-token',
+        address: "0x1234567890123456789012345678901234567890",
+        token: "valid-token",
         expiresAt: Date.now() + 24 * 60 * 60 * 1000, // Expires in 24 hours
-      }
-      storage.setJSON(STORAGE_KEYS.WALLET_SESSION, session)
+      };
+      storage.setJSON(STORAGE_KEYS.WALLET_SESSION, session);
 
-      const result = getWalletSession()
-      expect(result).toEqual(session)
-    })
+      const result = getWalletSession();
+      expect(result).toEqual(session);
+    });
 
-    it('returns null and clears session when expired', () => {
+    it("returns null and clears session when expired", () => {
       const session: WalletSession = {
-        address: '0x1234567890123456789012345678901234567890',
-        token: 'expired-token',
+        address: "0x1234567890123456789012345678901234567890",
+        token: "expired-token",
         expiresAt: Date.now() - 1000, // Already expired
-      }
-      storage.setJSON(STORAGE_KEYS.WALLET_SESSION, session)
+      };
+      storage.setJSON(STORAGE_KEYS.WALLET_SESSION, session);
 
-      const result = getWalletSession()
-      expect(result).toBeNull()
-      expect(storage.getJSON(STORAGE_KEYS.WALLET_SESSION)).toBeNull()
-    })
+      const result = getWalletSession();
+      expect(result).toBeNull();
+      expect(storage.getJSON(STORAGE_KEYS.WALLET_SESSION)).toBeNull();
+    });
 
-    it('returns null when session expires within 1 hour buffer', () => {
+    it("returns null when session expires within 1 hour buffer", () => {
       const session: WalletSession = {
-        address: '0x1234567890123456789012345678901234567890',
-        token: 'about-to-expire-token',
+        address: "0x1234567890123456789012345678901234567890",
+        token: "about-to-expire-token",
         expiresAt: Date.now() + 30 * 60 * 1000, // Expires in 30 mins (within 1hr buffer)
-      }
-      storage.setJSON(STORAGE_KEYS.WALLET_SESSION, session)
+      };
+      storage.setJSON(STORAGE_KEYS.WALLET_SESSION, session);
 
-      const result = getWalletSession()
-      expect(result).toBeNull()
-    })
-  })
+      const result = getWalletSession();
+      expect(result).toBeNull();
+    });
+  });
 
-  describe('clearWalletSession', () => {
-    it('removes wallet session from storage', () => {
+  describe("clearWalletSession", () => {
+    it("removes wallet session from storage", () => {
       const session: WalletSession = {
-        address: '0x1234567890123456789012345678901234567890',
-        token: 'valid-token',
+        address: "0x1234567890123456789012345678901234567890",
+        token: "valid-token",
         expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-      }
-      storage.setJSON(STORAGE_KEYS.WALLET_SESSION, session)
-      expect(storage.getJSON(STORAGE_KEYS.WALLET_SESSION)).not.toBeNull()
+      };
+      storage.setJSON(STORAGE_KEYS.WALLET_SESSION, session);
+      expect(storage.getJSON(STORAGE_KEYS.WALLET_SESSION)).not.toBeNull();
 
-      clearWalletSession()
+      clearWalletSession();
 
-      expect(storage.getJSON(STORAGE_KEYS.WALLET_SESSION)).toBeNull()
-    })
-  })
+      expect(storage.getJSON(STORAGE_KEYS.WALLET_SESSION)).toBeNull();
+    });
+  });
 
-  describe('hasValidWalletSession', () => {
-    it('returns false when no session', () => {
-      expect(hasValidWalletSession()).toBe(false)
-    })
+  describe("hasValidWalletSession", () => {
+    it("returns false when no session", () => {
+      expect(hasValidWalletSession()).toBe(false);
+    });
 
-    it('returns true when valid session exists', () => {
+    it("returns true when valid session exists", () => {
       const session: WalletSession = {
-        address: '0x1234567890123456789012345678901234567890',
-        token: 'valid-token',
+        address: "0x1234567890123456789012345678901234567890",
+        token: "valid-token",
         expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-      }
-      storage.setJSON(STORAGE_KEYS.WALLET_SESSION, session)
+      };
+      storage.setJSON(STORAGE_KEYS.WALLET_SESSION, session);
 
-      expect(hasValidWalletSession()).toBe(true)
-    })
+      expect(hasValidWalletSession()).toBe(true);
+    });
 
-    it('returns false when session expired', () => {
+    it("returns false when session expired", () => {
       const session: WalletSession = {
-        address: '0x1234567890123456789012345678901234567890',
-        token: 'expired-token',
+        address: "0x1234567890123456789012345678901234567890",
+        token: "expired-token",
         expiresAt: Date.now() - 1000,
-      }
-      storage.setJSON(STORAGE_KEYS.WALLET_SESSION, session)
+      };
+      storage.setJSON(STORAGE_KEYS.WALLET_SESSION, session);
 
-      expect(hasValidWalletSession()).toBe(false)
-    })
-  })
+      expect(hasValidWalletSession()).toBe(false);
+    });
+  });
 
-  describe('getWalletSessionToken', () => {
-    it('returns null when no session', () => {
-      expect(getWalletSessionToken()).toBeNull()
-    })
+  describe("getWalletSessionToken", () => {
+    it("returns null when no session", () => {
+      expect(getWalletSessionToken()).toBeNull();
+    });
 
-    it('returns token when valid session exists', () => {
+    it("returns token when valid session exists", () => {
       const session: WalletSession = {
-        address: '0x1234567890123456789012345678901234567890',
-        token: 'my-secret-token',
+        address: "0x1234567890123456789012345678901234567890",
+        token: "my-secret-token",
         expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-      }
-      storage.setJSON(STORAGE_KEYS.WALLET_SESSION, session)
+      };
+      storage.setJSON(STORAGE_KEYS.WALLET_SESSION, session);
 
-      expect(getWalletSessionToken()).toBe('my-secret-token')
-    })
-  })
+      expect(getWalletSessionToken()).toBe("my-secret-token");
+    });
+  });
 
-  describe('generateSiweMessage', () => {
-    it('generates valid SIWE message with all required fields', () => {
-      const address = '0x1234567890123456789012345678901234567890'
-      const nonce = 'abc123xyz'
-      const chainId = 1
+  describe("generateSiweMessage", () => {
+    it("generates valid SIWE message with all required fields", () => {
+      const address = "0x1234567890123456789012345678901234567890";
+      const nonce = "abc123xyz";
+      const chainId = 1;
 
-      const message = generateSiweMessage(address, nonce, chainId)
+      const message = generateSiweMessage(address, nonce, chainId);
 
       // Check required fields
-      expect(message).toContain('localhost:3000 wants you to sign in with your Ethereum account')
-      expect(message).toContain(address)
-      expect(message).toContain('URI: http://localhost:3000')
-      expect(message).toContain('Version: 1')
-      expect(message).toContain('Chain ID: 1')
-      expect(message).toContain(`Nonce: ${nonce}`)
-      expect(message).toContain('Issued At:')
-      expect(message).toContain('Expiration Time:')
-    })
+      expect(message).toContain(
+        "localhost:3003 wants you to sign in with your Ethereum account",
+      );
+      expect(message).toContain(address);
+      expect(message).toContain("URI: http://localhost:3003");
+      expect(message).toContain("Version: 1");
+      expect(message).toContain("Chain ID: 1");
+      expect(message).toContain(`Nonce: ${nonce}`);
+      expect(message).toContain("Issued At:");
+      expect(message).toContain("Expiration Time:");
+    });
 
-    it('includes correct chain ID', () => {
+    it("includes correct chain ID", () => {
       const message = generateSiweMessage(
-        '0x1234567890123456789012345678901234567890',
-        'nonce123',
-        137 // Polygon
-      )
+        "0x1234567890123456789012345678901234567890",
+        "nonce123",
+        137, // Polygon
+      );
 
-      expect(message).toContain('Chain ID: 137')
-    })
-  })
+      expect(message).toContain("Chain ID: 137");
+    });
+  });
 
-  describe('requestNonce', () => {
-    it('requests nonce from API with correct headers', async () => {
+  describe("requestNonce", () => {
+    it("requests nonce from API with correct headers", async () => {
       mockFetch.mockResolvedValueOnce({
-        json: () => Promise.resolve({
-          success: true,
-          data: { nonce: 'server-generated-nonce' },
-        }),
-      })
+        json: () =>
+          Promise.resolve({
+            success: true,
+            data: { nonce: "server-generated-nonce" },
+          }),
+      });
 
-      const address = '0x1234567890123456789012345678901234567890'
-      const nonce = await requestNonce(address)
+      const address = "0x1234567890123456789012345678901234567890";
+      const nonce = await requestNonce(address);
 
-      expect(nonce).toBe('server-generated-nonce')
+      expect(nonce).toBe("server-generated-nonce");
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/auth/siwe/nonce'),
+        expect.stringContaining("/auth/siwe/nonce"),
         expect.objectContaining({
-          method: 'POST',
+          method: "POST",
           headers: expect.objectContaining({
-            'Content-Type': 'application/json',
-            'X-Session-ID': 'test-session-id',
+            "Content-Type": "application/json",
+            "X-Session-ID": "test-session-id",
           }),
           body: JSON.stringify({ address }),
-        })
-      )
-    })
-
-    it('throws error when API returns failure', async () => {
-      mockFetch.mockResolvedValueOnce({
-        json: () => Promise.resolve({
-          success: false,
-          error: 'Rate limited',
         }),
-      })
+      );
+    });
 
-      await expect(requestNonce('0x123')).rejects.toThrow('Rate limited')
-    })
-  })
-
-  describe('verifySiweSignature', () => {
-    it('verifies signature and stores session', async () => {
+    it("throws error when API returns failure", async () => {
       mockFetch.mockResolvedValueOnce({
-        json: () => Promise.resolve({
-          success: true,
-          data: { token: 'jwt-token-from-server' },
-        }),
-      })
+        json: () =>
+          Promise.resolve({
+            success: false,
+            error: "Rate limited",
+          }),
+      });
 
-      const address = '0x1234567890123456789012345678901234567890'
-      const message = 'SIWE message'
-      const signature = '0xsignature'
+      await expect(requestNonce("0x123")).rejects.toThrow("Rate limited");
+    });
+  });
 
-      const session = await verifySiweSignature(address, message, signature)
+  describe("verifySiweSignature", () => {
+    it("verifies signature and stores session", async () => {
+      mockFetch.mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            success: true,
+            data: { token: "jwt-token-from-server" },
+          }),
+      });
 
-      expect(session.address).toBe(address)
-      expect(session.token).toBe('jwt-token-from-server')
-      expect(session.expiresAt).toBeGreaterThan(Date.now())
+      const address = "0x1234567890123456789012345678901234567890";
+      const message = "SIWE message";
+      const signature = "0xsignature";
+
+      const session = await verifySiweSignature(address, message, signature);
+
+      expect(session.address).toBe(address);
+      expect(session.token).toBe("jwt-token-from-server");
+      expect(session.expiresAt).toBeGreaterThan(Date.now());
 
       // Session should be stored
-      const stored = storage.getJSON<WalletSession>(STORAGE_KEYS.WALLET_SESSION)
-      expect(stored?.token).toBe('jwt-token-from-server')
-    })
+      const stored = storage.getJSON<WalletSession>(
+        STORAGE_KEYS.WALLET_SESSION,
+      );
+      expect(stored?.token).toBe("jwt-token-from-server");
+    });
 
-    it('sends signature to correct endpoint', async () => {
+    it("sends signature to correct endpoint", async () => {
       mockFetch.mockResolvedValueOnce({
-        json: () => Promise.resolve({
-          success: true,
-          data: { token: 'token' },
-        }),
-      })
+        json: () =>
+          Promise.resolve({
+            success: true,
+            data: { token: "token" },
+          }),
+      });
 
-      await verifySiweSignature('0x123', 'message', '0xsig')
+      await verifySiweSignature("0x123", "message", "0xsig");
 
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/auth/siwe/verify'),
+        expect.stringContaining("/auth/siwe/verify"),
         expect.objectContaining({
-          method: 'POST',
+          method: "POST",
           body: JSON.stringify({
-            address: '0x123',
-            message: 'message',
-            signature: '0xsig',
+            address: "0x123",
+            message: "message",
+            signature: "0xsig",
           }),
-        })
-      )
-    })
-
-    it('throws error when verification fails', async () => {
-      mockFetch.mockResolvedValueOnce({
-        json: () => Promise.resolve({
-          success: false,
-          error: 'Invalid signature',
         }),
-      })
+      );
+    });
+
+    it("throws error when verification fails", async () => {
+      mockFetch.mockResolvedValueOnce({
+        json: () =>
+          Promise.resolve({
+            success: false,
+            error: "Invalid signature",
+          }),
+      });
 
       await expect(
-        verifySiweSignature('0x123', 'message', '0xbadsig')
-      ).rejects.toThrow('Invalid signature')
-    })
-  })
+        verifySiweSignature("0x123", "message", "0xbadsig"),
+      ).rejects.toThrow("Invalid signature");
+    });
+  });
 
-  describe('signInWithWalletClient', () => {
-    it('adapts the exact SIWE message to the wallet client and verifies its signature', async () => {
+  describe("signInWithWalletClient", () => {
+    it("adapts the exact SIWE message to the wallet client and verifies its signature", async () => {
       mockFetch
         .mockResolvedValueOnce({
-          json: () => Promise.resolve({ success: true, data: { nonce: 'nonce-1' } }),
+          json: () =>
+            Promise.resolve({ success: true, data: { nonce: "nonce-1" } }),
         })
         .mockResolvedValueOnce({
-          json: () => Promise.resolve({ success: true, data: { token: 'token-1' } }),
-        })
-      const signMessageAsync = vi.fn().mockResolvedValue('0xsigned')
-      const address = '0x1234567890123456789012345678901234567890'
+          json: () =>
+            Promise.resolve({ success: true, data: { token: "token-1" } }),
+        });
+      const signMessageAsync = vi.fn().mockResolvedValue("0xsigned");
+      const address = "0x1234567890123456789012345678901234567890";
 
-      await expect(signInWithWalletClient(address, 1, signMessageAsync)).resolves.toMatchObject({
+      await expect(
+        signInWithWalletClient(address, 1, signMessageAsync),
+      ).resolves.toMatchObject({
         address,
-        token: 'token-1',
-      })
+        token: "token-1",
+      });
 
-      expect(signMessageAsync).toHaveBeenCalledOnce()
+      expect(signMessageAsync).toHaveBeenCalledOnce();
       expect(signMessageAsync).toHaveBeenCalledWith({
         message: expect.stringContaining(`Nonce: nonce-1`),
-      })
-      expect(JSON.parse(String(mockFetch.mock.calls[1][1]?.body))).toMatchObject({
+      });
+      expect(
+        JSON.parse(String(mockFetch.mock.calls[1][1]?.body)),
+      ).toMatchObject({
         address,
-        signature: '0xsigned',
-      })
-    })
+        signature: "0xsigned",
+      });
+    });
 
-    it('does not verify when the wallet rejects the signature request', async () => {
+    it("does not verify when the wallet rejects the signature request", async () => {
       mockFetch.mockResolvedValueOnce({
-        json: () => Promise.resolve({ success: true, data: { nonce: 'nonce-2' } }),
-      })
-      const signMessageAsync = vi.fn().mockRejectedValue(new Error('User rejected request'))
+        json: () =>
+          Promise.resolve({ success: true, data: { nonce: "nonce-2" } }),
+      });
+      const signMessageAsync = vi
+        .fn()
+        .mockRejectedValue(new Error("User rejected request"));
 
-      await expect(signInWithWalletClient('0x123', 1, signMessageAsync)).rejects.toThrow(
-        'User rejected request',
-      )
-      expect(mockFetch).toHaveBeenCalledOnce()
-    })
-  })
-})
+      await expect(
+        signInWithWalletClient("0x123", 1, signMessageAsync),
+      ).rejects.toThrow("User rejected request");
+      expect(mockFetch).toHaveBeenCalledOnce();
+    });
+  });
+});

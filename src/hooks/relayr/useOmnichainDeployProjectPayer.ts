@@ -8,6 +8,7 @@ import { getProjectPayerDeployer, type ProjectPayerDeployCall } from '../../serv
 import { useRelayrBundle } from './useRelayrBundle'
 import { useRelayrStatus } from './useRelayrStatus'
 import type { UseOmnichainTransactionOptions } from './types'
+import { useGuardedTx } from '../useGuardedTx'
 
 /**
  * Simulate every payer-deploy call before submitting the bundle — the Relayr
@@ -120,9 +121,15 @@ export function useOmnichainDeployProjectPayer(
     ) => void
     _setCreating: () => void
     _setProcessing: (txHash: string) => void
+    _setDirectCompleted: (
+      chainId: number,
+      projectId: number,
+      txHash: string,
+    ) => void
     _setError: (error: string) => void
   }
   const { bundleState, reset, updateFromStatus } = bundle
+  const { run: runGuardedTx } = useGuardedTx()
 
   const { data: statusData } = useRelayrStatus({
     bundleId: bundleState.bundleId,
@@ -169,6 +176,10 @@ export function useOmnichainDeployProjectPayer(
     }
     const activeAddress = managedAddress
     const chainIds = calls.map(call => call.chainId)
+    if (new Set(chainIds).size !== chainIds.length) {
+      bundle._setError('Payer deployment chains must be unique')
+      return
+    }
 
     // Fresh run: re-arm the one-shot success/error guards so a second deploy in
     // the same mounted component still fires its callback.
@@ -185,6 +196,35 @@ export function useOmnichainDeployProjectPayer(
       assertTransactionAccountUnchanged(activeAddress, latestManagedAddress.current)
       bundle._setCreating()
 
+      if (calls.length === 1) {
+        const call = calls[0]
+        const projectId = projectIds[call.chainId]
+        if (!projectId) throw new Error(`No project ID found for chain ${call.chainId}`)
+        const hash = await runGuardedTx({
+          chainId: call.chainId,
+          to: call.to,
+          data: call.data,
+          value: 0n,
+          reverify: async () => {
+            assertTransactionAccountUnchanged(activeAddress, latestManagedAddress.current)
+            await preflightProjectPayerTransactions({
+              transactions: [call],
+              chainIds: [call.chainId],
+              account: activeAddress as Address,
+            })
+          },
+          review: {
+            title: 'Review project payer deployment',
+            description: 'Review the exact single-chain payer deployment before submitting it directly.',
+            label: 'Deploy project payer',
+            contractName: 'JBProjectPayerDeployer',
+            ...call.review,
+          },
+        })
+        bundle._setDirectCompleted(call.chainId, projectId, hash)
+        return
+      }
+
       const result = await submitManagedProjectPayerBundle(
         calls,
         activeAddress,
@@ -198,7 +238,7 @@ export function useOmnichainDeployProjectPayer(
       bundle._setError(errorMessage)
       onErrorRef.current?.(err instanceof Error ? err : new Error(errorMessage))
     }
-  }, [isManagedMode, managedAddress, bundle])
+  }, [isManagedMode, managedAddress, bundle, runGuardedTx])
 
   const isExecuting = bundleState.status === 'creating' ||
     bundleState.status === 'awaiting_payment' ||

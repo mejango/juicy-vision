@@ -383,7 +383,7 @@ describe('TransactionSummary', () => {
 
     it('displays truncated owner address', () => {
       render(<TransactionSummary type="launchProject" details={launchProjectDetails} isDark={false} />)
-      expect(screen.getByText(/Owner:/)).toBeInTheDocument()
+      expect(screen.getByText(/Project owner:/)).toBeInTheDocument()
       expect(screen.getByText(/0x1234...7890/)).toBeInTheDocument()
     })
 

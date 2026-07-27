@@ -3,8 +3,8 @@
  * Handles biometric and hardware key authentication
  */
 
-import { execute, query } from '../db/index.ts';
-import { randomBytes } from 'node:crypto';
+import { execute, query } from "../db/index.ts";
+import { randomBytes } from "node:crypto";
 
 // ============================================================================
 // Types
@@ -46,16 +46,16 @@ interface PasskeyChallenge {
   id: string;
   challenge: Uint8Array;
   challengeB64: string;
-  type: 'registration' | 'authentication';
+  type: "registration" | "authentication";
   userId: string | null;
   email: string | null;
   expiresAt: Date;
 }
 
 // Relying Party info
-const RP_NAME = 'Juicy Vision';
-const RP_ID = Deno.env.get('PASSKEY_RP_ID') || 'localhost';
-const ORIGIN = Deno.env.get('PASSKEY_ORIGIN') || 'http://localhost:3000';
+const RP_NAME = "Juicy Vision";
+const RP_ID = Deno.env.get("PASSKEY_RP_ID") || "localhost";
+const ORIGIN = Deno.env.get("PASSKEY_ORIGIN") || "http://localhost:3003";
 
 // ============================================================================
 // Utilities
@@ -63,12 +63,12 @@ const ORIGIN = Deno.env.get('PASSKEY_ORIGIN') || 'http://localhost:3000';
 
 function base64UrlEncode(buffer: Uint8Array): string {
   const base64 = btoa(String.fromCharCode(...buffer));
-  return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
 }
 
 function base64UrlDecode(str: string): Uint8Array {
-  const base64 = str.replace(/-/g, '+').replace(/_/g, '/');
-  const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+  const base64 = str.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
   const binary = atob(padded);
   return new Uint8Array([...binary].map((c) => c.charCodeAt(0)));
 }
@@ -92,7 +92,7 @@ export async function createRegistrationChallenge(userId: string): Promise<{
   challenge: string;
   rp: { name: string; id: string };
   user: { id: string; name: string; displayName: string };
-  pubKeyCredParams: Array<{ type: 'public-key'; alg: number }>;
+  pubKeyCredParams: Array<{ type: "public-key"; alg: number }>;
   timeout: number;
   attestation: string;
   authenticatorSelection: {
@@ -103,12 +103,12 @@ export async function createRegistrationChallenge(userId: string): Promise<{
 }> {
   // Get user info
   const users = await query<{ email: string }>(
-    'SELECT email FROM users WHERE id = $1',
+    "SELECT email FROM users WHERE id = $1",
     [userId],
   );
 
   if (users.length === 0) {
-    throw new Error('User not found');
+    throw new Error("User not found");
   }
 
   const userEmail = users[0].email;
@@ -136,18 +136,18 @@ export async function createRegistrationChallenge(userId: string): Promise<{
     user: {
       id: userHandle,
       name: userEmail,
-      displayName: userEmail.split('@')[0],
+      displayName: userEmail.split("@")[0],
     },
     pubKeyCredParams: [
-      { type: 'public-key', alg: -7 }, // ES256 (P-256)
-      { type: 'public-key', alg: -257 }, // RS256
+      { type: "public-key", alg: -7 }, // ES256 (P-256)
+      { type: "public-key", alg: -257 }, // RS256
     ],
     timeout: 300000, // 5 minutes
-    attestation: 'none', // Don't need attestation for consumer use
+    attestation: "none", // Don't need attestation for consumer use
     authenticatorSelection: {
-      authenticatorAttachment: 'platform', // Prefer Touch ID / Face ID
-      residentKey: 'preferred',
-      userVerification: 'preferred',
+      authenticatorAttachment: "platform", // Prefer Touch ID / Face ID
+      residentKey: "preferred",
+      userVerification: "preferred",
     },
   };
 }
@@ -160,7 +160,11 @@ export async function createAuthenticationChallenge(email?: string): Promise<{
   rpId: string;
   timeout: number;
   userVerification: string;
-  allowCredentials?: Array<{ type: 'public-key'; id: string; transports?: string[] }>;
+  allowCredentials?: Array<{
+    type: "public-key";
+    id: string;
+    transports?: string[];
+  }>;
   hints?: string[];
 }> {
   const challenge = generateChallenge();
@@ -175,11 +179,14 @@ export async function createAuthenticationChallenge(email?: string): Promise<{
 
   // If email provided, get their credentials for allowCredentials
   let allowCredentials:
-    | Array<{ type: 'public-key'; id: string; transports?: string[] }>
+    | Array<{ type: "public-key"; id: string; transports?: string[] }>
     | undefined;
 
   if (email) {
-    const credentials = await query<{ credential_id_b64: string; transports: string[] | null }>(
+    const credentials = await query<{
+      credential_id_b64: string;
+      transports: string[] | null;
+    }>(
       `SELECT pc.credential_id_b64, pc.transports
        FROM passkey_credentials pc
        JOIN users u ON pc.user_id = u.id
@@ -189,11 +196,11 @@ export async function createAuthenticationChallenge(email?: string): Promise<{
 
     if (credentials.length > 0) {
       allowCredentials = credentials.map((c) => ({
-        type: 'public-key' as const,
+        type: "public-key" as const,
         id: c.credential_id_b64,
         // Prefer internal (platform) transport if not specified
         // This hints the browser to try Touch ID first
-        transports: c.transports || ['internal', 'hybrid'],
+        transports: c.transports || ["internal", "hybrid"],
       }));
     }
   }
@@ -202,10 +209,10 @@ export async function createAuthenticationChallenge(email?: string): Promise<{
     challenge: challengeB64,
     rpId: RP_ID,
     timeout: 300000,
-    userVerification: 'preferred',
+    userVerification: "preferred",
     allowCredentials,
     // Hint browser to prefer platform authenticator (Chrome 128+)
-    hints: ['client-device'],
+    hints: ["client-device"],
   };
 }
 
@@ -214,13 +221,13 @@ export async function createAuthenticationChallenge(email?: string): Promise<{
  */
 async function consumeChallenge(
   challengeB64: string,
-  type: 'registration' | 'authentication',
+  type: "registration" | "authentication",
 ): Promise<PasskeyChallenge | null> {
   const results = await query<{
     id: string;
     challenge: Uint8Array;
     challenge_b64: string;
-    type: 'registration' | 'authentication';
+    type: "registration" | "authentication";
     user_id: string | null;
     email: string | null;
     expires_at: Date;
@@ -258,7 +265,7 @@ export interface RegistrationResponse {
     transports?: string[];
   };
   authenticatorAttachment?: string;
-  type: 'public-key';
+  type: "public-key";
 }
 
 /**
@@ -274,23 +281,28 @@ export async function verifyRegistration(
   const clientData = JSON.parse(new TextDecoder().decode(clientDataJSON));
 
   // Verify challenge
-  const challenge = await consumeChallenge(clientData.challenge, 'registration');
+  const challenge = await consumeChallenge(
+    clientData.challenge,
+    "registration",
+  );
   if (!challenge || challenge.userId !== userId) {
-    throw new Error('Invalid or expired challenge');
+    throw new Error("Invalid or expired challenge");
   }
 
   // Verify origin
   if (clientData.origin !== ORIGIN) {
-    throw new Error('Invalid origin');
+    throw new Error("Invalid origin");
   }
 
   // Verify type
-  if (clientData.type !== 'webauthn.create') {
-    throw new Error('Invalid type');
+  if (clientData.type !== "webauthn.create") {
+    throw new Error("Invalid type");
   }
 
   // Decode attestation object
-  const attestationObject = base64UrlDecode(response.response.attestationObject);
+  const attestationObject = base64UrlDecode(
+    response.response.attestationObject,
+  );
 
   // Parse CBOR attestation object (simplified - in production use proper CBOR library)
   // For now, we'll extract the public key from the raw response
@@ -320,14 +332,13 @@ export async function verifyRegistration(
   );
 
   // Enable passkey for user
-  await execute(
-    'UPDATE users SET passkey_enabled = TRUE WHERE id = $1',
-    [userId],
-  );
+  await execute("UPDATE users SET passkey_enabled = TRUE WHERE id = $1", [
+    userId,
+  ]);
 
   // Return credential
   const credentials = await query<DbPasskeyCredential>(
-    'SELECT * FROM passkey_credentials WHERE credential_id_b64 = $1',
+    "SELECT * FROM passkey_credentials WHERE credential_id_b64 = $1",
     [credentialIdB64],
   );
 
@@ -348,7 +359,7 @@ export interface AuthenticationResponse {
     userHandle?: string;
   };
   authenticatorAttachment?: string;
-  type: 'public-key';
+  type: "public-key";
 }
 
 /**
@@ -362,19 +373,22 @@ export async function verifyAuthentication(
   const clientData = JSON.parse(new TextDecoder().decode(clientDataJSON));
 
   // Verify challenge
-  const challenge = await consumeChallenge(clientData.challenge, 'authentication');
+  const challenge = await consumeChallenge(
+    clientData.challenge,
+    "authentication",
+  );
   if (!challenge) {
-    throw new Error('Invalid or expired challenge');
+    throw new Error("Invalid or expired challenge");
   }
 
   // Verify origin
   if (clientData.origin !== ORIGIN) {
-    throw new Error('Invalid origin');
+    throw new Error("Invalid origin");
   }
 
   // Verify type
-  if (clientData.type !== 'webauthn.get') {
-    throw new Error('Invalid type');
+  if (clientData.type !== "webauthn.get") {
+    throw new Error("Invalid type");
   }
 
   // Find credential
@@ -385,21 +399,26 @@ export async function verifyAuthentication(
     public_key: Uint8Array;
     counter: number;
   }>(
-    'SELECT id, user_id, public_key, counter FROM passkey_credentials WHERE credential_id_b64 = $1',
+    "SELECT id, user_id, public_key, counter FROM passkey_credentials WHERE credential_id_b64 = $1",
     [credentialIdB64],
   );
 
   if (credentials.length === 0) {
-    throw new Error('Credential not found');
+    throw new Error("Credential not found");
   }
 
   const credential = credentials[0];
 
   // Decode authenticator data
-  const authenticatorData = base64UrlDecode(response.response.authenticatorData);
+  const authenticatorData = base64UrlDecode(
+    response.response.authenticatorData,
+  );
 
   // Extract counter from authenticator data (bytes 33-36, big-endian)
-  const newCounter = new DataView(authenticatorData.buffer).getUint32(33, false);
+  const newCounter = new DataView(authenticatorData.buffer).getUint32(
+    33,
+    false,
+  );
 
   // SECURITY: Counter verification to prevent replay attacks
   // The counter must be strictly greater than the stored counter to ensure each
@@ -416,16 +435,16 @@ export async function verifyAuthentication(
   if (credential.counter > 0) {
     // Once we've seen a non-zero counter, we require strictly increasing counters
     if (newCounter <= credential.counter) {
-      console.error('Passkey counter validation failed', {
+      console.error("Passkey counter validation failed", {
         credentialId: credential.id,
         storedCounter: credential.counter,
         newCounter,
       });
-      throw new Error('Invalid counter - possible replay attack');
+      throw new Error("Invalid counter - possible replay attack");
     }
   } else if (newCounter === 0 && credential.counter === 0) {
     // Both are zero - authenticator doesn't support counters, allow
-    console.warn('Passkey authenticator does not support counters', {
+    console.warn("Passkey authenticator does not support counters", {
       credentialId: credential.id,
     });
   }
@@ -456,7 +475,9 @@ export async function verifyAuthentication(
 /**
  * Get all passkeys for a user
  */
-export async function getUserPasskeys(userId: string): Promise<PasskeyCredential[]> {
+export async function getUserPasskeys(
+  userId: string,
+): Promise<PasskeyCredential[]> {
   const results = await query<DbPasskeyCredential>(
     `SELECT * FROM passkey_credentials
      WHERE user_id = $1
@@ -470,24 +491,26 @@ export async function getUserPasskeys(userId: string): Promise<PasskeyCredential
 /**
  * Delete a passkey
  */
-export async function deletePasskey(userId: string, credentialId: string): Promise<void> {
+export async function deletePasskey(
+  userId: string,
+  credentialId: string,
+): Promise<void> {
   await execute(
-    'DELETE FROM passkey_credentials WHERE id = $1 AND user_id = $2',
+    "DELETE FROM passkey_credentials WHERE id = $1 AND user_id = $2",
     [credentialId, userId],
   );
 
   // Check if user has any remaining passkeys
   const remaining = await query<{ count: string }>(
-    'SELECT COUNT(*) as count FROM passkey_credentials WHERE user_id = $1',
+    "SELECT COUNT(*) as count FROM passkey_credentials WHERE user_id = $1",
     [userId],
   );
 
   if (parseInt(remaining[0].count) === 0) {
     // Disable passkey flag
-    await execute(
-      'UPDATE users SET passkey_enabled = FALSE WHERE id = $1',
-      [userId],
-    );
+    await execute("UPDATE users SET passkey_enabled = FALSE WHERE id = $1", [
+      userId,
+    ]);
   }
 }
 
@@ -531,9 +554,7 @@ function dbToCredential(row: DbPasskeyCredential): PasskeyCredential {
 
 // Cleanup expired challenges periodically
 export async function cleanupExpiredChallenges(): Promise<void> {
-  await execute(
-    'DELETE FROM passkey_challenges WHERE expires_at < NOW()',
-  );
+  await execute("DELETE FROM passkey_challenges WHERE expires_at < NOW()");
 }
 
 // ============================================================================
@@ -548,7 +569,7 @@ export async function createSignupChallenge(): Promise<{
   challenge: string;
   rp: { name: string; id: string };
   user: { id: string; name: string; displayName: string };
-  pubKeyCredParams: Array<{ type: 'public-key'; alg: number }>;
+  pubKeyCredParams: Array<{ type: "public-key"; alg: number }>;
   timeout: number;
   attestation: string;
   authenticatorSelection: {
@@ -580,18 +601,18 @@ export async function createSignupChallenge(): Promise<{
     user: {
       id: userIdB64,
       name: `passkey-user-${tempUserId.slice(0, 8)}`,
-      displayName: 'Passkey User',
+      displayName: "Passkey User",
     },
     pubKeyCredParams: [
-      { type: 'public-key', alg: -7 }, // ES256
-      { type: 'public-key', alg: -257 }, // RS256
+      { type: "public-key", alg: -7 }, // ES256
+      { type: "public-key", alg: -257 }, // RS256
     ],
     timeout: 300000,
-    attestation: 'none',
+    attestation: "none",
     authenticatorSelection: {
-      authenticatorAttachment: 'platform', // Prefer Touch ID / Face ID
-      residentKey: 'required',
-      userVerification: 'preferred',
+      authenticatorAttachment: "platform", // Prefer Touch ID / Face ID
+      residentKey: "required",
+      userVerification: "preferred",
     },
     tempUserId,
   };
@@ -613,7 +634,7 @@ export async function verifySignupRegistration(
     id: string;
     challenge: Uint8Array;
     challenge_b64: string;
-    type: 'registration' | 'authentication';
+    type: "registration" | "authentication";
     user_id: string | null;
     email: string | null;
     expires_at: Date;
@@ -625,28 +646,30 @@ export async function verifySignupRegistration(
   );
 
   if (results.length === 0) {
-    throw new Error('Invalid or expired challenge');
+    throw new Error("Invalid or expired challenge");
   }
 
   const challenge = results[0];
 
   // Verify this is a signup challenge (email field starts with 'signup:')
-  if (!challenge.email?.startsWith('signup:')) {
-    throw new Error('Invalid challenge type');
+  if (!challenge.email?.startsWith("signup:")) {
+    throw new Error("Invalid challenge type");
   }
 
   // Verify origin
   if (clientData.origin !== ORIGIN) {
-    throw new Error('Invalid origin');
+    throw new Error("Invalid origin");
   }
 
   // Verify type
-  if (clientData.type !== 'webauthn.create') {
-    throw new Error('Invalid type');
+  if (clientData.type !== "webauthn.create") {
+    throw new Error("Invalid type");
   }
 
   // Decode attestation object to extract public key
-  const attestationObject = base64UrlDecode(response.response.attestationObject);
+  const attestationObject = base64UrlDecode(
+    response.response.attestationObject,
+  );
 
   // Parse CBOR attestation object (simplified - just extract authData)
   // The attestation object is CBOR encoded with format:
@@ -654,16 +677,27 @@ export async function verifySignupRegistration(
   // For now, we'll do a simple extraction
   const authDataStart = attestationObject.indexOf(0x58) + 2; // 0x58 = CBOR byte string marker
   const authDataLength = attestationObject[authDataStart - 1];
-  const authData = attestationObject.slice(authDataStart, authDataStart + authDataLength);
+  const authData = attestationObject.slice(
+    authDataStart,
+    authDataStart + authDataLength,
+  );
 
   // Extract flags and counter from authData
   // authData structure: rpIdHash (32) + flags (1) + counter (4) + attestedCredentialData
   const flags = authData[32];
-  const counter = new DataView(authData.buffer, authData.byteOffset + 33, 4).getUint32(0, false);
+  const counter = new DataView(
+    authData.buffer,
+    authData.byteOffset + 33,
+    4,
+  ).getUint32(0, false);
 
   // Extract attested credential data
   // aaguid (16) + credIdLen (2) + credId (credIdLen) + publicKey (COSE)
-  const credIdLen = new DataView(authData.buffer, authData.byteOffset + 53, 2).getUint16(0, false);
+  const credIdLen = new DataView(
+    authData.buffer,
+    authData.byteOffset + 53,
+    2,
+  ).getUint16(0, false);
   const credentialId = authData.slice(55, 55 + credIdLen);
   const publicKey = authData.slice(55 + credIdLen);
 
@@ -674,19 +708,22 @@ export async function verifySignupRegistration(
   const backupState = (flags & 0x10) !== 0;
 
   // Create new user with auto-generated email
-  const tempUserId = challenge.email.replace('signup:', '');
+  const tempUserId = challenge.email.replace("signup:", "");
   const userEmail = `passkey-${tempUserId.slice(0, 8)}@passkey.local`;
 
   // Get next custodial address index
   const maxIndexResult = await query<{ max: number | null }>(
-    'SELECT MAX(custodial_address_index) as max FROM users',
+    "SELECT MAX(custodial_address_index) as max FROM users",
   );
   const nextIndex = (maxIndexResult[0]?.max ?? -1) + 1;
 
   // Create user
-  const userResult = await query<
-    { id: string; email: string; privacy_mode: string; email_verified: boolean }
-  >(
+  const userResult = await query<{
+    id: string;
+    email: string;
+    privacy_mode: string;
+    email_verified: boolean;
+  }>(
     `INSERT INTO users (email, custodial_address_index, passkey_enabled)
      VALUES ($1, $2, TRUE)
      RETURNING id, email, privacy_mode, email_verified`,
@@ -697,10 +734,10 @@ export async function verifySignupRegistration(
 
   // Determine device type from authenticatorAttachment
   let deviceType: string | null = null;
-  if (response.authenticatorAttachment === 'platform') {
-    deviceType = 'platform';
-  } else if (response.authenticatorAttachment === 'cross-platform') {
-    deviceType = 'security_key';
+  if (response.authenticatorAttachment === "platform") {
+    deviceType = "platform";
+  } else if (response.authenticatorAttachment === "cross-platform") {
+    deviceType = "security_key";
   }
 
   // Store credential
@@ -724,10 +761,9 @@ export async function verifySignupRegistration(
   );
 
   // Update user to indicate passkey is enabled
-  await execute(
-    'UPDATE users SET passkey_enabled = TRUE WHERE id = $1',
-    [user.id],
-  );
+  await execute("UPDATE users SET passkey_enabled = TRUE WHERE id = $1", [
+    user.id,
+  ]);
 
   return {
     userId: user.id,

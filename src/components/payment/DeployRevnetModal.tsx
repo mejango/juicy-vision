@@ -391,10 +391,10 @@ export default function DeployRevnetModal({
                 ))}
               </div>
 
-              {/* Operator */}
+              {/* Project operator */}
               <div className={`p-3 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
                 <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  Split Operator
+                  Project operator
                 </div>
                 <div className={`text-sm font-mono ${isDark ? 'text-white' : 'text-gray-900'}`}>
                   {splitOperator.slice(0, 8)}...{splitOperator.slice(-6)}

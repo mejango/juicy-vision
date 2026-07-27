@@ -138,7 +138,7 @@ function PayoutsBox({
                 <td className="py-1.5 pr-3">
                   {row.recipient === 'owner' ? (
                     <span className={`font-mono ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-                      {owner ? `${truncateAddress(owner)} (owner)` : "Project's owner"}
+                      {owner ? `${truncateAddress(owner)} (project owner)` : "Project owner"}
                     </span>
                   ) : row.recipient.projectId > 0 ? (
                     <ProjectSplitRoute

@@ -430,7 +430,7 @@ describe('CreateRevnetForm', () => {
 
       // Check for stage field labels
       expect(screen.getByText('Delay (days)')).toBeInTheDocument()
-      expect(screen.getByText('Operator Split (%)')).toBeInTheDocument()
+      expect(screen.getByText('Project operator split (%)')).toBeInTheDocument()
       expect(screen.getByText('Issuance Rate')).toBeInTheDocument()
       expect(screen.getByText('Decay Every (days)')).toBeInTheDocument()
       expect(screen.getByText('Decay (%)')).toBeInTheDocument()

@@ -17,6 +17,7 @@ import { useRelayrStatus } from './useRelayrStatus'
 import { getProjectController } from '../../utils/paymentTerminal'
 import { getSafetyPublicClient } from '../../utils/transactionSafety'
 import { resolveRulesetQueueRoute } from '../../utils/projectTrust'
+import { useGuardedTx } from '../useGuardedTx'
 import type {
   OmnichainExecuteParams,
   UseOmnichainTransactionOptions,
@@ -129,10 +130,16 @@ export function useOmnichainTransaction(
     ) => void
     _setCreating: () => void
     _setProcessing: (txHash: string) => void
+    _setDirectCompleted: (
+      chainId: number,
+      projectId: number,
+      txHash: string,
+    ) => void
     _setError: (error: string) => void
     _setExpired: () => void
   }
   const { bundleState, reset, updateFromStatus } = bundle
+  const { run: runGuardedTx } = useGuardedTx()
 
   // Status polling
   const { data: statusData } = useRelayrStatus({
@@ -186,6 +193,11 @@ export function useOmnichainTransaction(
    */
   const execute = useCallback(async (params: OmnichainExecuteParams) => {
     const { chainIds, projectIds, rulesetConfig, distributeConfig, deployERC20Config } = params
+
+    if (chainIds.length === 0 || new Set(chainIds).size !== chainIds.length) {
+      bundle._setError('Destination chains must be a non-empty unique list')
+      return
+    }
 
     // Validate wallet
     if (!isManagedMode || !managedAddress) {
@@ -263,6 +275,53 @@ export function useOmnichainTransaction(
       assertTransactionAccountUnchanged(activeAddress, latestManagedAddress.current)
       bundle._setCreating()
 
+      if (chainIds.length === 1) {
+        const transaction = transactions[0]
+        const projectId = projectIds[transaction?.chainId]
+        if (!transaction || !projectId) {
+          throw new Error('Missing single-chain project transaction')
+        }
+        const operation = rulesetConfig
+          ? {
+              title: 'Review ruleset update',
+              description: 'Review the exact single-chain ruleset update before submitting it directly.',
+              label: 'Queue project ruleset',
+              contractName: 'JBController',
+            }
+          : distributeConfig
+            ? {
+                title: 'Review reserved-token distribution',
+                description: 'Review the exact single-chain distribution before submitting it directly.',
+                label: 'Distribute reserved tokens',
+                contractName: 'JBController',
+              }
+            : {
+                title: 'Review project token deployment',
+                description: 'Review the exact single-chain token deployment before submitting it directly.',
+                label: 'Deploy project token',
+                contractName: 'JBController',
+              }
+        const hash = await runGuardedTx({
+          chainId: transaction.chainId,
+          to: transaction.target as Address,
+          data: transaction.data as Hex,
+          value: BigInt(transaction.value),
+          reverify: async () => {
+            assertTransactionAccountUnchanged(activeAddress, latestManagedAddress.current)
+            await preflightControllerTransactions({
+              transactions: [transaction],
+              chainIds: [transaction.chainId],
+              projectIds: { [transaction.chainId]: projectId },
+              account: activeAddress as Address,
+              operation: rulesetConfig ? 'rulesetQueue' : 'controller',
+            })
+          },
+          review: operation,
+        })
+        bundle._setDirectCompleted(transaction.chainId, projectId, hash)
+        return
+      }
+
       console.log('=== SERVER SIGNING MODE (omnichain transaction) ===')
       console.log(`Smart account routing: ${managedAddress}`)
 
@@ -290,6 +349,7 @@ export function useOmnichainTransaction(
     isManagedMode,
     managedAddress,
     bundle,
+    runGuardedTx,
   ])
 
   const isExecuting = bundleState.status === 'creating' ||
