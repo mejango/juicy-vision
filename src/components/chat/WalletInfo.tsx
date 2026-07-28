@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import { useAccount, useChainId, useSignMessage } from 'wagmi'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore, useSettingsStore } from '../../stores'
@@ -515,6 +516,7 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
   const { theme } = useThemeStore()
   const { t } = useTranslation()
   const { address, isConnected } = useAccount()
+  const navigate = useNavigate()
   const { ensName } = useEnsNameResolved(address)
   const { totalEth, totalUsdc, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
   const [identity, setIdentity] = useState<JuicyIdentity | null>(null)
@@ -797,6 +799,20 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
               </span>
             )}
           </button>
+          {/* Account view - everything this address has done and can do */}
+          {(address || passkeyWallet?.address) && (
+            <button
+              onClick={() => navigate(`/account/${address || passkeyWallet?.address}`)}
+              className={`transition-colors ${
+                theme === 'dark'
+                  ? 'text-gray-400 hover:text-gray-200'
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              <span className="mx-1">·</span>
+              {t('wallet.account', 'Account')}
+            </button>
+          )}
         </>
       ) : (
         // Not connected - invite user to connect

@@ -283,6 +283,46 @@ export function aggregatePermissionHolders(items: PermissionHolderItem[]): Proje
   return order
 }
 
+export interface OperatedProject {
+  chainId: number
+  projectId: number
+  isRevnetOperator: boolean
+  /** Granted permission ids on this (chainId, projectId), sorted ascending. */
+  permissionIds: number[]
+}
+
+/**
+ * Account-view counterpart to aggregatePermissionHolders: instead of collapsing
+ * one project's rows per OPERATOR, collapse one operator's rows per PROJECT.
+ * Cleared grants (no permissions) are dropped the same way.
+ */
+export function aggregateOperatedProjects(
+  items: Array<PermissionHolderItem & { projectId: number }>,
+): OperatedProject[] {
+  const byProject = new Map<string, OperatedProject>()
+  const order: OperatedProject[] = []
+  for (const item of items) {
+    const permissionIds = (item.permissions ?? []).map(Number).filter(n => Number.isInteger(n) && n > 0)
+    if (!permissionIds.length) continue // cleared grant — nothing operable
+    const chainId = Number(item.chainId)
+    const projectId = Number(item.projectId)
+    if (!Number.isInteger(projectId) || projectId <= 0) continue
+    const key = `${chainId}:${projectId}`
+    let group = byProject.get(key)
+    if (!group) {
+      group = { chainId, projectId, isRevnetOperator: false, permissionIds: [] }
+      byProject.set(key, group)
+      order.push(group)
+    }
+    group.isRevnetOperator = group.isRevnetOperator || !!item.isRevnetOperator
+    for (const id of permissionIds) {
+      if (!group.permissionIds.includes(id)) group.permissionIds.push(id)
+    }
+  }
+  for (const group of order) group.permissionIds.sort((a, b) => a - b)
+  return order
+}
+
 /**
  * Every operator the project has authorized, deduped across chains. Source is
  * bendystraw — there is no on-chain way to ENUMERATE operators, only to check

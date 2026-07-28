@@ -9,6 +9,7 @@ const ProjectDashboard = lazy(() => import('./pages/ProjectDashboard'))
 const JoinChatPage = lazy(() => import('./components/JoinChatPage'))
 const PaymentPage = lazy(() => import('./pages/pay/PaymentPage'))
 const TerminalsPage = lazy(() => import('./pages/merchant/TerminalsPage'))
+const AccountView = lazy(() => import('./pages/AccountView'))
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
 import { useTranslation } from 'react-i18next'
@@ -24,6 +25,7 @@ import { useTransactionExecutor, useManagedWallet, useIsMobile, useSafeApp } fro
 import { getSessionPseudoAddress, getCachedPseudoAddress } from './services/session'
 import { getWalletSession } from './services/siwe'
 import { useEnsNameResolved } from './hooks'
+import { resolveEnsToAddress } from './utils/ens'
 import { PaymentReviewModal } from './components/payment'
 import TransactionReviewModal from './components/payment/TransactionReviewModal'
 import TransactionStatusCenter from './components/payment/TransactionStatusCenter'
@@ -475,6 +477,71 @@ function ProjectRouteHandler() {
   return <ProjectDashboard chainId={chainId} projectId={projectId} />
 }
 
+const ACCOUNT_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
+
+// Component to handle account deep links like /account/0xabc… or
+// /account/jango.eth - forward-resolves ENS names, then shows the account view
+function AccountRouteHandler() {
+  const { address: addressParam } = useParams<{ address: string }>()
+  const navigate = useNavigate()
+  const [resolved, setResolved] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setResolved(null)
+    setFailed(false)
+    if (!addressParam) {
+      setFailed(true)
+      return
+    }
+    if (ACCOUNT_ADDRESS_REGEX.test(addressParam)) {
+      setResolved(addressParam)
+      return
+    }
+    if (addressParam.includes('.')) {
+      resolveEnsToAddress(addressParam).then(address => {
+        if (cancelled) return
+        if (address) setResolved(address)
+        else setFailed(true)
+      })
+      return () => {
+        cancelled = true
+      }
+    }
+    setFailed(true)
+  }, [addressParam])
+
+  if (failed) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-juice-dark">
+        <div className="text-center max-w-md px-4">
+          <h1 className="text-xl font-semibold mb-2 text-white">Invalid account URL</h1>
+          <p className="text-sm mb-6 text-gray-400">
+            Use format: /account/{'{address}'} or /account/{'{name}'}.eth
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="px-6 py-2 bg-juice-orange text-juice-dark font-medium hover:bg-juice-orange/90 transition-colors"
+          >
+            Go home
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!resolved) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-juice-dark">
+        <div className="w-8 h-8 border-2 border-juice-orange border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  return <AccountView address={resolved} />
+}
+
 // Component to handle /chat/:chatId routes - sets activeChatId and renders AppContent
 function ChatRouteHandler() {
   const { chatId } = useParams<{ chatId: string }>()
@@ -904,6 +971,7 @@ function MainApp() {
               <Route path="/merchant/terminals" element={<TerminalsPage />} />
               <Route path="/join/:code" element={<JoinChatPage />} />
               <Route path="/chat/:chatId/*" element={<ChatRouteHandler />} />
+              <Route path="/account/:address" element={<AccountRouteHandler />} />
               <Route path="/:projectSlug" element={<ProjectRouteHandler />} />
               <Route path="/" element={<HomeRouteHandler />} />
               <Route path="*" element={<HomeRouteHandler />} />

@@ -45,6 +45,8 @@ import {
   CASH_OUT_EVENTS_HISTORY_QUERY,
   PROJECT_MOMENTS_QUERY,
   REVNET_OPERATOR_QUERY,
+  ACCOUNT_ACTIVITY_EVENTS_QUERY,
+  ACCOUNT_PERMISSION_HOLDERS_QUERY,
 } from './queries'
 
 export interface ProjectMetadata {
@@ -937,6 +939,48 @@ export async function fetchActivityEvents(limit: number = 20, offset: number = 0
   return data.activityEvents.items
     .map(transformEvent)
     .filter(event => event.type !== 'unknown')
+}
+
+// Everything one account has done across projects. Same mainnet routing as
+// fetchActivityEvents: the account feed shows real protocol activity even when
+// the app runs in staging/testnet mode.
+export async function fetchAccountActivityEvents(
+  address: string,
+  options: { limit?: number; offset?: number } = {}
+): Promise<ActivityEvent[]> {
+  const { limit = 25, offset = 0 } = options
+  const data = await safeRequest<{ activityEvents: { items: RawActivityEvent[] } }>(
+    ACCOUNT_ACTIVITY_EVENTS_QUERY,
+    { address: address.toLowerCase(), limit, offset, orderBy: 'timestamp', orderDirection: 'desc' },
+    { network: 'mainnet' }
+  )
+
+  return data.activityEvents.items
+    .map(transformEvent)
+    .filter(event => event.type !== 'unknown')
+}
+
+// One permission-holder grant row: `operator` may act for `account`'s project.
+export interface AccountPermissionHolder {
+  chainId: number
+  projectId: number
+  account: string
+  operator: string
+  permissions: unknown[] | null
+  isRevnetOperator?: boolean
+}
+
+// Every grant naming `address` as operator, across all chains and projects.
+export async function fetchAccountOperatedPermissions(
+  address: string,
+  options: { limit?: number } = {}
+): Promise<AccountPermissionHolder[]> {
+  const { limit = 100 } = options
+  const data = await safeRequest<{ permissionHolders: { items: AccountPermissionHolder[] } }>(
+    ACCOUNT_PERMISSION_HOLDERS_QUERY,
+    { operator: address.toLowerCase(), version: 6, limit }
+  )
+  return data?.permissionHolders?.items ?? []
 }
 
 // Read the holder's current claimed-token plus credit balance from JBTokens.
