@@ -7,11 +7,11 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import type { AutoIssuance, CreateFlowState, RecipientRow, StageState } from './state'
 import {
-  createStage, localTimezoneLabel, lockedCurrencySym, round2, surplusTokenLabel, tickerLabel, tsToLocal,
+  chainName, createStage, localTimezoneLabel, lockedCurrencySym, round2, surplusTokenLabel, tickerLabel, tsToLocal,
 } from './state'
 import { revPrevCutFreqDays, snapDaysAfter } from './builders'
 import {
-  AddLink, CurrencySelect, EnsAddressInput, Hint, InfoNote, NumberInput, StepHead, TextInput, ToggleRow,
+  AddLink, CurrencySelect, EnsAddressInput, Hint, InfoNote, NumberInput, Select, StepHead, TextInput, ToggleRow,
   inputClass, useIsDark,
 } from './controls'
 import { CashOutTaxCard, PerChainAddrControl, ReservedSplitRow, SplitRowShell } from './pickers'
@@ -274,6 +274,10 @@ function AutoIssuanceRow(props: {
   perChainKey: string
 }) {
   const { ai, onChange } = props
+  const chainIds = props.state.chainIds || []
+  // The mint lands on ONE chain (REVDeployer skips rows whose chainId isn't
+  // the local chain); default is the first selected chain.
+  const rowChain = ai.chainId != null && chainIds.includes(ai.chainId) ? ai.chainId : chainIds[0]
   return (
     <div>
       <SplitRowShell lead={props.index === 0 ? 'Issue' : '… and'} onRemove={props.onRemove}>
@@ -291,6 +295,16 @@ function AutoIssuanceRow(props: {
           onChange={(v) => onChange({ address: v.trim() })}
           onResolved={(addr) => onChange({ resolvedAddress: addr || undefined })}
         />
+        {chainIds.length > 1 && (
+          <>
+            <span className="text-sm pt-2 shrink-0">on</span>
+            <Select
+              value={String(rowChain)}
+              onChange={(v) => onChange({ chainId: Number(v) })}
+              options={chainIds.map((id) => [String(id), chainName(id)])}
+            />
+          </>
+        )}
       </SplitRowShell>
       <PerChainAddrControl state={props.state} update={props.update} fieldKey={props.perChainKey} />
     </div>

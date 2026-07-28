@@ -63,8 +63,10 @@ export default function TopProjects({
           orderDirection: 'desc'
         })
 
-        // Group projects by projectId + version. Same project can exist on
-        // multiple chains, but different versions are separate projects.
+        // Group projects by sucker group: the same omnichain project shares a
+        // suckerGroupId across chains (its per-chain projectIds may differ,
+        // and unrelated projects on different chains can share a projectId).
+        // Rows without a suckerGroupId are never merged.
         const isTrending = orderBy === 'trendingScore'
         const grouped = new Map<string, Project & {
           chainIds: number[]
@@ -73,8 +75,11 @@ export default function TopProjects({
         }>()
 
         for (const project of data) {
-          // Key includes version so the same projectId across versions stays separate
-          const groupKey = `${project.projectId}-v${project.version || 6}`
+          // Key includes version so the same sucker group across versions stays separate
+          const version = project.version || 6
+          const groupKey = project.suckerGroupId
+            ? `${project.suckerGroupId}-v${version}`
+            : `${project.chainId}:${project.projectId}:v${version}`
           const existing = grouped.get(groupKey)
 
           // Get the score value based on orderBy

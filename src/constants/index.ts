@@ -102,7 +102,7 @@ export const MAINNET_CHAINS: Record<number, ChainConfig> = {
 }
 
 // Testnet chain configurations
-const TESTNET_CHAINS: Record<number, ChainConfig> = {
+export const TESTNET_CHAINS: Record<number, ChainConfig> = {
   11155111: {
     name: 'Sepolia',
     shortName: 'SEP',

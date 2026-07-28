@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores'
 import { fetchProjects, type Project } from '../../services/bendystraw'
 import { resolveEnsToAddress, truncateAddress } from '../../utils/ens'
-import { CHAINS } from '../../constants'
+import { projectPathFor } from '../../utils/projectLink'
 
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
 // Loose ENS shape: dot-separated labels (e.g. "jango.eth"). Actual validity is
@@ -49,11 +49,8 @@ function groupProjects(projects: Project[]): ProjectRow[] {
   return [...grouped.values()]
 }
 
-// Route slugs (App.tsx CHAIN_SLUG_TO_ID) are the dash-free CHAINS slugs:
-// eth, op, base, arb, and op-sep → opsep etc. for testnets.
 function projectPath(row: ProjectRow): string | null {
-  const slug = CHAINS[row.chainIds[0]]?.slug
-  return slug ? `/${slug.replace(/-/g, '')}:${row.projectId}` : null
+  return projectPathFor(row.chainIds[0], row.projectId)
 }
 
 /**

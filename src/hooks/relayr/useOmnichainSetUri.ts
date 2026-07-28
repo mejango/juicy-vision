@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useAccount, useConfig, useSignTypedData } from 'wagmi'
+import { useAccount, useConfig, useSignTypedData, useSwitchChain } from 'wagmi'
 import { encodeFunctionData, getContract, createPublicClient, http, fallback, type Address, type Hex, type PublicClient } from 'viem'
 import { useManagedWallet, createManagedRelayrBundle } from '../useManagedWallet'
 import { assertTransactionAccountUnchanged } from '../useReviewedTransactionAccount'
@@ -9,6 +9,7 @@ import {
   encodeSetUriOf,
   type ChainProjectMapping,
 } from '../../services/omnichainDeployer'
+import { estimateForwardRequestGas } from './forwardRequestGas'
 import { useRelayrBundle } from './useRelayrBundle'
 import { useRelayrStatus } from './useRelayrStatus'
 import type { UseOmnichainTransactionOptions, BundleState } from './types'
@@ -68,6 +69,10 @@ export function submitManagedSetUriBundle(
 
 // 48 hours deadline for signatures
 const ERC2771_DEADLINE_DURATION_SECONDS = 48 * 60 * 60
+
+// Signed forward-request gas when per-chain estimation is unavailable. The
+// signature-bound cap cannot be raised by the relayer, so it errs high.
+const FALLBACK_SET_URI_FORWARD_GAS = 2_000_000n
 
 // localStorage key prefix for persisting state
 const SET_URI_RESULT_PREFIX = 'juicy-vision:set-uri-result:'
@@ -185,6 +190,7 @@ export function useOmnichainSetUri(
   latestConnectedAddress.current = connectedAddress
   const config = useConfig()
   const { signTypedDataAsync } = useSignTypedData()
+  const { switchChainAsync } = useSwitchChain()
 
   // Track ERC-2771 signing state
   const [isSigning, setIsSigning] = useState(false)
@@ -489,6 +495,10 @@ export function useOmnichainSetUri(
           setSigningChainId(tx.chain)
           console.log(`Requesting signature for chain ${tx.chain}...`)
 
+          // Wallets reject EIP-712 typed data whose domain chainId differs
+          // from the active chain — switch before every per-chain signature.
+          await switchChainAsync({ chainId: tx.chain })
+
           const publicClient = config.getClient({ chainId: tx.chain })
 
           const forwarderContract = getContract({
@@ -499,12 +509,20 @@ export function useOmnichainSetUri(
 
           const nonce = await forwarderContract.read.nonces([signerAddress as Address])
           const deadline = Math.floor(Date.now() / 1000) + ERC2771_DEADLINE_DURATION_SECONDS
+          const gas = await estimateForwardRequestGas({
+            chainId: tx.chain,
+            account: signerAddress as Address,
+            to: tx.target as Address,
+            data: tx.data as Hex,
+            value: BigInt(tx.value || '0'),
+            fallbackGas: FALLBACK_SET_URI_FORWARD_GAS,
+          })
 
           const messageData = {
             from: signerAddress as Address,
             to: tx.target as Address,
             value: BigInt(tx.value || '0'),
-            gas: BigInt(500000), // Conservative gas estimate for setUri
+            gas,
             nonce,
             deadline,
             data: tx.data as Hex,
@@ -645,6 +663,7 @@ export function useOmnichainSetUri(
     bundle,
     config,
     signTypedDataAsync,
+    switchChainAsync,
     deploymentKey,
     persistedResult,
     resumedInProgress,

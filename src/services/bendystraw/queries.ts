@@ -85,6 +85,7 @@ export const PROJECTS_QUERY = `
         projectId
         chainId
         version
+        suckerGroupId
         handle
         name
         logoUri
@@ -424,12 +425,28 @@ export const REVNET_OPERATOR_QUERY = `
   }
 `
 
-// Everything an account has done across projects: same selection set as
-// ACTIVITY_EVENTS_QUERY, filtered by the event's top-level `from` address.
+// Everything an account has done OR received across projects. The from-branch
+// mirrors ACTIVITY_EVENTS_QUERY's selection set (plus sub-event ids so the
+// merge can dedupe). The top-level activityEventFilter has NO beneficiary
+// field, so events where the account only receives value (payments to them,
+// mints, automints) are fetched from the beneficiary-bearing event roots and
+// merged client-side (mergeAccountActivityEvents). Every branch pins version 6
+// in an explicit AND group — this Ponder version does not AND sibling fields
+// inside OR branches.
+const ACCOUNT_ACTIVITY_PROJECT_FIELDS = `
+        project {
+          projectId
+          name
+          handle
+          logoUri
+          decimals
+          currency
+        }`
+
 export const ACCOUNT_ACTIVITY_EVENTS_QUERY = `
   query AccountActivityEvents($address: String!, $limit: Int, $offset: Int, $orderBy: String, $orderDirection: String) {
     activityEvents(
-      where: { version: 6, from: $address }
+      where: { AND: [{ from: $address }, { version: 6 }] }
       limit: $limit
       offset: $offset
       orderBy: $orderBy
@@ -441,15 +458,9 @@ export const ACCOUNT_ACTIVITY_EVENTS_QUERY = `
         timestamp
         from
         txHash
-        project {
-          projectId
-          name
-          handle
-          logoUri
-          decimals
-          currency
-        }
+${ACCOUNT_ACTIVITY_PROJECT_FIELDS}
         payEvent {
+          id
           amount
           amountUsd
           from
@@ -460,6 +471,7 @@ export const ACCOUNT_ACTIVITY_EVENTS_QUERY = `
           txHash
         }
         cashOutTokensEvent {
+          id
           reclaimAmount
           from
           txHash
@@ -470,7 +482,22 @@ export const ACCOUNT_ACTIVITY_EVENTS_QUERY = `
           txHash
         }
         mintTokensEvent {
+          id
           tokenCount
+          beneficiary
+          from
+          txHash
+        }
+        manualMintTokensEvent {
+          id
+          tokenCount: beneficiaryTokenCount
+          beneficiary
+          from
+          txHash
+        }
+        autoIssueEvent {
+          id
+          tokenCount: count
           beneficiary
           from
           txHash
@@ -503,6 +530,127 @@ export const ACCOUNT_ACTIVITY_EVENTS_QUERY = `
           from
           txHash
         }
+      }
+    }
+    beneficiaryPayEvents: payEvents(
+      where: { AND: [{ beneficiary: $address }, { version: 6 }] }
+      orderBy: "timestamp"
+      orderDirection: "desc"
+      limit: $limit
+    ) {
+      items {
+        id
+        chainId
+        timestamp
+        txHash
+        from
+        beneficiary
+        amount
+        amountUsd
+${ACCOUNT_ACTIVITY_PROJECT_FIELDS}
+      }
+    }
+    beneficiaryCashOutEvents: cashOutTokensEvents(
+      where: { AND: [{ beneficiary: $address }, { version: 6 }] }
+      orderBy: "timestamp"
+      orderDirection: "desc"
+      limit: $limit
+    ) {
+      items {
+        id
+        chainId
+        timestamp
+        txHash
+        from
+        beneficiary
+        reclaimAmount
+${ACCOUNT_ACTIVITY_PROJECT_FIELDS}
+      }
+    }
+    beneficiaryMintTokensEvents: mintTokensEvents(
+      where: { AND: [{ beneficiary: $address }, { version: 6 }] }
+      orderBy: "timestamp"
+      orderDirection: "desc"
+      limit: $limit
+    ) {
+      items {
+        id
+        chainId
+        timestamp
+        txHash
+        from
+        beneficiary
+        tokenCount: beneficiaryTokenCount
+${ACCOUNT_ACTIVITY_PROJECT_FIELDS}
+      }
+    }
+    beneficiaryManualMintTokensEvents: manualMintTokensEvents(
+      where: { AND: [{ beneficiary: $address }, { version: 6 }] }
+      orderBy: "timestamp"
+      orderDirection: "desc"
+      limit: $limit
+    ) {
+      items {
+        id
+        chainId
+        timestamp
+        txHash
+        from
+        beneficiary
+        tokenCount: beneficiaryTokenCount
+${ACCOUNT_ACTIVITY_PROJECT_FIELDS}
+      }
+    }
+    beneficiaryAutoIssueEvents: autoIssueEvents(
+      where: { AND: [{ beneficiary: $address }, { version: 6 }] }
+      orderBy: "timestamp"
+      orderDirection: "desc"
+      limit: $limit
+    ) {
+      items {
+        id
+        chainId
+        timestamp
+        txHash
+        from
+        beneficiary
+        tokenCount: count
+${ACCOUNT_ACTIVITY_PROJECT_FIELDS}
+      }
+    }
+  }
+`
+
+// Every project token balance an account holds, biggest first. Bendystraw
+// indexes one participant row per project VERSION, so the same balance repeats
+// per version — callers dedupe to the highest version per (chainId, projectId).
+export const ACCOUNT_TOKEN_HOLDINGS_QUERY = `
+  query AccountTokenHoldings($account: String!) {
+    participants(
+      where: { address: $account, balance_gt: "0" }
+      orderBy: "balance"
+      orderDirection: "desc"
+    ) {
+      items {
+        chainId
+        projectId
+        version
+        balance
+      }
+    }
+  }
+`
+
+// Every store item (721 token) an account currently owns. Rows repeat per
+// indexed version — callers dedupe by (chainId, tokenId).
+export const ACCOUNT_NFTS_QUERY = `
+  query AccountNfts($owner: String!) {
+    nfts(where: { owner: $owner }) {
+      items {
+        chainId
+        projectId
+        tokenId
+        tierId
       }
     }
   }

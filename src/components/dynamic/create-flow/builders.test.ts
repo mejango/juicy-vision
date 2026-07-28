@@ -117,6 +117,25 @@ describe('afterMode stage resolution', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Cash-out surplus scope
+// ---------------------------------------------------------------------------
+
+describe('scopeCashOutsToLocalBalances', () => {
+  it('encodes false by default (cross-chain surplus)', () => {
+    const s = singleChainState()
+    const [cfg] = buildRulesetConfigsForChain(s, CHAIN_A, 0)
+    expect(cfg.metadata.scopeCashOutsToLocalBalances).toBe(false)
+  })
+
+  it('encodes true when the stage scopes cash outs to local balances', () => {
+    const s = singleChainState()
+    s.stages[0].scopeCashOutsToLocalBalances = true
+    const [cfg] = buildRulesetConfigsForChain(s, CHAIN_A, 0)
+    expect(cfg.metadata.scopeCashOutsToLocalBalances).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // 2. Cash-out tax forcing
 // ---------------------------------------------------------------------------
 
@@ -371,6 +390,62 @@ describe('buildRevnetStageConfigs', () => {
     expect(cfg.startsAtOrAfter).toBe(1750000000)
     expect(cfg.autoIssuances).toEqual([
       { chainId: CHAIN_A, count: parseEther('100').toString(), beneficiary: A1 },
+    ])
+  })
+
+  // REVDeployer ground truth: every chain's config must carry ALL rows
+  // byte-identically (encodedConfiguration parity); the deployer mints only
+  // rows whose chainId equals block.chainid. Rows must never be filtered or
+  // re-tagged per config chain.
+  it("carries every chain's auto-issuance rows in every chain's config byte-identically", () => {
+    const CHAIN_C = ALL_CHAIN_IDS[2]
+    const s = initState()
+    s.projectType = 'revnet'
+    s.chainIds = [CHAIN_A, CHAIN_B, CHAIN_C]
+    s.stages[0].autoIssuances = [
+      { count: '100', address: A1, chainId: CHAIN_A },
+      { count: '50', address: A2, chainId: CHAIN_C },
+    ]
+
+    const perChain = [CHAIN_A, CHAIN_B, CHAIN_C].map((cid) => buildRevnetStageConfigs(s, 999, cid))
+    const expected = [
+      { chainId: CHAIN_A, count: parseEther('100').toString(), beneficiary: A1 },
+      { chainId: CHAIN_C, count: parseEther('50').toString(), beneficiary: A2 },
+    ]
+    for (const configs of perChain) {
+      expect(configs[0].autoIssuances).toEqual(expected)
+    }
+    expect(JSON.stringify(perChain[1][0].autoIssuances)).toBe(JSON.stringify(perChain[0][0].autoIssuances))
+    expect(JSON.stringify(perChain[2][0].autoIssuances)).toBe(JSON.stringify(perChain[0][0].autoIssuances))
+  })
+
+  it("defaults rows to the first selected chain and resolves beneficiaries against the ROW's chain", () => {
+    const s = initState()
+    s.projectType = 'revnet'
+    s.chainIds = [CHAIN_A, CHAIN_B]
+    s.stages[0].autoIssuances = [
+      { count: '10', address: A1 }, // no chainId → first selected chain
+      { count: '5', address: A1, chainId: CHAIN_B },
+    ]
+    // Per-chain beneficiary override on the ROW's chain (CHAIN_B), not the config chain.
+    s.perChain[CHAIN_B] = { addr: { 'ai:0:1': A2 } }
+
+    // Building CHAIN_A's config must still resolve row 1 against CHAIN_B.
+    const [cfg] = buildRevnetStageConfigs(s, 999, CHAIN_A)
+    expect(cfg.autoIssuances).toEqual([
+      { chainId: CHAIN_A, count: parseEther('10').toString(), beneficiary: A1 },
+      { chainId: CHAIN_B, count: parseEther('5').toString(), beneficiary: A2 },
+    ])
+  })
+
+  it('falls back to the first selected chain for rows naming an unselected chain', () => {
+    const s = initState()
+    s.projectType = 'revnet'
+    s.chainIds = [CHAIN_A, CHAIN_B]
+    s.stages[0].autoIssuances = [{ count: '7', address: A1, chainId: 999999 }]
+    const [cfg] = buildRevnetStageConfigs(s, 999)
+    expect(cfg.autoIssuances).toEqual([
+      { chainId: CHAIN_A, count: parseEther('7').toString(), beneficiary: A1 },
     ])
   })
 })

@@ -73,7 +73,10 @@ function specification(noop: boolean, metadata: Hex): TerminalHookSpecification 
 }
 
 describe('website-compatible terminal preview outcomes', () => {
-  it('uses the exact top-level beneficiary count for issuance', () => {
+  it('floors the issuance minimum 1% below the quoted beneficiary count', () => {
+    // Issuance can change between the final preview and inclusion (weight-cut
+    // rollover, revnet stage boundary, queued ruleset activation) — an exact
+    // minimum turns every boundary crossing into JBMultiTerminal_UnderMin.
     expect(
       resolvePayPreviewOutcome({
         beneficiaryTokenCount: 1_000n,
@@ -84,9 +87,19 @@ describe('website-compatible terminal preview outcomes', () => {
       route: 'issuance',
       beneficiaryTokenCount: 1_000n,
       reservedTokenCount: 100n,
-      minReturnedTokens: 1_000n,
+      minReturnedTokens: 990n,
       buyback: null,
     })
+  })
+
+  it('keeps a verified zero issuance quote at a zero minimum', () => {
+    const outcome = resolvePayPreviewOutcome({
+      beneficiaryTokenCount: 0n,
+      reservedTokenCount: 0n,
+      hookSpecifications: [],
+    })
+    expect(outcome.route).toBe('issuance')
+    expect(outcome.minReturnedTokens).toBe(0n)
   })
 
   it('uses buyback metadata when the AMM route zeroes the top-level pay counts', () => {
@@ -102,14 +115,14 @@ describe('website-compatible terminal preview outcomes', () => {
     expect(outcome.buyback?.rawSwapQuote).toBe(1_200n)
   })
 
-  it('keeps a noop buyback payment on issuance', () => {
+  it('keeps a noop buyback payment on issuance, with the same 1% floor', () => {
     const outcome = resolvePayPreviewOutcome({
       beneficiaryTokenCount: 900n,
       reservedTokenCount: 100n,
       hookSpecifications: [specification(true, payMetadata())],
     })
     expect(outcome.route).toBe('issuance')
-    expect(outcome.minReturnedTokens).toBe(900n)
+    expect(outcome.minReturnedTokens).toBe(891n)
   })
 
   it.each([
@@ -148,6 +161,7 @@ describe('website-compatible terminal preview outcomes', () => {
       reclaimAmount: 0n,
       cashOutTaxRate: 10_000n,
       hookSpecifications: [specification(false, cashOutMetadata())],
+      buybackHookAddress: BUYBACK,
       beneficiaryIsFeeless: false,
       feeFreeSurplus: 0n,
     })
@@ -173,6 +187,7 @@ describe('website-compatible terminal preview outcomes', () => {
           })
         ),
       ],
+      buybackHookAddress: BUYBACK,
       beneficiaryIsFeeless: false,
       feeFreeSurplus: 0n,
     })

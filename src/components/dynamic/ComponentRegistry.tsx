@@ -246,6 +246,11 @@ interface ComponentRegistryProps {
   chatId?: string
   messageId?: string
   userResponse?: string // The user's response to this component (if submitted)
+  // MESSAGE-level streaming flag. A truncated component tag stays
+  // component.isStreaming forever; this flag is the only signal that the
+  // stream actually ended (false), letting truncated components recover
+  // instead of showing "Loading..." permanently.
+  isStreaming?: boolean
 }
 
 function LazyWrapper({
@@ -443,12 +448,18 @@ function renderOptionsPicker(
   componentIsStreaming?: boolean,
   chatId?: string,
   messageId?: string,
-  userResponse?: string
+  userResponse?: string,
+  messageIsStreaming?: boolean
 ) {
   const groupsStr = props.groups as string | undefined
   const streamTotal = props.streamTotal
     ? parseInt(String(props.streamTotal), 10)
     : undefined
+
+  // A payload truncated by a dropped stream never completes, so "is truncated"
+  // alone must not disable the picker: it only counts as streaming while the
+  // message-level stream hasn't explicitly stopped (isStreaming !== false).
+  const streamEnded = messageIsStreaming === false
 
   // Handle pre-parsed groups (already an array)
   if (Array.isArray(props.groups)) {
@@ -458,7 +469,7 @@ function renderOptionsPicker(
         submitLabel={props.submitLabel as string | undefined}
         allSelectedLabel={props.allSelectedLabel as string | undefined}
         expectedGroupCount={streamTotal}
-        isStreaming={componentIsStreaming || false}
+        isStreaming={(componentIsStreaming || false) && !streamEnded}
         chatId={chatId}
         messageId={messageId}
         creative={props.creative === 'true' || props.creative === true}
@@ -469,7 +480,7 @@ function renderOptionsPicker(
 
   // No groups provided yet - if streaming, show empty picker with loading state
   if (!groupsStr) {
-    if (componentIsStreaming) {
+    if (componentIsStreaming && !streamEnded) {
       return (
         <OptionsPicker
           groups={[]}
@@ -490,8 +501,9 @@ function renderOptionsPicker(
   // Parse JSON string with option-level streaming support
   const { groups: parsedGroups, isComplete, isInvalid } = parsePartialOptionsGroups(groupsStr)
 
-  // Streaming if either component tag incomplete or JSON array incomplete
-  const isStreaming = componentIsStreaming || !isComplete
+  // Streaming if either component tag incomplete or JSON array incomplete —
+  // but never once the message-level stream has stopped (truncation recovery)
+  const isStreaming = (componentIsStreaming || !isComplete) && !streamEnded
 
   // Invalid JSON - not recoverable
   if (isInvalid) {
@@ -540,7 +552,7 @@ function renderOptionsPicker(
   )
 }
 
-export default function ComponentRegistry({ component, chatId, messageId, userResponse }: ComponentRegistryProps) {
+export default function ComponentRegistry({ component, chatId, messageId, userResponse, isStreaming }: ComponentRegistryProps) {
   const { type, props } = component
 
   // Handle loading state
@@ -555,7 +567,7 @@ export default function ComponentRegistry({ component, chatId, messageId, userRe
 
   // Handle special case: options-picker needs custom parsing logic
   if (type === 'options-picker') {
-    return renderOptionsPicker(props, component.isStreaming, chatId, messageId, userResponse)
+    return renderOptionsPicker(props, component.isStreaming, chatId, messageId, userResponse, isStreaming)
   }
 
   // Look up component in registry

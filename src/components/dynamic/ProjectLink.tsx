@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { juiceboxProjectUrl } from '../../utils/projectLink'
+import { juiceboxProjectUrl, routeChainSlug } from '../../utils/projectLink'
 
 /**
  * Renders a project name that links to juicebox.money when V6 pages are live,
@@ -17,7 +17,7 @@ export function ProjectLink({
   className?: string
   children: ReactNode
 }) {
-  const url = juiceboxProjectUrl(chainSlug, projectId) || `/${chainSlug}:${projectId}`
+  const url = juiceboxProjectUrl(chainSlug, projectId) || `/${routeChainSlug(chainSlug)}:${projectId}`
   return (
     <a
       href={url}

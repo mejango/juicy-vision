@@ -36,6 +36,10 @@ export interface AutoIssuance {
   count: string
   address: string
   resolvedAddress?: string
+  /** Chain the row mints on (REVDeployer mints rows where chainId == block.chainid).
+   *  Absent → the first selected chain. All rows are encoded into EVERY chain's
+   *  config byte-identically; this only picks where the mint lands. */
+  chainId?: number
 }
 
 export interface StageState {
@@ -57,7 +61,7 @@ export interface StageState {
   cashOutTaxRate: number
   allowOwnerMinting: boolean
   pauseTransfers: boolean
-  useTotalSurplusForCashOuts: boolean
+  scopeCashOutsToLocalBalances: boolean
   ownerMustSendPayouts: boolean
   metadataExtra: number
   reservedRecipients: RecipientRow[]
@@ -228,7 +232,7 @@ export function createStage(): StageState {
     payoutCurrency: 1,
     tokenMode: 'custom', weight: '10000', reservedPercent: 0, weightCutPercent: 0, issuanceCutOn: false,
     cashOutEnabled: false, cashOutTaxRate: 0, allowOwnerMinting: false, pauseTransfers: false,
-    useTotalSurplusForCashOuts: false, ownerMustSendPayouts: false, metadataExtra: 0,
+    scopeCashOutsToLocalBalances: false, ownerMustSendPayouts: false, metadataExtra: 0,
     reservedRecipients: [], tokenAdvancedOpen: false,
     cutFreqDays: '30', autoIssuances: [], startDaysAfter: '30',
     payoutMode: 'none', payoutRecipients: [], payoutByKind: {},
@@ -358,6 +362,17 @@ export function mergeDraft(obj: unknown): CreateFlowState | null {
   s.stages = (Array.isArray(src.stages) && src.stages.length > 0 ? (src.stages as unknown[]) : [null])
     .map((st) => {
       const stage = mergeKnownFields(createStage(), st)
+      // Migrate the legacy key (same polarity — it always fed
+      // scopeCashOutsToLocalBalances directly) from older saved/shared drafts.
+      if (st && typeof st === 'object' && !Array.isArray(st)) {
+        const legacySrc = st as Record<string, unknown>
+        if (
+          legacySrc.scopeCashOutsToLocalBalances === undefined &&
+          legacySrc.useTotalSurplusForCashOuts !== undefined
+        ) {
+          stage.scopeCashOutsToLocalBalances = !!legacySrc.useTotalSurplusForCashOuts
+        }
+      }
       // Harden imported payoutByKind: valid modes only, recipients capped (website parity).
       if (!stage.payoutByKind || typeof stage.payoutByKind !== 'object' || Array.isArray(stage.payoutByKind)) {
         stage.payoutByKind = {}
@@ -378,6 +393,20 @@ export function mergeDraft(obj: unknown): CreateFlowState | null {
     .filter((id): id is number => id !== null)
   s.chainIds = [...new Set(s.chainIds)]
   if (s.chainIds.length === 0) s.chainIds = [...ALL_CHAIN_IDS]
+  // Auto-issuance rows scope their mint to a chain. Map imported ids onto this
+  // build's chains (canon↔testnet, like chainIds); anything that doesn't land
+  // in the selected set falls back to the default (first selected chain).
+  for (const stage of s.stages) {
+    stage.autoIssuances = (Array.isArray(stage.autoIssuances) ? stage.autoIssuances : [])
+      .slice(0, 100)
+      .map((row) => {
+        const ai = { ...(row && typeof row === 'object' && !Array.isArray(row) ? row : { count: '', address: '' }) }
+        const mapped = typeof ai.chainId === 'number' ? mapImportedChainId(ai.chainId) : null
+        if (mapped !== null && s.chainIds.includes(mapped)) ai.chainId = mapped
+        else delete ai.chainId
+        return ai
+      })
+  }
   s.deploying = false
   s.statusLines = []
   s.done = false

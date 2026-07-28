@@ -4,6 +4,9 @@ import {
   PROJECTS_QUERY,
   PROJECTS_BY_OWNER_QUERY,
   ACTIVITY_EVENTS_QUERY,
+  ACCOUNT_ACTIVITY_EVENTS_QUERY,
+  ACCOUNT_TOKEN_HOLDINGS_QUERY,
+  ACCOUNT_NFTS_QUERY,
   PROJECT_RULESET_QUERY,
   RECENT_PAY_EVENTS_QUERY,
   CONNECTED_CHAINS_QUERY,
@@ -110,6 +113,71 @@ describe('GraphQL Query Structure', () => {
       expect(ACTIVITY_EVENTS_QUERY).toContain('project')
       expect(ACTIVITY_EVENTS_QUERY).toContain('handle')
       expect(ACTIVITY_EVENTS_QUERY).toContain('logoUri')
+    })
+  })
+
+  // The top-level activityEvents filter has NO beneficiary field (verified
+  // against the live schema), so events where the account only receives value
+  // must come from the beneficiary-bearing event roots, each with an explicit
+  // AND group — this Ponder version does not AND sibling fields inside OR
+  // branches.
+  describe('ACCOUNT_ACTIVITY_EVENTS_QUERY', () => {
+    it('filters the from-branch with an explicit AND group pinning version 6', () => {
+      expect(ACCOUNT_ACTIVITY_EVENTS_QUERY).toContain('AND: [{ from: $address }, { version: 6 }]')
+    })
+
+    it('queries every beneficiary-bearing event root', () => {
+      expect(ACCOUNT_ACTIVITY_EVENTS_QUERY).toContain('beneficiaryPayEvents: payEvents(')
+      expect(ACCOUNT_ACTIVITY_EVENTS_QUERY).toContain('beneficiaryCashOutEvents: cashOutTokensEvents(')
+      expect(ACCOUNT_ACTIVITY_EVENTS_QUERY).toContain('beneficiaryMintTokensEvents: mintTokensEvents(')
+      expect(ACCOUNT_ACTIVITY_EVENTS_QUERY).toContain('beneficiaryManualMintTokensEvents: manualMintTokensEvents(')
+      expect(ACCOUNT_ACTIVITY_EVENTS_QUERY).toContain('beneficiaryAutoIssueEvents: autoIssueEvents(')
+    })
+
+    it('pins beneficiary + version 6 in an explicit AND group on every branch', () => {
+      const groups = ACCOUNT_ACTIVITY_EVENTS_QUERY.match(
+        /AND: \[\{ beneficiary: \$address \}, \{ version: 6 \}\]/g,
+      )
+      expect(groups).toHaveLength(5)
+    })
+
+    it('never uses the unsupported top-level beneficiary filter on activityEvents', () => {
+      expect(ACCOUNT_ACTIVITY_EVENTS_QUERY).not.toMatch(/activityEvents\(\s*where:[^)]*beneficiary/)
+    })
+
+    it('selects sub-event ids in the from-branch so the merge can dedupe', () => {
+      expect(ACCOUNT_ACTIVITY_EVENTS_QUERY).toMatch(/payEvent \{\s*id\b/)
+      expect(ACCOUNT_ACTIVITY_EVENTS_QUERY).toMatch(/cashOutTokensEvent \{\s*id\b/)
+      expect(ACCOUNT_ACTIVITY_EVENTS_QUERY).toMatch(/mintTokensEvent \{\s*id\b/)
+      expect(ACCOUNT_ACTIVITY_EVENTS_QUERY).toMatch(/manualMintTokensEvent \{\s*id\b/)
+      expect(ACCOUNT_ACTIVITY_EVENTS_QUERY).toMatch(/autoIssueEvent \{\s*id\b/)
+    })
+  })
+
+  describe('ACCOUNT_TOKEN_HOLDINGS_QUERY', () => {
+    it('filters positive balances for the account, biggest first', () => {
+      expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('participants(')
+      expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('address: $account')
+      expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('balance_gt: "0"')
+      expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('orderBy: "balance"')
+      expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('orderDirection: "desc"')
+    })
+
+    it('selects the version so callers can dedupe per-version duplicate rows', () => {
+      expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('chainId')
+      expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('projectId')
+      expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('version')
+      expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('balance')
+    })
+  })
+
+  describe('ACCOUNT_NFTS_QUERY', () => {
+    it('filters by owner and selects the dedupe + display fields', () => {
+      expect(ACCOUNT_NFTS_QUERY).toContain('nfts(where: { owner: $owner })')
+      expect(ACCOUNT_NFTS_QUERY).toContain('chainId')
+      expect(ACCOUNT_NFTS_QUERY).toContain('projectId')
+      expect(ACCOUNT_NFTS_QUERY).toContain('tokenId')
+      expect(ACCOUNT_NFTS_QUERY).toContain('tierId')
     })
   })
 

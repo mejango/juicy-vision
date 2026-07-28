@@ -375,7 +375,11 @@ const feelessAbi = [
     type: 'function',
     name: 'isFeelessFor',
     stateMutability: 'view',
-    inputs: [{ name: 'addr', type: 'address' }],
+    inputs: [
+      { name: 'addr', type: 'address' },
+      { name: 'projectId', type: 'uint256' },
+      { name: 'caller', type: 'address' },
+    ],
     outputs: [{ type: 'bool' }],
   },
 ] as const
@@ -1095,7 +1099,9 @@ export async function quotePrepareMin(
       functionName: 'previewCashOutFrom',
       args: [sucker, pid, amount, termToken, sucker, '0x'],
     }),
-    client.readContract({ address: JB_CONTRACTS.JBFeelessAddresses, abi: feelessAbi, functionName: 'isFeelessFor', args: [sucker] }),
+    // The sucker's prepare cashes out with itself as BOTH beneficiary and the
+    // terminal's _msgSender(), so it is the addr AND the caller here.
+    client.readContract({ address: JB_CONTRACTS.JBFeelessAddresses, abi: feelessAbi, functionName: 'isFeelessFor', args: [sucker, pid, sucker] }),
     client.readContract({ address: JB_CONTRACTS.JBMultiTerminal, abi: jbMultiTerminalAbi, functionName: 'feeFreeSurplusOf', args: [pid, termToken] }),
   ])
   const gross = preview[1]

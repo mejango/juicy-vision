@@ -11,7 +11,7 @@ import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactio
 import { txErrorMessage } from '../../utils/txErrors'
 import { GasBalanceStatus } from './GasBalanceStatus'
 import { useStatusCallbacks } from './modalHooks'
-import { ALL_VIEM_CHAINS, CHAINS as CHAIN_INFO, JB_CONTRACTS, MAINNET_CHAINS, RPC_ENDPOINTS } from '../../constants'
+import { ALL_VIEM_CHAINS, CHAINS as CHAIN_INFO, JB_BUYBACK_HOOK, JB_CONTRACTS, MAINNET_CHAINS, RPC_ENDPOINTS } from '../../constants'
 import TechnicalDetails from '../shared/TechnicalDetails'
 import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
@@ -99,6 +99,7 @@ async function readCashOutPreviewOutcome(params: { client: PublicClient; termina
       reclaimAmount: preview[1],
       cashOutTaxRate: preview[2],
       hookSpecifications: preview[3],
+      buybackHookAddress: JB_BUYBACK_HOOK,
       beneficiaryIsFeeless,
       feeFreeSurplus,
       slippageBps: params.slippageBps,

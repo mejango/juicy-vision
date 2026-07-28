@@ -392,30 +392,9 @@ function HomeRouteHandler() {
 // UUID regex for validating chat IDs
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-// Project slug regex: chainSlug:projectId (e.g., eth:3, base:123)
-const PROJECT_SLUG_REGEX = /^([a-z]+):(\d+)$/i
-
-// Import chain IDs from environment config for URL routing
-import { IS_TESTNET } from './config/environment'
-
-// Map chain slugs to chain IDs
-// URL format: /{chain}:{projectId} e.g., /op:83, /opsep:123
-// Mainnet slugs (eth, op, base, arb) always work - even in staging mode
-// Testnet slugs (sep, opsep, basesep, arbsep) only available in staging
-const CHAIN_SLUG_TO_ID: Record<string, number> = {
-  // Mainnet chains - always available (hardcoded IDs so they work in staging too)
-  eth: 1,
-  op: 10,
-  base: 8453,
-  arb: 42161,
-  // Testnet chains - only in staging mode
-  ...(IS_TESTNET ? {
-    sep: 11155111,      // Sepolia
-    opsep: 11155420,    // Optimism Sepolia
-    basesep: 84532,     // Base Sepolia
-    arbsep: 421614,     // Arbitrum Sepolia
-  } : {}),
-}
+// Project route contract (slug regex + slug→chain map) lives in
+// utils/projectLink.ts, shared with every link emitter via projectPathFor.
+import { PROJECT_SLUG_REGEX, CHAIN_SLUG_TO_ID } from './utils/projectLink'
 
 // Component to show when a chat isn't found
 function ChatNotFound() {
@@ -833,7 +812,7 @@ function WelcomeLayout({ forceActiveChatId, theme }: { forceActiveChatId?: strin
 }
 
 
-function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
+export function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
   const { theme } = useThemeStore()
   const { activeChatId: storeActiveChatId, pendingNewChat } = useChatStore()
   const isMobile = useIsMobile()
@@ -882,6 +861,7 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
                 </span>
                 <button
                   onClick={() => setShowMobileActivity(false)}
+                  aria-label="Close live activity"
                   className={`p-2 rounded-lg ${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -895,7 +875,19 @@ function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }) {
             <MainContent forceActiveChatId={forceActiveChatId} />
           )}
         </div>
-        {/* Mobile activity toggle removed - no activity panel on mobile */}
+        {/* Mobile activity toggle - the only sub-md entry point to search/trending/activity */}
+        {!showMobileActivity && (
+          <button
+            onClick={() => setShowMobileActivity(true)}
+            aria-label="Open live activity"
+            title="Live activity, trending projects + search"
+            className="fixed bottom-24 right-4 z-50 w-12 h-12 rounded-full bg-juice-orange text-juice-dark shadow-lg flex items-center justify-center"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+          </button>
+        )}
       </div>
     )
   }

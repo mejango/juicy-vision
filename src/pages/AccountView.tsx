@@ -12,11 +12,23 @@ import { IpfsImage } from '../components/ui/IpfsMedia'
 import {
   fetchAccountActivityEvents,
   fetchAccountOperatedPermissions,
+  fetchAccountTokenHoldings,
+  fetchAccountNftHoldings,
   fetchProjectsByOwner,
+  groupTokenHoldings,
+  groupNftHoldings,
   type ActivityEvent,
   type Project,
+  type TokenHoldingGroup,
+  type NftHoldingGroup,
 } from '../services/bendystraw'
-import { resolveProjectNameForDisplay } from '../services/bendystraw/client'
+import { resolveProjectNameForDisplay, fetchProjectTokenSymbol } from '../services/bendystraw/client'
+import {
+  resolveShopItemMedia,
+  itemLabelFrom,
+  type ShopItemMeta,
+} from '../services/shopCustomers'
+import { toTokenFloat } from '../utils/currency'
 import { fetchSafeInfo } from '../services/safeInfo'
 import {
   getSafesByOwner,
@@ -30,9 +42,39 @@ import {
 } from '../services/permissionsAdmin'
 import { truncateAddress } from '../utils/ens'
 import { CHAINS, MAINNET_CHAINS } from '../constants'
+import { projectPathFor } from '../utils/projectLink'
 import type { Address } from 'viem'
 
 const ACTIVITY_PAGE_SIZE = 25
+
+// Tab set mirrors the project page's idiom (ProjectTabs + URL hash): the tab
+// row switches panels, and the active tab is written to the location hash so
+// deep links and back/forward keep working.
+export type AccountTabId = 'activity' | 'holdings' | 'projects' | 'roles'
+
+const ACCOUNT_TABS: Array<{ id: AccountTabId; label: string }> = [
+  { id: 'activity', label: 'Activity' },
+  { id: 'holdings', label: 'Holdings' },
+  { id: 'projects', label: 'Projects' },
+  { id: 'roles', label: 'Roles' },
+]
+
+export function parseAccountHash(hash: string): AccountTabId | null {
+  const slug = hash.replace(/^#/, '').toLowerCase()
+  return ACCOUNT_TABS.some(tab => tab.id === slug) ? (slug as AccountTabId) : null
+}
+
+// 18-decimal project-token balance for display ("<0.0001" floor, 4 dp).
+function formatTokenBalance(raw: string): string {
+  let amount: number
+  try {
+    amount = toTokenFloat(raw)
+  } catch {
+    return '0'
+  }
+  if (amount > 0 && amount < 0.0001) return '<0.0001'
+  return amount.toLocaleString(undefined, { maximumFractionDigits: 4 })
+}
 
 // Statuses that mean "still in flight" — mirrors getPendingTransactions.
 const PENDING_STATUSES: ReadonlyArray<Transaction['status']> = [
@@ -56,6 +98,16 @@ interface OwnedRow {
 
 interface OperatedRow extends OperatedProject {
   name: string | null
+}
+
+interface TokenHoldingRowView extends TokenHoldingGroup {
+  name: string | null
+  symbol: string | null
+}
+
+interface NftHoldingRowView extends NftHoldingGroup {
+  name: string | null
+  meta: ShopItemMeta | null
 }
 
 function chainInfo(chainId: number) {
@@ -235,10 +287,34 @@ export default function AccountView({ address }: AccountViewProps) {
   const [operatedLoading, setOperatedLoading] = useState(true)
   const [operatedError, setOperatedError] = useState<string | null>(null)
 
+  // Holdings: project tokens + owned store items (null = still loading)
+  const [tokenHoldings, setTokenHoldings] = useState<TokenHoldingRowView[] | null>(null)
+  const [tokenHoldingsError, setTokenHoldingsError] = useState<string | null>(null)
+  const [itemHoldings, setItemHoldings] = useState<NftHoldingRowView[] | null>(null)
+  const [itemHoldingsError, setItemHoldingsError] = useState<string | null>(null)
+
+  // Active tab mirrors the project page's mechanism: state seeded from the URL
+  // hash, written back on change, and re-read on hashchange (back/forward).
+  const [activeTab, setActiveTabState] = useState<AccountTabId>(
+    () => parseAccountHash(window.location.hash) ?? 'activity'
+  )
+  const setActiveTab = useCallback((tab: AccountTabId) => {
+    setActiveTabState(tab)
+    window.history.replaceState(null, '', `#${tab}`)
+  }, [])
+  useEffect(() => {
+    const handleHashChange = () => {
+      const tab = parseAccountHash(window.location.hash)
+      if (tab) setActiveTabState(tab)
+    }
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [])
+
   const goToProject = useCallback(
     (chainId: number, projectId: number) => {
-      const slug = chainInfo(chainId)?.slug
-      if (slug) navigate(`/${slug}:${projectId}`)
+      const path = projectPathFor(chainId, projectId)
+      if (path) navigate(path)
     },
     [navigate]
   )
@@ -384,6 +460,66 @@ export default function AccountView({ address }: AccountViewProps) {
     }
   }, [address])
 
+  // Token holdings: participants rows (deduped to the highest indexed version
+  // per chain+project by the fetcher), grouped one row per project across
+  // chains, enriched with the project's display name + token symbol.
+  useEffect(() => {
+    let cancelled = false
+    setTokenHoldings(null)
+    setTokenHoldingsError(null)
+    ;(async () => {
+      const groups = groupTokenHoldings(await fetchAccountTokenHoldings(address))
+      const rows: TokenHoldingRowView[] = await Promise.all(
+        groups.map(async g => {
+          const [name, symbol] = await Promise.all([
+            resolveProjectNameForDisplay(g.projectId, g.chains[0].chainId).catch(() => null),
+            fetchProjectTokenSymbol(String(g.projectId), g.chains[0].chainId).catch(() => null),
+          ])
+          return { ...g, name, symbol }
+        })
+      )
+      if (!cancelled) setTokenHoldings(rows)
+    })().catch(err => {
+      if (!cancelled) {
+        setTokenHoldingsError(err instanceof Error ? err.message : 'Token holdings unavailable')
+        setTokenHoldings([])
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [address])
+
+  // Store-item holdings: owned 721s (deduped by chain+tokenId by the fetcher),
+  // grouped per chain+project with per-tier tallies, enriched with the
+  // project's name and the shop's tier name/media maps.
+  useEffect(() => {
+    let cancelled = false
+    setItemHoldings(null)
+    setItemHoldingsError(null)
+    ;(async () => {
+      const groups = groupNftHoldings(await fetchAccountNftHoldings(address))
+      const rows: NftHoldingRowView[] = await Promise.all(
+        groups.map(async g => {
+          const [name, meta] = await Promise.all([
+            resolveProjectNameForDisplay(g.projectId, g.chainId).catch(() => null),
+            resolveShopItemMedia(g.projectId, g.chainId).catch(() => null),
+          ])
+          return { ...g, name, meta }
+        })
+      )
+      if (!cancelled) setItemHoldings(rows)
+    })().catch(err => {
+      if (!cancelled) {
+        setItemHoldingsError(err instanceof Error ? err.message : 'Store items unavailable')
+        setItemHoldings([])
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [address])
+
   const confirmedHashes = useMemo(() => {
     const set = new Set<string>()
     for (const event of events) {
@@ -461,8 +597,32 @@ export default function AccountView({ address }: AccountViewProps) {
           )}
         </div>
 
+        {/* Tab bar — same idiom as the project page's ProjectTabs */}
+        <div
+          className={`flex gap-6 overflow-x-auto border-b mb-4 ${
+            isDark ? 'border-white/10' : 'border-gray-200'
+          }`}
+        >
+          {ACCOUNT_TABS.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`pb-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
+                activeTab === tab.id
+                  ? 'border-juice-orange text-juice-orange'
+                  : isDark
+                    ? 'border-transparent text-gray-400 hover:text-gray-200'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {t(`account.tab.${tab.id}`, tab.label)}
+            </button>
+          ))}
+        </div>
+
         {/* Activity */}
-        <div className={`${sectionClass} mb-4`}>
+        {activeTab === 'activity' && (
+        <div className={sectionClass}>
           <h2 className={sectionTitleClass}>{t('account.activity', 'Activity')}</h2>
           {isConnectedSelf && <InFlightActivity address={address} confirmedHashes={confirmedHashes} />}
           {activityLoading ? (
@@ -503,9 +663,141 @@ export default function AccountView({ address }: AccountViewProps) {
             </>
           )}
         </div>
+        )}
+
+        {/* Holdings: project tokens + store items */}
+        {activeTab === 'holdings' && (
+        <>
+        <div className={`${sectionClass} mb-4`}>
+          <h2 className={sectionTitleClass}>{t('account.tokens', 'Tokens')}</h2>
+          {tokenHoldings === null ? (
+            <div className={`text-xs ${mutedClass}`}>{t('account.loading', 'Loading…')}</div>
+          ) : tokenHoldingsError ? (
+            <div className="text-xs text-red-500">{tokenHoldingsError}</div>
+          ) : tokenHoldings.length === 0 ? (
+            <div className={`text-xs ${mutedClass}`}>
+              {t('account.noTokens', 'No project tokens held')}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {tokenHoldings.map(row => (
+                <button
+                  key={row.projectId}
+                  data-testid="token-holding"
+                  onClick={() => goToProject(row.chains[0].chainId, row.projectId)}
+                  className={`block w-full p-2 border text-left transition-colors ${
+                    isDark
+                      ? 'border-white/10 hover:bg-white/5'
+                      : 'border-gray-200 hover:bg-black/5'
+                  }`}
+                >
+                  <div className="text-xs font-medium truncate">
+                    {row.name || `Project ${row.projectId}`}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                    {row.chains.map(c => {
+                      const chain = chainInfo(c.chainId)
+                      return (
+                        <span key={c.chainId} className="flex items-center gap-1 text-[10px]">
+                          {chain && (
+                            <span
+                              className="text-[8px] font-bold px-1 py-0.5 rounded"
+                              style={{ backgroundColor: `${chain.color}80`, color: 'rgba(255,255,255,0.85)' }}
+                            >
+                              {chain.shortName}
+                            </span>
+                          )}
+                          <span>
+                            {formatTokenBalance(c.balance)}{' '}
+                            {row.symbol || t('account.tokensFallback', 'tokens')}
+                          </span>
+                        </span>
+                      )
+                    })}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className={sectionClass}>
+          <h2 className={sectionTitleClass}>{t('account.storeItems', 'Store items')}</h2>
+          {itemHoldings === null ? (
+            <div className={`text-xs ${mutedClass}`}>{t('account.loading', 'Loading…')}</div>
+          ) : itemHoldingsError ? (
+            <div className="text-xs text-red-500">{itemHoldingsError}</div>
+          ) : itemHoldings.length === 0 ? (
+            <div className={`text-xs ${mutedClass}`}>
+              {t('account.noStoreItems', 'No store items held')}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {itemHoldings.map(row => {
+                const chain = chainInfo(row.chainId)
+                return (
+                  <div
+                    key={`${row.chainId}:${row.projectId}`}
+                    data-testid="item-holding"
+                    className={`p-2 border ${isDark ? 'border-white/10' : 'border-gray-200'}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => goToProject(row.chainId, row.projectId)}
+                        className={`text-xs font-medium hover:underline ${
+                          isDark ? 'text-juice-cyan' : 'text-teal-600'
+                        }`}
+                      >
+                        {row.name || `Project ${row.projectId}`}
+                      </button>
+                      {chain && (
+                        <span
+                          className="text-[8px] font-bold px-1 py-0.5 rounded"
+                          style={{ backgroundColor: `${chain.color}80`, color: 'rgba(255,255,255,0.85)' }}
+                        >
+                          {chain.shortName}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-1.5">
+                      {row.tiers.map(tier => {
+                        const media = row.meta?.media?.[tier.tierId]
+                        return (
+                          <span key={tier.tierId} className="flex items-center gap-1.5 text-[10px]">
+                            {media?.imageUri ? (
+                              <IpfsImage
+                                uri={media.imageUri}
+                                alt=""
+                                className="w-6 h-6 object-contain shrink-0"
+                              />
+                            ) : (
+                              <span
+                                className={`w-6 h-6 shrink-0 inline-flex items-center justify-center text-[8px] ${
+                                  isDark ? 'bg-white/10 text-gray-400' : 'bg-gray-100 text-gray-500'
+                                }`}
+                              >
+                                #{tier.tierId}
+                              </span>
+                            )}
+                            <span>
+                              {itemLabelFrom(row.meta?.names, tier.tierId)} ({tier.count})
+                            </span>
+                          </span>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+        </>
+        )}
 
         {/* Owned projects */}
-        <div className={`${sectionClass} mb-4`}>
+        {activeTab === 'projects' && (
+        <div className={sectionClass}>
           <h2 className={sectionTitleClass}>{t('account.ownedProjects', 'Owned projects')}</h2>
           {ownedLoading ? (
             <div className={`text-xs ${mutedClass}`}>{t('account.loading', 'Loading…')}</div>
@@ -566,7 +858,10 @@ export default function AccountView({ address }: AccountViewProps) {
           )}
         </div>
 
+        )}
+
         {/* Operated projects */}
+        {activeTab === 'roles' && (
         <div className={sectionClass}>
           <h2 className={sectionTitleClass}>{t('account.operatedProjects', 'Operated projects')}</h2>
           {operatedLoading ? (
@@ -629,6 +924,7 @@ export default function AccountView({ address }: AccountViewProps) {
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   )

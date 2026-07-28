@@ -284,9 +284,9 @@ type PayCardPreview =
       beneficiaryTokenCount: bigint;
       reservedTokenCount: bigint;
       route: "issuance" | "amm";
-      // The exact minReturnedTokens the executor submits: equal to the quote on
-      // the issuance route, slippage-floored on the AMM route. Displayed value
-      // and submitted parameter must always match.
+      // The exact minReturnedTokens the executor submits: the quote with a 1%
+      // slippage floor on both routes. Displayed value and submitted parameter
+      // must always match.
       minReturnedTokens: bigint;
       // Buyback pool the AMM route filled through, when applicable.
       buybackPoolId: Hex | null;
@@ -2202,9 +2202,7 @@ export default function ProjectCard({
         className={`mt-4 min-w-0 text-sm ${isDark ? "text-gray-300" : "text-gray-600"}`}
         aria-live="polite"
       >
-        <div className={`text-xs ${muted}`}>
-          {payPreview.route === "amm" ? "You get at least" : "You get"}
-        </div>
+        <div className={`text-xs ${muted}`}>You get at least</div>
         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
           <button
             type="button"

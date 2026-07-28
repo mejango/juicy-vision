@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createPublicClient, http } from 'viem'
 import { baseSepolia, sepolia } from 'viem/chains'
-import { JB_CONTRACTS, RPC_ENDPOINTS, USDC_ADDRESSES } from '../constants'
+import { JB_BUYBACK_HOOK, JB_CONTRACTS, RPC_ENDPOINTS, USDC_ADDRESSES } from '../constants'
 import {
   resolveCashOutPreviewOutcome,
   resolvePayPreviewOutcome,
@@ -171,6 +171,7 @@ describe.skipIf(!RUN_LIVE)('live Sepolia terminal route fixture', () => {
       reclaimAmount: cashOutPreview[1],
       cashOutTaxRate: cashOutPreview[2],
       hookSpecifications: cashOutPreview[3],
+      buybackHookAddress: JB_BUYBACK_HOOK,
       beneficiaryIsFeeless,
       feeFreeSurplus,
     })

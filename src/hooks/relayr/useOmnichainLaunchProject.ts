@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useAccount, useConfig, useSignTypedData } from 'wagmi'
+import { useAccount, useConfig, useSignTypedData, useSwitchChain } from 'wagmi'
 import { encodeFunctionData, getContract, isAddress, type Address, type Hex } from 'viem'
 import { useManagedWallet, createManagedRelayrBundle } from '../useManagedWallet'
 import { assertTransactionAccountUnchanged } from '../useReviewedTransactionAccount'
@@ -17,6 +17,7 @@ import {
   type ChainConfigOverride,
   type JBDeployTiersHookConfig,
 } from '../../services/omnichainDeployer'
+import { estimateForwardRequestGas } from './forwardRequestGas'
 import { useRelayrBundle } from './useRelayrBundle'
 import { useRelayrStatus } from './useRelayrStatus'
 import type { UseOmnichainTransactionOptions, BundleState } from './types'
@@ -71,6 +72,11 @@ export interface UseOmnichainLaunchProjectReturn {
 
 // 48 hours deadline for signatures
 const ERC2771_DEADLINE_DURATION_SECONDS = 48 * 60 * 60
+
+// Signed forward-request gas when per-chain estimation is unavailable. A full
+// launch (project + terminals + suckers + optional 721 hook) runs well past
+// 4.5M gas, and the signature-bound cap cannot be raised by the relayer.
+const FALLBACK_LAUNCH_FORWARD_GAS = 6_000_000n
 
 // localStorage key prefixes for persisting deployment state (scoped by deploymentKey)
 const DEPLOYMENT_RESULT_PREFIX = 'juicy-vision:deployment-result:'
@@ -185,6 +191,7 @@ export function useOmnichainLaunchProject(
   latestConnectedAddress.current = connectedAddress
   const config = useConfig()
   const { signTypedDataAsync } = useSignTypedData()
+  const { switchChainAsync } = useSwitchChain()
 
   // Track ERC-2771 signing state
   const [isSigning, setIsSigning] = useState(false)
@@ -535,6 +542,10 @@ export function useOmnichainLaunchProject(
           setSigningChainId(tx.chain)
           console.log(`Requesting signature for chain ${tx.chain}...`)
 
+          // Wallets reject EIP-712 typed data whose domain chainId differs
+          // from the active chain — switch before every per-chain signature.
+          await switchChainAsync({ chainId: tx.chain })
+
           // Get public client for this chain
           const publicClient = config.getClient({ chainId: tx.chain })
 
@@ -547,13 +558,21 @@ export function useOmnichainLaunchProject(
 
           const nonce = await forwarderContract.read.nonces([projectOwner as Address])
           const deadline = Math.floor(Date.now() / 1000) + ERC2771_DEADLINE_DURATION_SECONDS
+          const gas = await estimateForwardRequestGas({
+            chainId: tx.chain,
+            account: projectOwner as Address,
+            to: tx.target as Address,
+            data: tx.data as Hex,
+            value: BigInt(tx.value || '0'),
+            fallbackGas: FALLBACK_LAUNCH_FORWARD_GAS,
+          })
 
           // Build the ForwardRequest message
           const messageData = {
             from: projectOwner as Address,
             to: tx.target as Address,
             value: BigInt(tx.value || '0'),
-            gas: BigInt(2000000), // Conservative gas estimate
+            gas,
             nonce,
             deadline,
             data: tx.data as Hex,
@@ -684,7 +703,7 @@ export function useOmnichainLaunchProject(
       bundle._setError(errorMessage)
       onErrorRef.current?.(err instanceof Error ? err : new Error(errorMessage))
     }
-  }, [isManagedMode, managedAddress, connectedAddress, guardedAddress, runGuardedTx, bundle, config, signTypedDataAsync, persistedResult, resumedInProgress, deploymentKey])
+  }, [isManagedMode, managedAddress, connectedAddress, guardedAddress, runGuardedTx, bundle, config, signTypedDataAsync, switchChainAsync, persistedResult, resumedInProgress, deploymentKey])
 
   const reset = useCallback(() => {
     resetBundle()

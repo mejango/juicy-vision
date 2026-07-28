@@ -12,7 +12,9 @@ const DEPLOYER = '0xb853758a70a6b4216c09f1d071ea2344aba0a34f'
 const FEE = 1_000_000_000_000_000n
 
 const mockSignTypedDataAsync = vi.fn()
+const mockSwitchChainAsync = vi.fn()
 const mockForwarderNonce = vi.fn()
+const mockEstimateGas = vi.fn()
 const mockCreateManagedRelayrBundle = vi.fn()
 const mockCreateBalanceBundle = vi.fn()
 const mockGetBundleStatus = vi.fn()
@@ -35,6 +37,7 @@ vi.mock('wagmi', () => ({
     getClient: vi.fn(() => ({ request: vi.fn() })),
   })),
   useSignTypedData: vi.fn(() => ({ signTypedDataAsync: mockSignTypedDataAsync })),
+  useSwitchChain: vi.fn(() => ({ switchChainAsync: mockSwitchChainAsync })),
 }))
 
 vi.mock('viem', async (importOriginal) => ({
@@ -73,7 +76,7 @@ vi.mock('../../services/bendystraw', () => ({
 }))
 
 vi.mock('../../utils/transactionSafety', () => ({
-  getSafetyPublicClient: vi.fn(() => ({ call: mockSafetyCall })),
+  getSafetyPublicClient: vi.fn(() => ({ call: mockSafetyCall, estimateGas: mockEstimateGas })),
 }))
 
 const mockBundleState: {
@@ -159,6 +162,8 @@ describe('useOmnichainLaunchProject', () => {
       recognizedTransactions(chainIds)
     ))
     mockSafetyCall.mockResolvedValue({ data: '0x' })
+    mockEstimateGas.mockResolvedValue(3_000_000n)
+    mockSwitchChainAsync.mockResolvedValue(undefined)
     mockForwarderNonce.mockResolvedValue(0n)
     mockSignTypedDataAsync.mockResolvedValue(`0x${'11'.repeat(65)}`)
     mockCreateBalanceBundle.mockResolvedValue({ bundle_uuid: 'wallet-bundle' })
@@ -210,6 +215,53 @@ describe('useOmnichainLaunchProject', () => {
     expect(mockSafetyCall.mock.invocationCallOrder[1]).toBeLessThan(
       mockSignTypedDataAsync.mock.invocationCallOrder[0],
     )
+  })
+
+  it('switches the wallet to each chain before signing its ForwardRequest', async () => {
+    const { result } = renderHook(() => useOmnichainLaunchProject())
+
+    await act(async () => result.current.launch(defaultParams))
+
+    // Wallets reject EIP-712 typed data whose domain chainId differs from the
+    // active chain — the wallet must be switched before EVERY per-chain signature.
+    expect(mockSwitchChainAsync).toHaveBeenCalledTimes(2)
+    expect(mockSwitchChainAsync).toHaveBeenNthCalledWith(1, { chainId: 1 })
+    expect(mockSwitchChainAsync).toHaveBeenNthCalledWith(2, { chainId: 10 })
+    expect(mockSignTypedDataAsync).toHaveBeenCalledTimes(2)
+    expect(mockSwitchChainAsync.mock.invocationCallOrder[0]).toBeLessThan(
+      mockSignTypedDataAsync.mock.invocationCallOrder[0],
+    )
+    expect(mockSwitchChainAsync.mock.invocationCallOrder[1]).toBeLessThan(
+      mockSignTypedDataAsync.mock.invocationCallOrder[1],
+    )
+    // The signed domain matches the chain the wallet was switched to.
+    expect(mockSignTypedDataAsync.mock.calls[0][0].domain.chainId).toBe(1)
+    expect(mockSignTypedDataAsync.mock.calls[1][0].domain.chainId).toBe(10)
+  })
+
+  it('signs a per-chain gas limit of at least 1.5x the estimated inner call', async () => {
+    const { result } = renderHook(() => useOmnichainLaunchProject())
+
+    await act(async () => result.current.launch(defaultParams))
+
+    // gas is signature-bound: the relayer cannot raise it after the fact.
+    expect(mockEstimateGas).toHaveBeenCalledTimes(2)
+    expect(mockSignTypedDataAsync).toHaveBeenCalledTimes(2)
+    for (const call of mockSignTypedDataAsync.mock.calls) {
+      expect(call[0].message.gas).toBeGreaterThanOrEqual((3_000_000n * 3n) / 2n)
+    }
+  })
+
+  it('falls back to a high signed gas limit when estimation fails', async () => {
+    mockEstimateGas.mockRejectedValue(new Error('estimation unavailable'))
+    const { result } = renderHook(() => useOmnichainLaunchProject())
+
+    await act(async () => result.current.launch(defaultParams))
+
+    expect(mockSignTypedDataAsync).toHaveBeenCalledTimes(2)
+    for (const call of mockSignTypedDataAsync.mock.calls) {
+      expect(call[0].message.gas).toBeGreaterThanOrEqual(5_000_000n)
+    }
   })
 
   it('blocks an unknown deployer even when the transaction shape and fee match', async () => {

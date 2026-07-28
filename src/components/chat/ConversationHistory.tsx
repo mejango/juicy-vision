@@ -23,6 +23,7 @@ import {
 import { fetchProjectsByOwner, type Project } from '../../services/bendystraw'
 import { useManagedWallet } from '../../hooks'
 import { CHAINS, MAINNET_CHAINS } from '../../constants'
+import { projectPathFor } from '../../utils/projectLink'
 import { IpfsImage } from '../ui/IpfsMedia'
 import {
   getSupporterConversations,
@@ -1105,12 +1106,8 @@ export default function ConversationHistory() {
                 <div
                   key={project.id}
                   onClick={() => {
-                    const chain = CHAINS[project.chainId] || MAINNET_CHAINS[project.chainId]
-                    if (chain) {
-                      // Use simple slug format without hyphens (e.g., opsep instead of op-sep)
-                      const urlSlug = chain.slug.replace(/-/g, '')
-                      navigate(`/${urlSlug}:${project.projectId}`)
-                    }
+                    const path = projectPathFor(project.chainId, project.projectId)
+                    if (path) navigate(path)
                   }}
                   className={`group p-4 border cursor-pointer transition-colors ${
                     theme === 'dark'

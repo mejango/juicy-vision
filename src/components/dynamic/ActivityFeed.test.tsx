@@ -188,6 +188,109 @@ describe('ActivityFeed', () => {
     })
   })
 
+  // Ecosystem convention: amounts render in the project's accounting token
+  // when the project has exactly ONE token kind across its chains (the
+  // homogeneity signal the dashboard already computes — balanceAvailable),
+  // and in indexed USD otherwise.
+  describe('amount denomination convention', () => {
+    // amountUsd values are deliberately DIFFERENT from the raw amounts so the
+    // two rendering paths are distinguishable in assertions.
+    const usdcPayEvents = [
+      {
+        txHash: '0xpayusdc',
+        timestamp: Math.floor(Date.now() / 1000) - 60,
+        from: '0x1234567890abcdef1234567890abcdef12345678',
+        amount: '2500000', // 2.5 USDC raw (6 decimals)
+        amountUsd: '99000000000000000000', // $99 — must NOT render when homogeneous
+        newlyIssuedTokenCount: '100000000000000000000',
+        memo: null,
+      },
+    ]
+    const usdcCashOutEvents = [
+      {
+        txHash: '0xcashusdc',
+        timestamp: Math.floor(Date.now() / 1000) - 120,
+        from: '0x9876543210fedcba9876543210fedcba98765432',
+        reclaimAmount: '1250000', // 1.25 USDC raw
+        reclaimAmountUsd: '5000000000000000000', // $5
+        cashOutCount: '20000000000000000000',
+      },
+    ]
+
+    beforeEach(() => {
+      vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)
+      vi.mocked(bendystraw.fetchPayEventsPage).mockResolvedValue({ items: usdcPayEvents as any, hasNextPage: false, endCursor: null })
+      vi.mocked(bendystraw.fetchCashOutEventsPage).mockResolvedValue({ items: usdcCashOutEvents as any, hasNextPage: false, endCursor: null })
+    })
+
+    it('renders raw token amounts with the context decimals for a homogeneous 6-dec USDC project', async () => {
+      vi.mocked(bendystraw.fetchSuckerGroupBalance).mockResolvedValue({
+        ...mockBalanceInfo,
+        currency: 2,
+        decimals: 6,
+        balanceAvailable: true,
+      } as any)
+
+      render(<ActivityFeed projectId="1" />)
+
+      await waitFor(() => {
+        expect(screen.getByText('$2.5')).toBeInTheDocument() // 2500000 @ 6 decimals
+        expect(screen.getByText('$1.25')).toBeInTheDocument() // 1250000 @ 6 decimals
+      })
+      // NOT the ÷1e18 disaster, and NOT the indexed-USD path.
+      expect(screen.queryByText('$99.00')).not.toBeInTheDocument()
+      expect(screen.queryByText('$5.00')).not.toBeInTheDocument()
+    })
+
+    it('renders native token amounts for a homogeneous ETH project', async () => {
+      vi.mocked(bendystraw.fetchSuckerGroupBalance).mockResolvedValue({
+        ...mockBalanceInfo,
+        currency: 1,
+        decimals: 18,
+        balanceAvailable: true,
+      } as any)
+      vi.mocked(bendystraw.fetchPayEventsPage).mockResolvedValue({
+        items: [{ ...usdcPayEvents[0], amount: '1000000000000000000' }] as any,
+        hasNextPage: false,
+        endCursor: null,
+      })
+
+      render(<ActivityFeed projectId="1" />)
+
+      await waitFor(() => {
+        expect(screen.getByText('1 ETH')).toBeInTheDocument()
+      })
+      expect(screen.queryByText('$99.00')).not.toBeInTheDocument()
+    })
+
+    it('keeps indexed USD amounts when the accounting token is heterogeneous across chains', async () => {
+      vi.mocked(bendystraw.fetchSuckerGroupBalance).mockResolvedValue({
+        ...mockBalanceInfo,
+        currency: Number.NaN,
+        decimals: Number.NaN,
+        balanceAvailable: false,
+      } as any)
+
+      render(<ActivityFeed projectId="1" />)
+
+      await waitFor(() => {
+        expect(screen.getByText('$99.00')).toBeInTheDocument()
+        expect(screen.getByText('$5.00')).toBeInTheDocument()
+      })
+      expect(screen.queryByText('$2.5')).not.toBeInTheDocument()
+    })
+
+    it('keeps indexed USD amounts when the homogeneity signal is unavailable', async () => {
+      vi.mocked(bendystraw.fetchSuckerGroupBalance).mockRejectedValue(new Error('bendystraw down'))
+
+      render(<ActivityFeed projectId="1" />)
+
+      await waitFor(() => {
+        expect(screen.getByText('$99.00')).toBeInTheDocument()
+      })
+    })
+  })
+
   describe('infinite scroll', () => {
     beforeEach(() => {
       vi.mocked(bendystraw.fetchProject).mockResolvedValue(mockProject as any)

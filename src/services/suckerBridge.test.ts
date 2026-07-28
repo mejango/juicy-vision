@@ -17,6 +17,7 @@ import {
   escalateValue,
   fetchCompositionRows,
   gossipSnapshotStaleness,
+  quotePrepareMin,
   relativeDrift,
   snapshotAge,
   stalenessFromPct,
@@ -301,6 +302,55 @@ describe('timestamps', () => {
     expect(snapshotAge(now - 300, now)).toBe('5m ago')
     expect(snapshotAge(now - 7200, now)).toBe('2h ago')
     expect(snapshotAge(now - 172800, now)).toBe('2d ago')
+  })
+})
+
+describe('quotePrepareMin', () => {
+  const SUCKER = '0x5555555555555555555555555555555555555555' as const
+  const TERM_TOKEN = '0x000000000000000000000000000000000000EEEe' as const
+
+  interface RecordedRead {
+    functionName: string
+    args: readonly unknown[]
+  }
+
+  // Mirrors the deployed contracts: JBFeelessAddresses only exposes the
+  // 3-arg isFeelessFor(addr, projectId, caller) — a 1-arg call is an unknown
+  // selector and reverts, exactly like on-chain.
+  function quoteClient(log: RecordedRead[]): PublicClient {
+    return {
+      readContract: async ({ functionName, args }: { functionName: string; args?: readonly unknown[] }) => {
+        log.push({ functionName, args: args ?? [] })
+        if (functionName === 'previewCashOutFrom') return [{}, 1_000n, 1n, []]
+        if (functionName === 'isFeelessFor') {
+          if ((args ?? []).length !== 3) throw new Error('execution reverted (unknown selector)')
+          return false
+        }
+        if (functionName === 'feeFreeSurplusOf') return 0n
+        throw new Error(`unhandled read ${functionName}`)
+      },
+    } as unknown as PublicClient
+  }
+
+  it('reads the deployed 3-arg isFeelessFor with the sucker as beneficiary AND caller', async () => {
+    const log: RecordedRead[] = []
+    await quotePrepareMin(
+      { projectId: 7, chainId: 1, sucker: SUCKER, amount: 100n, termToken: TERM_TOKEN },
+      { clientFor: () => quoteClient(log) },
+    )
+    const feeless = log.find(entry => entry.functionName === 'isFeelessFor')
+    expect(feeless?.args).toEqual([SUCKER, 7n, SUCKER])
+  })
+
+  it('produces a quote (gross, fee-adjusted net, 99% floor) instead of rejecting', async () => {
+    const quote = await quotePrepareMin(
+      { projectId: 7, chainId: 1, sucker: SUCKER, amount: 100n, termToken: TERM_TOKEN },
+      { clientFor: () => quoteClient([]) },
+    )
+    // Non-zero tax → the 2.5% protocol fee applies to the whole reclaim.
+    expect(quote.gross).toBe(1_000n)
+    expect(quote.net).toBe(975n)
+    expect(quote.minReclaimed).toBe(965n)
   })
 })
 

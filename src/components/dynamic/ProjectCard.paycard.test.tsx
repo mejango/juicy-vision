@@ -595,7 +595,7 @@ describe("ProjectCard pay panel", () => {
     it("renders memo directly under the pay row, before the feedback block", async () => {
       render(<ProjectCard projectId="1" chainId="11155111" />);
 
-      const youGet = await screen.findByText("You get", undefined, {
+      const youGet = await screen.findByText("You get at least", undefined, {
         timeout: 2000,
       });
       const memo = screen.getByPlaceholderText("Add a memo (optional)");
@@ -668,7 +668,7 @@ describe("ProjectCard pay panel", () => {
           timeout: 2000,
         }),
       ).toBeInTheDocument();
-      expect(screen.queryByText("You get")).not.toBeInTheDocument();
+      expect(screen.queryByText(/You get/)).not.toBeInTheDocument();
       expect(screen.queryByText(/Splits get/)).not.toBeInTheDocument();
       const payButton = screen.getByRole("button", { name: "Pay" });
       await waitFor(() => expect(payButton).toBeEnabled());
@@ -751,7 +751,7 @@ describe("ProjectCard pay panel", () => {
 
       render(<ProjectCard projectId="1" chainId="11155111" />);
 
-      await screen.findByText("You get", undefined, { timeout: 2000 });
+      await screen.findByText("You get at least", undefined, { timeout: 2000 });
       await openTokenDropdown();
       expect(screen.getByRole("button", { name: "USDC" })).toBeInTheDocument();
     });
@@ -767,7 +767,7 @@ describe("ProjectCard pay panel", () => {
 
       render(<ProjectCard projectId="1" chainId="11155111" />);
 
-      await screen.findByText("You get", undefined, { timeout: 2000 });
+      await screen.findByText("You get at least", undefined, { timeout: 2000 });
       await openTokenDropdown();
       expect(
         screen.queryByRole("button", { name: "USDC" }),
@@ -788,7 +788,7 @@ describe("ProjectCard pay panel", () => {
       expect(
         screen.getByText(/Adds to the project balance — nothing else/),
       ).toBeInTheDocument();
-      expect(screen.queryByText("You get")).not.toBeInTheDocument();
+      expect(screen.queryByText(/You get/)).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Add" })).toBeInTheDocument();
     });
   });

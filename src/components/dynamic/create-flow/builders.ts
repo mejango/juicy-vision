@@ -639,7 +639,7 @@ function assembleRuleset(
       allowAddPriceFeed: !!stage.allowAddPriceFeed,
       ownerMustSendPayouts: !!stage.ownerMustSendPayouts,
       holdFees: !!stage.holdFees,
-      scopeCashOutsToLocalBalances: !!stage.useTotalSurplusForCashOuts,
+      scopeCashOutsToLocalBalances: !!stage.scopeCashOutsToLocalBalances,
       // Like the website: the flag is set with a zero dataHook — the omnichain
       // deployer's 721 wrapper wires the hook itself at deploy (the encoder
       // permits this on the atomic-721 path).
@@ -929,10 +929,9 @@ export interface REVAutoIssuanceConfig {
 
 /**
  * REVStageConfig plus the split/auto-issuance rows REVDeployer.deployFor
- * takes on-chain. NOTE: the current relayr encoder synthesizes a single
- * operator split from splitPercent and drops autoIssuances — these extra
- * fields are carried so the launch plumbing can adopt them without a builder
- * change.
+ * takes on-chain. The relayr encoder passes both straight through into the
+ * deployFor calldata (splits fall back to a single operator split synthesized
+ * from splitPercent only when the explicit rows are absent).
  */
 export interface REVStageConfigFull extends REVStageConfig {
   splits: JBSplitConfig[]
@@ -968,8 +967,13 @@ function revStageDaysAfter(state: CreateFlowState, idx: number): number {
  * auto-issuances (count 18-dec, per-chain beneficiary override), start times
  * cumulative from baseStart (stage 1 honors a scheduled start).
  *
- * `chainId` scopes per-chain overrides + autoIssuances (defaults to the first
- * selected chain).
+ * `chainId` scopes per-chain overrides for the SPLIT rows (defaults to the
+ * first selected chain). Auto-issuance rows are chain-independent: each row
+ * carries its own chainId (row choice, default first selected chain), the FULL
+ * list goes into every chain's config byte-identically (REVDeployer's
+ * encodedConfiguration parity requirement — it mints only rows where
+ * chainId == block.chainid), and beneficiary overrides resolve against the
+ * ROW's chain.
  */
 export function buildRevnetStageConfigs(state: CreateFlowState, baseStart: number, chainId?: number): REVStageConfigFull[] {
   const cid = chainId ?? state.chainIds[0] ?? 1
@@ -1014,12 +1018,20 @@ export function buildRevnetStageConfigs(state: CreateFlowState, baseStart: numbe
     const taxRate = Math.round(clampPct(stage.cashOutTaxRate) * 100) // percent → out of 10000
 
     const autoIssuances = (stage.autoIssuances || [])
-      .map((a, aiIdx) => ({
-        count: tokenAmount18(a.count, UINT104_MAX),
-        addr: chainAddr(state, cid, `ai:${idx}:${aiIdx}`, pickResolved(a.address, a)),
-      }))
+      .map((a, aiIdx) => {
+        // The row's own chain (default: first selected). Never the config
+        // chain — every chain's config must carry the identical full list.
+        const rowCid = a.chainId != null && state.chainIds.includes(a.chainId)
+          ? a.chainId
+          : state.chainIds[0] ?? cid
+        return {
+          rowCid,
+          count: tokenAmount18(a.count, UINT104_MAX),
+          addr: chainAddr(state, rowCid, `ai:${idx}:${aiIdx}`, pickResolved(a.address, a)),
+        }
+      })
       .filter((a) => a.count > 0n && isAddr(a.addr))
-      .map((a) => ({ chainId: cid, count: a.count.toString(), beneficiary: a.addr }))
+      .map((a) => ({ chainId: a.rowCid, count: a.count.toString(), beneficiary: a.addr }))
 
     return {
       startsAtOrAfter: start,

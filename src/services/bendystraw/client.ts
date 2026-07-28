@@ -13,6 +13,13 @@ import { truncateAddress } from '../../utils/ens'
 import { requireRecognizedRuntimeSplitHook } from '../../utils/projectTrust'
 import { decodeRecognizedLaunchProjectLog } from '../../utils/launchReceipt'
 import { deriveCycledWeight } from '../../utils/rulesetMath'
+import { mergeAccountActivityEvents, type AccountActivityQueryData } from './accountActivity'
+import {
+  dedupeTokenHoldings,
+  dedupeNftHoldings,
+  type TokenHoldingRow,
+  type NftHoldingRow,
+} from './accountHoldings'
 
 // Mainnet chain IDs - used to detect when to route to mainnet API in staging
 const MAINNET_CHAIN_IDS = [1, 10, 8453, 42161] as const
@@ -47,6 +54,8 @@ import {
   REVNET_OPERATOR_QUERY,
   ACCOUNT_ACTIVITY_EVENTS_QUERY,
   ACCOUNT_PERMISSION_HOLDERS_QUERY,
+  ACCOUNT_TOKEN_HOLDINGS_QUERY,
+  ACCOUNT_NFTS_QUERY,
 } from './queries'
 
 export interface ProjectMetadata {
@@ -887,11 +896,16 @@ interface RawActivityEvent {
     decimals?: number
     currency?: number
   }
-  payEvent?: { amount: string; amountUsd?: string; from: string; txHash: string }
+  payEvent?: { id?: string; amount: string; amountUsd?: string; from: string; txHash: string }
   projectCreateEvent?: { from: string; txHash: string }
-  cashOutTokensEvent?: { reclaimAmount: string; from: string; txHash: string }
+  cashOutTokensEvent?: { id?: string; reclaimAmount: string; from: string; txHash: string }
   addToBalanceEvent?: { amount: string; from: string; txHash: string }
-  mintTokensEvent?: { tokenCount: string; beneficiary: string; from: string; txHash: string }
+  mintTokensEvent?: { id?: string; tokenCount: string; beneficiary: string; from: string; txHash: string }
+  /** Owner mints recorded by their own event — the account query aliases
+   *  beneficiaryTokenCount to tokenCount so they render as mints. */
+  manualMintTokensEvent?: { id?: string; tokenCount: string; beneficiary: string; from: string; txHash: string }
+  /** Revnet automints — the account query aliases count to tokenCount. */
+  autoIssueEvent?: { id?: string; tokenCount: string; beneficiary: string; from: string; txHash: string }
   burnEvent?: { amount: string; from: string; txHash: string }
   deployErc20Event?: { symbol: string; from: string; txHash: string }
   sendPayoutsEvent?: { amount: string; from: string; txHash: string }
@@ -907,6 +921,10 @@ const EVENT_TYPE_BY_FIELD = [
   ['cashOutTokensEvent', 'cashOut'],
   ['addToBalanceEvent', 'addToBalance'],
   ['mintTokensEvent', 'mintTokens'],
+  // Manual mints and revnet automints render through the mint shape (their
+  // selections alias the count field to tokenCount).
+  ['manualMintTokensEvent', 'mintTokens'],
+  ['autoIssueEvent', 'mintTokens'],
   ['burnEvent', 'burn'],
   ['deployErc20Event', 'deployErc20'],
   ['sendPayoutsEvent', 'sendPayouts'],
@@ -941,22 +959,28 @@ export async function fetchActivityEvents(limit: number = 20, offset: number = 0
     .filter(event => event.type !== 'unknown')
 }
 
-// Everything one account has done across projects. Same mainnet routing as
-// fetchActivityEvents: the account feed shows real protocol activity even when
-// the app runs in staging/testnet mode.
+// Everything one account has done OR received across projects. Same mainnet
+// routing as fetchActivityEvents: the account feed shows real protocol
+// activity even when the app runs in staging/testnet mode.
+//
+// The top-level activityEvents filter has no beneficiary field, so the query
+// also hits the beneficiary-bearing event roots; the branches are merged and
+// deduped by sub-event id (mergeAccountActivityEvents), newest first. Offsets
+// page the from-branch only — the beneficiary roots return their newest rows
+// on every page and the merge (plus the caller's id-dedupe) absorbs repeats.
 export async function fetchAccountActivityEvents(
   address: string,
   options: { limit?: number; offset?: number } = {}
 ): Promise<ActivityEvent[]> {
   const { limit = 25, offset = 0 } = options
-  const data = await safeRequest<{ activityEvents: { items: RawActivityEvent[] } }>(
+  const data = await safeRequest<AccountActivityQueryData>(
     ACCOUNT_ACTIVITY_EVENTS_QUERY,
     { address: address.toLowerCase(), limit, offset, orderBy: 'timestamp', orderDirection: 'desc' },
     { network: 'mainnet' }
   )
 
-  return data.activityEvents.items
-    .map(transformEvent)
+  return mergeAccountActivityEvents(data)
+    .map(row => transformEvent(row as unknown as RawActivityEvent))
     .filter(event => event.type !== 'unknown')
 }
 
@@ -981,6 +1005,27 @@ export async function fetchAccountOperatedPermissions(
     { operator: address.toLowerCase(), version: 6, limit }
   )
   return data?.permissionHolders?.items ?? []
+}
+
+// Every project token balance the account holds, biggest first, deduped to
+// the highest indexed version per (chainId, projectId).
+export async function fetchAccountTokenHoldings(address: string): Promise<TokenHoldingRow[]> {
+  const data = await safeRequest<{ participants: { items: TokenHoldingRow[] } }>(
+    ACCOUNT_TOKEN_HOLDINGS_QUERY,
+    { account: address.toLowerCase() }
+  )
+  return dedupeTokenHoldings(data?.participants?.items ?? [])
+}
+
+// Every store item (721 token) the account currently owns, deduped by
+// (chainId, tokenId) — the same physical token indexed under multiple
+// versions collapses to one item.
+export async function fetchAccountNftHoldings(address: string): Promise<NftHoldingRow[]> {
+  const data = await safeRequest<{ nfts: { items: NftHoldingRow[] } }>(
+    ACCOUNT_NFTS_QUERY,
+    { owner: address.toLowerCase() }
+  )
+  return dedupeNftHoldings(data?.nfts?.items ?? [])
 }
 
 // Read the holder's current claimed-token plus credit balance from JBTokens.

@@ -33,6 +33,12 @@ vi.mock('../../constants', () => ({
     10: { slug: 'op' },
     8453: { slug: 'base' },
   },
+  MAINNET_CHAINS: {
+    1: { slug: 'eth' },
+    10: { slug: 'op' },
+    8453: { slug: 'base' },
+  },
+  TESTNET_CHAINS: {},
 }))
 
 vi.mock('../../services/bendystraw', () => ({

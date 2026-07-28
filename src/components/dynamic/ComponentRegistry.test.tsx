@@ -86,8 +86,8 @@ vi.mock('./RulesetSchedule', () => ({
 }))
 
 vi.mock('./OptionsPicker', () => ({
-  default: ({ groups, submitLabel }: { groups: unknown[]; submitLabel?: string }) => (
-    <div data-testid="options-picker">OptionsPicker: {groups.length} groups, {submitLabel || 'Continue'}</div>
+  default: ({ groups, submitLabel, isStreaming }: { groups: unknown[]; submitLabel?: string; isStreaming?: boolean }) => (
+    <div data-testid="options-picker" data-streaming={String(isStreaming)}>OptionsPicker: {groups.length} groups, {submitLabel || 'Continue'}</div>
   ),
 }))
 
@@ -417,6 +417,60 @@ describe('ComponentRegistry', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/Next/)).toBeInTheDocument()
+      })
+    })
+
+    describe('truncated stream recovery', () => {
+      // A stream that dies mid-array leaves the component tag unterminated:
+      // the parser marks it isStreaming and the JSON never completes. The
+      // "loading" guard must clear once the message stops streaming.
+      const truncatedGroups =
+        '[{"id":"type","label":"Type","options":[{"value":"a","label":"A"}]},{"id":"cut'
+
+      const truncatedComponent: ParsedComponent = {
+        type: 'options-picker',
+        props: { groups: truncatedGroups },
+        raw: '<juice-component type="options-picker"',
+        isStreaming: true,
+      }
+
+      it('becomes interactive when the message has stopped streaming', async () => {
+        render(<ComponentRegistry component={truncatedComponent} isStreaming={false} />)
+
+        await waitFor(() => {
+          expect(screen.getByTestId('options-picker')).toHaveAttribute('data-streaming', 'false')
+        })
+        // The complete first group still renders
+        expect(screen.getByText(/1 groups/)).toBeInTheDocument()
+      })
+
+      it('stays in loading state while the message is still streaming', async () => {
+        render(<ComponentRegistry component={truncatedComponent} isStreaming={true} />)
+
+        await waitFor(() => {
+          expect(screen.getByTestId('options-picker')).toHaveAttribute('data-streaming', 'true')
+        })
+      })
+
+      it('stays in loading state when no message-level signal exists', async () => {
+        render(<ComponentRegistry component={truncatedComponent} />)
+
+        await waitFor(() => {
+          expect(screen.getByTestId('options-picker')).toHaveAttribute('data-streaming', 'true')
+        })
+      })
+
+      it('shows the fallback message when an empty stream ends', () => {
+        const component: ParsedComponent = {
+          type: 'options-picker',
+          props: {},
+          raw: '<juice-component type="options-picker"',
+          isStreaming: true,
+        }
+
+        render(<ComponentRegistry component={component} isStreaming={false} />)
+
+        expect(screen.getByText(/Options not available/)).toBeInTheDocument()
       })
     })
   })

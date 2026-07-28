@@ -8,6 +8,8 @@ export {
   fetchActivityEvents,
   fetchAccountActivityEvents,
   fetchAccountOperatedPermissions,
+  fetchAccountTokenHoldings,
+  fetchAccountNftHoldings,
   fetchProjectWithRuleset,
   fetchUserTokenBalance,
   fetchConnectedChains,
@@ -72,6 +74,15 @@ export {
   type ProjectSplitsData,
   type ProjectAccountingContext,
 } from './client'
+
+export {
+  groupTokenHoldings,
+  groupNftHoldings,
+  type TokenHoldingRow,
+  type NftHoldingRow,
+  type TokenHoldingGroup,
+  type NftHoldingGroup,
+} from './accountHoldings'
 
 export {
   fetchIndexedAmmPriceHistory,

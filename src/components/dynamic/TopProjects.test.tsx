@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import TopProjects from './TopProjects'
 import { useThemeStore } from '../../stores'
 import * as bendystraw from '../../services/bendystraw'
+import { PROJECTS_QUERY } from '../../services/bendystraw/queries'
 
 // Mock bendystraw service
 vi.mock('../../services/bendystraw', () => ({
@@ -21,6 +22,7 @@ const mockProjects = [
     projectId: 1,
     chainId: 1,
     version: 6,
+    suckerGroupId: 'sg-alpha',
     name: 'Project Alpha',
     handle: 'alpha',
     logoUri: 'ipfs://Qm123',
@@ -57,6 +59,7 @@ const mockProjects = [
     projectId: 1,
     chainId: 10,
     version: 6,
+    suckerGroupId: 'sg-alpha',
     name: 'Project Alpha',
     handle: 'alpha',
     logoUri: 'ipfs://Qm123',
@@ -300,6 +303,72 @@ describe('TopProjects', () => {
         const container = screen.getByText('Trending Projects').closest('.rounded-lg')
         expect(container).toHaveClass('bg-white')
       })
+    })
+  })
+
+  describe('sucker-group grouping', () => {
+    const baseRow = {
+      version: 6,
+      handle: undefined,
+      logoUri: undefined,
+      volume: '0',
+      balance: '0',
+      paymentsCount: 1,
+      createdAt: 1704067200,
+      trendingScore: '0',
+      trendingVolume: '0',
+      trendingPaymentsCount: 0,
+      owner: '0x1234567890abcdef1234567890abcdef12345678',
+    }
+
+    it('selects suckerGroupId so grouping has a disambiguator', () => {
+      expect(PROJECTS_QUERY).toContain('suckerGroupId')
+    })
+
+    it('keeps unrelated projects sharing a projectId separate when suckerGroupIds differ', async () => {
+      vi.mocked(bendystraw.fetchProjects).mockResolvedValue([
+        { ...baseRow, id: '1-7-6', projectId: 7, chainId: 1, suckerGroupId: 'sg-one', name: 'Solo One', volumeUsd: '10000000000000000000000' },
+        { ...baseRow, id: '8453-7-6', projectId: 7, chainId: 8453, suckerGroupId: 'sg-two', name: 'Solo Two', volumeUsd: '6000000000000000000000' },
+      ])
+
+      render(<TopProjects orderBy="volumeUsd" />)
+
+      await waitFor(() => {
+        expect(screen.getByText('Solo One')).toBeInTheDocument()
+        expect(screen.getByText('Solo Two')).toBeInTheDocument()
+      })
+      // Volumes must NOT be merged: $10.0k and $6.0k, never $16.0k
+      expect(screen.getByText('$10.0k')).toBeInTheDocument()
+      expect(screen.getByText('$6.0k')).toBeInTheDocument()
+    })
+
+    it('keeps rows without a suckerGroupId separate even with the same projectId', async () => {
+      vi.mocked(bendystraw.fetchProjects).mockResolvedValue([
+        { ...baseRow, id: '1-9-6', projectId: 9, chainId: 1, name: 'Ungrouped One', volumeUsd: '10000000000000000000000' },
+        { ...baseRow, id: '10-9-6', projectId: 9, chainId: 10, name: 'Ungrouped Two', volumeUsd: '6000000000000000000000' },
+      ])
+
+      render(<TopProjects orderBy="volumeUsd" />)
+
+      await waitFor(() => {
+        expect(screen.getByText('Ungrouped One')).toBeInTheDocument()
+        expect(screen.getByText('Ungrouped Two')).toBeInTheDocument()
+      })
+    })
+
+    it('merges rows sharing a suckerGroupId and sums their volume', async () => {
+      vi.mocked(bendystraw.fetchProjects).mockResolvedValue([
+        { ...baseRow, id: '1-3-6', projectId: 3, chainId: 1, suckerGroupId: 'sg-omni', name: 'Omni Project', volumeUsd: '10000000000000000000000' },
+        { ...baseRow, id: '10-4-6', projectId: 4, chainId: 10, suckerGroupId: 'sg-omni', name: 'Omni Project', volumeUsd: '2000000000000000000000' },
+      ])
+
+      render(<TopProjects orderBy="volumeUsd" />)
+
+      await waitFor(() => {
+        expect(screen.getAllByText('Omni Project')).toHaveLength(1)
+      })
+      // 10,000 + 2,000 summed
+      expect(screen.getByText('$12.0k')).toBeInTheDocument()
     })
   })
 })

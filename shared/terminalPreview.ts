@@ -168,13 +168,16 @@ export function resolvePayPreviewOutcome(params: {
   ammSlippageBps?: bigint;
 }): PayPreviewOutcome {
   const specification = buybackSpecification(params.hookSpecifications);
+  const slippageBps = requireBps(params.ammSlippageBps ?? 100n);
   if (!specification || specification.noop) {
     return {
       route: 'issuance',
       beneficiaryTokenCount: params.beneficiaryTokenCount,
       reservedTokenCount: params.reservedTokenCount,
-      // Issuance is deterministic. The website protects the exact preview.
-      minReturnedTokens: params.beneficiaryTokenCount,
+      // Issuance can change between the final preview and inclusion (weight-cut
+      // rollover, revnet stage boundary, queued ruleset activation), so the
+      // minimum keeps the same slippage floor as the AMM route.
+      minReturnedTokens: quotedOutputFloor(params.beneficiaryTokenCount, BPS - slippageBps),
       buyback: null,
     };
   }
@@ -185,7 +188,6 @@ export function resolvePayPreviewOutcome(params: {
   const decoded = decodeAbiParameters(BUYBACK_PAY_METADATA, specification.metadata);
   const beneficiaryTokenCount = decoded[11];
   const reservedTokenCount = decoded[12];
-  const slippageBps = requireBps(params.ammSlippageBps ?? 100n);
 
   return {
     route: 'amm',

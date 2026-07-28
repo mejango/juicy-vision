@@ -5,9 +5,11 @@ import {
   fetchPayEventsPage,
   fetchCashOutEventsPage,
   fetchProject,
+  fetchSuckerGroupBalance,
   type PayEventHistoryItem,
   type CashOutEventHistoryItem,
 } from '../../services/bendystraw'
+import { formatBalanceNative } from '../../utils/currency'
 import { MAINNET_CHAINS } from '../../constants'
 
 interface ActivityFeedProps {
@@ -84,6 +86,11 @@ export default function ActivityFeed({
   const [payEvents, setPayEvents] = useState<PayEventHistoryItem[]>([])
   const [cashOutEvents, setCashOutEvents] = useState<CashOutEventHistoryItem[]>([])
   const [projectName, setProjectName] = useState<string>('')
+  // Ecosystem convention: amounts render in the accounting token when the
+  // project has exactly ONE token kind across its chains, USD otherwise.
+  // The homogeneity signal is the dashboard's group-balance service
+  // (balanceAvailable = recognized, homogeneous denomination on every chain).
+  const [accounting, setAccounting] = useState<{ currency: number; decimals: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [activityError, setActivityError] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -110,18 +117,35 @@ export default function ActivityFeed({
       setCashOutHasMore(true)
       setPayEvents([])
       setCashOutEvents([])
+      setAccounting(null)
       setActivityError(false)
 
       try {
-        // Fetch project info, currency info, and first page of events in parallel
-        const [project, payPage, cashOutPage] = await Promise.all([
+        // Fetch project info, currency info, and first page of events in parallel.
+        // The token-homogeneity probe is best-effort: without it the feed keeps
+        // its USD rendering. No per-row reads — one group lookup per load.
+        const [project, payPage, cashOutPage, groupBalance] = await Promise.all([
           fetchProject(projectId, chainIdNum),
           fetchPayEventsPage(projectId, chainIdNum, 6, PAGE_SIZE * 2),
           fetchCashOutEventsPage(projectId, chainIdNum, 6, PAGE_SIZE * 2),
+          (async () => {
+            try {
+              return await fetchSuckerGroupBalance(projectId, chainIdNum)
+            } catch {
+              return null
+            }
+          })(),
         ])
 
         if (project?.name) {
           setProjectName(project.name)
+        }
+        if (
+          groupBalance?.balanceAvailable &&
+          Number.isFinite(groupBalance.currency) &&
+          Number.isFinite(groupBalance.decimals)
+        ) {
+          setAccounting({ currency: groupBalance.currency, decimals: groupBalance.decimals })
         }
 
         setPayEvents(payPage.items)
@@ -146,6 +170,11 @@ export default function ActivityFeed({
   const events = useMemo(() => {
     const combined: ActivityEvent[] = []
 
+    // Single accounting-token kind across the project's chains → render the
+    // raw amount in that token (decimal-safe); heterogeneous → indexed USD.
+    const inAccounting = (raw: string): string =>
+      formatBalanceNative(raw, accounting!.currency, accounting!.decimals)
+
     // Add pay events
     for (const e of payEvents) {
       combined.push({
@@ -153,7 +182,7 @@ export default function ActivityFeed({
         txHash: e.txHash,
         timestamp: e.timestamp,
         from: e.from,
-        amount: formatIndexedUsd(e.amountUsd),
+        amount: accounting ? inAccounting(e.amount) : formatIndexedUsd(e.amountUsd),
         tokenAmount: formatTokenAmount(e.newlyIssuedTokenCount),
         memo: e.memo,
       })
@@ -166,14 +195,14 @@ export default function ActivityFeed({
         txHash: e.txHash,
         timestamp: e.timestamp,
         from: e.from,
-        amount: formatIndexedUsd(e.reclaimAmountUsd),
+        amount: accounting ? inAccounting(e.reclaimAmount) : formatIndexedUsd(e.reclaimAmountUsd),
         tokenAmount: formatTokenAmount(e.cashOutCount),
       })
     }
 
     // Sort by timestamp descending (most recent first)
     return combined.sort((a, b) => b.timestamp - a.timestamp)
-  }, [payEvents, cashOutEvents])
+  }, [payEvents, cashOutEvents, accounting])
 
   const displayedEvents = events.slice(0, displayCount)
   // Has more if there are more events to display OR if server has more data

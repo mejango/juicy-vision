@@ -248,8 +248,9 @@ describe('ProjectCard', () => {
       ;(bendystraw.fetchProjectTokenSymbol as Mock).mockResolvedValue('REV')
       render(<ProjectCard projectId="1" chainId="11155111" />)
 
-      expect(await screen.findByText('You get')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: '568.00 REV' })).toBeInTheDocument()
+      expect(await screen.findByText('You get at least')).toBeInTheDocument()
+      // The displayed minimum carries the 1% slippage floor the pay submits.
+      expect(screen.getByRole('button', { name: '562.32 REV' })).toBeInTheDocument()
       expect(screen.getByText('Splits get 348.13 REV')).toBeInTheDocument()
       expect(screen.getByText('Issuance')).toBeInTheDocument()
       expect(mockReadContract).toHaveBeenCalledWith(expect.objectContaining({

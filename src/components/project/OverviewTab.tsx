@@ -7,6 +7,7 @@ import {
   JB_CONTRACTS,
   ZERO_ADDRESS,
 } from "../../constants";
+import { projectPathFor } from "../../utils/projectLink";
 import {
   fetchRevnetOperator,
   type Project,
@@ -61,10 +62,6 @@ function chainNameOf(chainId: number): string {
   return (
     CHAINS[chainId]?.name || MAINNET_CHAINS[chainId]?.name || `Chain ${chainId}`
   );
-}
-
-function chainSlugOf(chainId: number): string | null {
-  return CHAINS[chainId]?.slug || MAINNET_CHAINS[chainId]?.slug || null;
 }
 
 function explorerAddressUrl(chainId: number, address: string): string | null {
@@ -302,7 +299,7 @@ export default function OverviewTab({
             </div>
             <div className="space-y-1">
               {chains.map((chain) => {
-                const slug = chainSlugOf(chain.chainId);
+                const path = projectPathFor(chain.chainId, chain.projectId);
                 const row = (
                   <span className="flex items-baseline gap-1.5">
                     <span className={infoValueClass}>
@@ -315,10 +312,10 @@ export default function OverviewTab({
                     </span>
                   </span>
                 );
-                return slug ? (
+                return path ? (
                   <button
                     key={chain.chainId}
-                    onClick={() => navigate(`/${slug}:${chain.projectId}`)}
+                    onClick={() => navigate(path)}
                     className="block text-left hover:underline"
                     title={`Open #${chain.projectId} on ${chainNameOf(chain.chainId)}`}
                   >

@@ -56,8 +56,9 @@ function maximalState(): CreateFlowState {
   stage.surplusAllowanceAmount = '2'
   stage.deadline = '3days'
   stage.holdFees = true
+  stage.scopeCashOutsToLocalBalances = true
   stage.allowSetTerminals = true
-  stage.autoIssuances = [{ count: '100', address: A1 }]
+  stage.autoIssuances = [{ count: '100', address: A1, chainId: ALL_CHAIN_IDS[1] }]
   s.stages = [stage, createStage()]
   s.afterMode = 'cycle'
   s.shopEnabled = true
@@ -117,6 +118,58 @@ describe('.jb round-trip completeness', () => {
     }
     // And nothing new appeared either.
     expect(Object.keys(reExported).sort()).toEqual(Object.keys(exported).sort())
+  })
+
+  it('migrates the legacy useTotalSurplusForCashOuts stage key on import', () => {
+    // Older drafts (localStorage or shared .jb files) carry the misnamed
+    // field; it fed scopeCashOutsToLocalBalances with the SAME polarity.
+    const exported = sanitizeState(maximalState()) as unknown as {
+      stages: Record<string, unknown>[]
+    }
+    delete exported.stages[0].scopeCashOutsToLocalBalances
+    exported.stages[0].useTotalSurplusForCashOuts = true
+    const imported = parseCreateDraftJson(JSON.stringify(exported))
+    expect(imported.stages[0].scopeCashOutsToLocalBalances).toBe(true)
+    // The legacy key never survives re-export.
+    expect(sanitizeState(imported).stages[0]).not.toHaveProperty('useTotalSurplusForCashOuts')
+  })
+
+  it('prefers the new scope key over a stale legacy key when both exist', () => {
+    const exported = sanitizeState(maximalState()) as unknown as {
+      stages: Record<string, unknown>[]
+    }
+    exported.stages[0].scopeCashOutsToLocalBalances = false
+    exported.stages[0].useTotalSurplusForCashOuts = true
+    const imported = parseCreateDraftJson(JSON.stringify(exported))
+    expect(imported.stages[0].scopeCashOutsToLocalBalances).toBe(false)
+  })
+
+  it('defaults scopeCashOutsToLocalBalances to false when neither key exists', () => {
+    const exported = sanitizeState(maximalState()) as unknown as {
+      stages: Record<string, unknown>[]
+    }
+    delete exported.stages[0].scopeCashOutsToLocalBalances
+    const imported = parseCreateDraftJson(JSON.stringify(exported))
+    expect(imported.stages[0].scopeCashOutsToLocalBalances).toBe(false)
+  })
+
+  it('keeps auto-issuance row chainIds that are in the selected set and drops the rest', () => {
+    const exported = sanitizeState(maximalState()) as unknown as {
+      chainIds: number[]
+      stages: Array<{ autoIssuances: Array<Record<string, unknown>> }>
+    }
+    exported.stages[0].autoIssuances = [
+      { count: '100', address: A1, chainId: exported.chainIds[1] }, // selected → kept
+      { count: '50', address: A2, chainId: 999999 }, // not selected → default (first chain)
+      { count: '25', address: A1, chainId: 'evil' }, // junk → default (first chain)
+      { count: '10', address: A2 }, // legacy row without chainId → untouched
+    ]
+    const imported = parseCreateDraftJson(JSON.stringify(exported))
+    const rows = imported.stages[0].autoIssuances
+    expect(rows[0].chainId).toBe(exported.chainIds[1])
+    expect(rows[1].chainId).toBeUndefined()
+    expect(rows[2].chainId).toBeUndefined()
+    expect(rows[3].chainId).toBeUndefined()
   })
 
   it('bounds imported payoutByKind and coerces bad modes', () => {
