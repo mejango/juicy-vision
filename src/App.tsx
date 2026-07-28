@@ -16,7 +16,7 @@ import { useTranslation } from 'react-i18next'
 import { wagmiConfig } from './config/wagmi'
 import { EnvironmentBadge } from './components/common/EnvironmentBadge'
 import { QueryErrorPanel } from './components/debug/QueryErrorPanel'
-import { ChatContainer, ProtocolActivity, TrendingProjects, MascotPanel } from './components/chat'
+import { ChatContainer, ProtocolActivity, TrendingProjects, MascotPanel, ProjectSearch } from './components/chat'
 import ParticipantAvatars from './components/chat/ParticipantAvatars'
 import { SettingsPanel } from './components/settings'
 import ErrorBoundary from './components/ui/ErrorBoundary'
@@ -654,6 +654,12 @@ function ActivitySidebar({ onProjectClick }: { onProjectClick: (query: string) =
         }`}>
           {t('ui.trendingProjects', 'Trending projects')}
         </h2>
+      </div>
+      {/* Project/account search — results overlay the trending list below */}
+      <div className={`px-3 py-2 border-b ${
+        theme === 'dark' ? 'border-white/10' : 'border-gray-200'
+      }`}>
+        <ProjectSearch />
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto px-4 hide-scrollbar">
         <TrendingProjects onProjectClick={onProjectClick} />
