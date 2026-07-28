@@ -1,4 +1,5 @@
 import type { Address, Hex } from "viem";
+import { useViewAsStore, VIEW_AS_WRITE_REFUSAL } from "../stores/viewAsStore";
 
 export const PAYMENT_REVIEW_EVENT = "juice:payment-review-request";
 
@@ -49,6 +50,11 @@ export interface PaymentReviewRequest {
 }
 
 export function requestPaymentReview(review: PaymentReview): Promise<boolean> {
+  // View-as mode is read-only: payments funnel through this review seam, so
+  // refusing here blocks transacting while impersonating an account.
+  if (useViewAsStore.getState().viewAs) {
+    return Promise.reject(new Error(VIEW_AS_WRITE_REFUSAL));
+  }
   return new Promise((resolve) => {
     let settled = false;
     const timeout = window.setTimeout(() => respond(false), 5 * 60 * 1000);

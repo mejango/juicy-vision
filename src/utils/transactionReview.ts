@@ -11,6 +11,7 @@ import {
   REV_DEPLOYER_ADDRESS,
 } from '../constants/abis'
 import { JB_PROJECT_PAYER_DEPLOYER } from '../services/projectPayers'
+import { useViewAsStore, VIEW_AS_WRITE_REFUSAL } from '../stores/viewAsStore'
 
 export const TRANSACTION_REVIEW_EVENT = 'juice:transaction-review-request'
 
@@ -103,6 +104,9 @@ export function registerTransactionReviewHandler(handler: TransactionReviewHandl
 }
 
 export function requestTransactionReview(review: TransactionReview): Promise<boolean> {
+  // View-as mode is read-only: every reviewed write funnels through here, so
+  // refusing at this seam blocks transacting while impersonating an account.
+  if (useViewAsStore.getState().viewAs) return Promise.reject(new Error(VIEW_AS_WRITE_REFUSAL))
   if (!review.calls.length) return Promise.reject(new Error('There is no transaction to review.'))
   const exactReview = {
     ...review,

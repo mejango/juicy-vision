@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAccount } from 'wagmi'
-import { useChatStore, useThemeStore } from '../../stores'
+import { useChatStore, useThemeStore, useViewAsStore } from '../../stores'
 import type { Chat, ChatFolder, ChatMember } from '../../stores/chatStore'
 import ParticipantAvatars, { getEmojiFromAddress } from './ParticipantAvatars'
 import { getWalletSession } from '../../services/siwe'
@@ -413,13 +413,16 @@ export default function ConversationHistory() {
     }
   }, [isLoading, setChats, chats])
 
-  // Load owned projects
+  // Load owned projects ("your projects" follows view-as)
+  const viewAs = useViewAsStore(s => s.viewAs)
   const loadProjects = useCallback(async () => {
     if (projectsLoadingRef.current) return
-    const addresses = [
-      ...(managedAddress ? [managedAddress] : []),
-      ...(wagmiAddress ? [wagmiAddress] : []),
-    ].filter((addr, i, arr) => arr.indexOf(addr) === i)
+    const addresses = viewAs
+      ? [viewAs]
+      : [
+          ...(managedAddress ? [managedAddress] : []),
+          ...(wagmiAddress ? [wagmiAddress] : []),
+        ].filter((addr, i, arr) => arr.indexOf(addr) === i)
     if (addresses.length === 0) return
 
     projectsLoadingRef.current = true
@@ -445,7 +448,7 @@ export default function ConversationHistory() {
       projectsLoadingRef.current = false
       setProjectsLoading(false)
     }
-  }, [managedAddress, wagmiAddress])
+  }, [viewAs, managedAddress, wagmiAddress])
 
   // Load supporter conversations (payments)
   const loadPayments = useCallback(async () => {

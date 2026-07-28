@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAccount } from 'wagmi'
 import { formatUnits, parseUnits } from 'viem'
-import { useThemeStore, useAuthStore } from '../../stores'
+import { useThemeStore, useAuthStore, useViewAsStore } from '../../stores'
 import { useCashOutFormState } from '../../hooks/useComponentState'
 import { useProjectDataInvalidation } from '../../hooks/useProjectDataInvalidation'
 import { useManagedWallet } from '../../hooks'
@@ -53,6 +53,10 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
   const isManagedMode = mode === 'managed' && isAuthenticated()
   const activeAddress = isManagedMode ? managedAddress : address
   const hasActiveWallet = isManagedMode ? !!managedAddress : isConnected && !!address
+  // "Your token balance" read follows view-as; the cash-out write keeps the
+  // real wallet context (and is refused at the review seam while active).
+  const viewAs = useViewAsStore(s => s.viewAs)
+  const balanceAddress = viewAs ?? activeAddress
 
   // Check if form should be locked due to active/completed transaction
   const isLocked = persistedState?.status === 'in_progress' || persistedState?.status === 'completed'
@@ -147,14 +151,14 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
 
   useEffect(() => {
     let cancelled = false
-    if (!activeAddress) {
+    if (!balanceAddress) {
       setUserTokenBalance(null)
       setBalanceLoading(false)
       return
     }
 
     setBalanceLoading(true)
-    fetchUserTokenBalance(String(selectedProjectId), parseInt(selectedChainId), activeAddress)
+    fetchUserTokenBalance(String(selectedProjectId), parseInt(selectedChainId), balanceAddress)
       .then(result => {
         if (!cancelled) setUserTokenBalance(BigInt(result.balance))
       })
@@ -169,7 +173,7 @@ export default function CashOutForm({ projectId, chainId: initialChainId = '1', 
     return () => {
       cancelled = true
     }
-  }, [activeAddress, selectedProjectId, selectedChainId, refreshRevision])
+  }, [balanceAddress, selectedProjectId, selectedChainId, refreshRevision])
 
   let tokenAmountRaw: bigint | null = null
   try {

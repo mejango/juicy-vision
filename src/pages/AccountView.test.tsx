@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useTransactionStore } from '../stores/transactionStore'
+import { useViewAsStore } from '../stores/viewAsStore'
 import AccountView from './AccountView'
 
 const OWNER = '0x1111111111111111111111111111111111111111'
@@ -56,9 +57,22 @@ vi.mock('../stores', () => ({
   useThemeStore: () => ({ theme: 'dark' }),
 }))
 
-vi.mock('../hooks', () => ({
-  useEnsNameResolved: () => ({ ensName: 'jango.eth', loading: false }),
-}))
+vi.mock('../hooks', async () => {
+  const { useViewAsStore: viewAsStore } = await import('../stores/viewAsStore')
+  return {
+    useEnsNameResolved: () => ({ ensName: 'jango.eth', loading: false }),
+    // Mirrors the real hook against the real view-as store while keeping the
+    // heavy hooks barrel (wagmi executor, managed wallet, …) out of the test.
+    useViewedAccount: () => {
+      const viewAs = viewAsStore(s => s.viewAs)
+      return {
+        address: viewAs ?? accountState.address,
+        connectedAddress: accountState.address,
+        isViewAs: viewAs !== null,
+      }
+    },
+  }
+})
 
 vi.mock('../hooks/relayr', () => ({
   useRelayrStatus: (options: unknown) => relayrStatusMock(options),
@@ -189,6 +203,7 @@ describe('AccountView', () => {
     seedData()
     accountState.address = undefined
     useTransactionStore.setState({ transactions: [] })
+    useViewAsStore.setState({ viewAs: null })
   })
 
   it('renders identity, balances, activity, owned (incl. via-Safe) and operated projects', async () => {
@@ -290,12 +305,37 @@ describe('AccountView', () => {
     expect(screen.queryByTestId('in-flight-tx')).not.toBeInTheDocument()
   })
 
-  it('navigates via the view-as input for a raw 0x address', async () => {
+  it('activates site-wide view-as from the button and reflects the active state', async () => {
     render(<AccountView address={OWNER} />)
-    fireEvent.change(screen.getByPlaceholderText('View as address or ENS…'), {
-      target: { value: OTHER },
+    fireEvent.click(screen.getByRole('button', { name: 'View site as this account' }))
+    expect(useViewAsStore.getState().viewAs).toBe(OWNER)
+    expect(
+      await screen.findByRole('button', { name: 'Viewing site as this account' })
+    ).toBeDisabled()
+  })
+
+  it('keeps the in-flight layer keyed to the CONNECTED account while impersonating', async () => {
+    accountState.address = OTHER
+    useViewAsStore.setState({ viewAs: OWNER })
+    useTransactionStore.setState({
+      transactions: [
+        {
+          id: 'tx-owner',
+          type: 'pay',
+          chainId: 1,
+          account: OWNER,
+          status: 'pending',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
     })
-    fireEvent.click(screen.getByRole('button', { name: 'View' }))
-    await waitFor(() => expect(navigateMock).toHaveBeenCalledWith(`/account/${OTHER}`))
+
+    render(<AccountView address={OWNER} />)
+    await screen.findByTestId('activity-item')
+    // The "your account" badge follows the VIEWED address…
+    expect(screen.getByText('This is your connected account')).toBeInTheDocument()
+    // …but the local in-flight store stays keyed to the real connection.
+    expect(screen.queryByTestId('in-flight-tx')).not.toBeInTheDocument()
   })
 })

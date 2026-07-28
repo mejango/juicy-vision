@@ -51,7 +51,7 @@
     { "file": "src/services/siwe.ts", "line": 166, "kind": "wallet-signature", "callee": "signMessage" },
     { "file": "src/services/siwe.ts", "line": 189, "kind": "wallet-signature", "callee": "signMessageAsync" },
     { "file": "src/services/trackedTokenApproval.ts", "line": 49, "kind": "wallet-send", "callee": "walletClient.sendTransaction" },
-    { "file": "src/utils/transactionReview.ts", "line": 136, "kind": "review-gate", "callee": "requireTransactionReview" }
+    { "file": "src/utils/transactionReview.ts", "line": 140, "kind": "review-gate", "callee": "requireTransactionReview" }
   ],
   "coverage": [
     { "file": "src/components/payment/CashOutModal.tsx", "status": "covered", "tests": ["src/components/payment/CashOutModal.test.tsx"], "note": "Covers the guarded send and same-tick duplicate prevention." },

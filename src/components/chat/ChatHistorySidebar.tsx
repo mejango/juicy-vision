@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useAccount } from 'wagmi'
-import { useChatStore, useThemeStore } from '../../stores'
+import { useChatStore, useThemeStore, useViewAsStore } from '../../stores'
 import { fetchMyChats } from '../../services/chat'
 import { fetchProjectsByOwner, clearProjectsByOwnerCache, type Project } from '../../services/bendystraw'
 import { useAuthStore } from '../../stores/authStore'
@@ -98,13 +98,17 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
     }
   }, [isLoading, setChats, chats])
 
-  // Load owned projects from all connected addresses (managed + external)
+  // Load owned projects from all connected addresses (managed + external);
+  // "your projects" follows view-as when active.
+  const viewAs = useViewAsStore(s => s.viewAs)
   const loadProjects = useCallback(async (forceRefresh = false) => {
     if (projectsLoadingRef.current) return
-    const addresses = [
-      ...(managedAddress ? [managedAddress] : []),
-      ...(wagmiAddress ? [wagmiAddress] : []),
-    ].filter((addr, i, arr) => arr.indexOf(addr) === i) // dedupe if same address
+    const addresses = viewAs
+      ? [viewAs]
+      : [
+          ...(managedAddress ? [managedAddress] : []),
+          ...(wagmiAddress ? [wagmiAddress] : []),
+        ].filter((addr, i, arr) => arr.indexOf(addr) === i) // dedupe if same address
     if (addresses.length === 0) return
     // Clear cache for all addresses if force refreshing
     if (forceRefresh) {
@@ -134,7 +138,7 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
       projectsLoadingRef.current = false
       setProjectsLoading(false)
     }
-  }, [managedAddress, wagmiAddress])
+  }, [viewAs, managedAddress, wagmiAddress])
 
   // Load supporters for a project
   const loadSupporters = useCallback(async (project: Project) => {

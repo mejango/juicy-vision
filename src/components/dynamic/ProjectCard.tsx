@@ -43,6 +43,7 @@ import { inlineSvgImages } from "../../utils/ipfs";
 import {
   useThemeStore,
   useTransactionStore,
+  useViewAsStore,
   type PaymentStage,
   type TransactionStatus,
 } from "../../stores";
@@ -717,6 +718,10 @@ export default function ProjectCard({
   // Managed accounts use the same address on every supported chain.
   const { address: managedAddress, isManagedMode } = useManagedWallet();
   const activeWalletAddress = isManagedMode ? managedAddress : address;
+  // Balance DISPLAY reads follow view-as; beneficiary/checkout plumbing keeps
+  // the real wallet address (writes are refused at the review seams anyway).
+  const viewAs = useViewAsStore((s) => s.viewAs);
+  const balanceReadAddress = viewAs ?? activeWalletAddress;
 
   // Cross-chain wallet balances for zero-state detection
   const {
@@ -724,7 +729,7 @@ export default function ProjectCard({
     totalUsdc: crossChainUsdc,
     loading: crossChainLoading,
     available: crossChainBalancesAvailable,
-  } = useWalletBalances(activeWalletAddress ?? undefined);
+  } = useWalletBalances(balanceReadAddress ?? undefined);
 
   // Funding options popover state (shown when user has zero balance)
   const [showFundingOptions, setShowFundingOptions] = useState(false);
@@ -980,7 +985,7 @@ export default function ProjectCard({
 
   // Fetch wallet balances when connected and chain changes
   const fetchWalletBalances = useCallback(async () => {
-    if (!activeWalletAddress) {
+    if (!balanceReadAddress) {
       setWalletEthBalance(null);
       setWalletUsdcBalance(null);
       return null;
@@ -1000,7 +1005,7 @@ export default function ProjectCard({
 
       // Fetch ETH balance
       const ethBalance = await publicClient.getBalance({
-        address: activeWalletAddress as `0x${string}`,
+        address: balanceReadAddress as `0x${string}`,
       });
       setWalletEthBalance(ethBalance);
 
@@ -1012,7 +1017,7 @@ export default function ProjectCard({
           address: usdcAddress,
           abi: erc20Abi,
           functionName: "balanceOf",
-          args: [activeWalletAddress as `0x${string}`],
+          args: [balanceReadAddress as `0x${string}`],
         });
         setWalletUsdcBalance(usdcBalance);
       }
@@ -1023,7 +1028,7 @@ export default function ProjectCard({
     } finally {
       setBalanceLoading(false);
     }
-  }, [activeWalletAddress, selectedChainId]);
+  }, [balanceReadAddress, selectedChainId]);
 
   useEffect(() => {
     fetchWalletBalances();

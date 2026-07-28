@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { formatUnits, parseUnits } from 'viem'
 import { useAccount } from 'wagmi'
-import { useThemeStore, useAuthStore } from '../../stores'
+import { useThemeStore, useAuthStore, useViewAsStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
 import { getWalletSession, hasValidWalletSession } from '../../services/siwe'
 import {
@@ -411,9 +411,12 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
   const isSelfCustodySignedIn = mode === 'self_custody' && hasValidWalletSession()
   const isManagedSignedIn = mode === 'managed' && isAuthenticated()
   const isSignedIn = isSelfCustodySignedIn || isManagedSignedIn
-  const userAddress = isManagedSignedIn
-    ? managedAddress
-    : getWalletSession()?.address || wagmiAddress
+  // "Your token balance" availability follows view-as (a display read); the
+  // section's writes keep their own wallet context.
+  const viewAs = useViewAsStore(s => s.viewAs)
+  const userAddress =
+    viewAs ??
+    (isManagedSignedIn ? managedAddress : getWalletSession()?.address || wagmiAddress)
 
   const [loading, setLoading] = useState(true)
   const [chainFundsData, setChainFundsData] = useState<ChainFundsData[]>([])
@@ -563,9 +566,9 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
   // Cash-out actions are chain-local, so never present an aggregate balance as spendable.
   useEffect(() => {
     async function loadUserTokenBalance() {
-      if (!isSignedIn || !userAddress || chainFundsData.length === 0) {
+      if ((!isSignedIn && !viewAs) || !userAddress || chainFundsData.length === 0) {
         setUserTokenBalance(0n)
-        setUserTokenBalanceAvailable(!isSignedIn || !userAddress)
+        setUserTokenBalanceAvailable((!isSignedIn && !viewAs) || !userAddress)
         setUserTokenBalanceLoading(false)
         return
       }
@@ -595,7 +598,7 @@ export default function FundsSection({ projectId, chainId, isOwner, onSendPayout
       }
     }
     loadUserTokenBalance()
-  }, [isSignedIn, userAddress, chainFundsData, chainIdNum])
+  }, [isSignedIn, viewAs, userAddress, chainFundsData, chainIdNum])
 
   // Calculate totals
   const totalBalance = visibleChainFundsData.reduce(

@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { useAccount } from 'wagmi'
 import { useThemeStore } from '../stores'
+import { useViewAsStore } from '../stores/viewAsStore'
 import { useTransactionStore, type Transaction } from '../stores/transactionStore'
-import { useEnsNameResolved } from '../hooks'
+import { useEnsNameResolved, useViewedAccount } from '../hooks'
 import { useRelayrStatus } from '../hooks/relayr'
 import { useAllChainBalances } from '../components/wallet/useAllChainBalances'
 import ActivityItem from '../components/chat/ActivityItem'
@@ -28,12 +28,11 @@ import {
   permissionLabel,
   type OperatedProject,
 } from '../services/permissionsAdmin'
-import { resolveEnsToAddress, truncateAddress } from '../utils/ens'
+import { truncateAddress } from '../utils/ens'
 import { CHAINS, MAINNET_CHAINS } from '../constants'
 import type { Address } from 'viem'
 
 const ACTIVITY_PAGE_SIZE = 25
-const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
 
 // Statuses that mean "still in flight" — mirrors getPendingTransactions.
 const PENDING_STATUSES: ReadonlyArray<Transaction['status']> = [
@@ -203,16 +202,21 @@ export default function AccountView({ address }: AccountViewProps) {
   const isDark = theme === 'dark'
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { address: connectedAddress } = useAccount()
-  const isSelf = !!connectedAddress && connectedAddress.toLowerCase() === address.toLowerCase()
+  // Display surfaces ("your account" badge) follow the viewed account; the
+  // in-flight transaction layer stays keyed to the genuinely CONNECTED
+  // account — the local store records what THIS device submitted.
+  const { address: viewedAddress, connectedAddress } = useViewedAccount()
+  const isSelf = !!viewedAddress && viewedAddress.toLowerCase() === address.toLowerCase()
+  const isConnectedSelf =
+    !!connectedAddress && connectedAddress.toLowerCase() === address.toLowerCase()
 
   const { ensName } = useEnsNameResolved(address)
   const { balances, loading: balancesLoading } = useAllChainBalances(address)
 
-  // "View as" input
-  const [viewAsInput, setViewAsInput] = useState('')
-  const [viewAsError, setViewAsError] = useState<string | null>(null)
-  const [viewAsResolving, setViewAsResolving] = useState(false)
+  // Site-wide "View as" activation for this account
+  const viewAs = useViewAsStore(s => s.viewAs)
+  const setViewAs = useViewAsStore(s => s.setViewAs)
+  const isViewingAsThis = !!viewAs && viewAs.toLowerCase() === address.toLowerCase()
 
   // Activity
   const [events, setEvents] = useState<ActivityEvent[]>([])
@@ -389,33 +393,6 @@ export default function AccountView({ address }: AccountViewProps) {
     return set
   }, [events])
 
-  const handleViewAs = useCallback(async () => {
-    const input = viewAsInput.trim()
-    if (!input) return
-    setViewAsError(null)
-    if (ADDRESS_REGEX.test(input)) {
-      navigate(`/account/${input}`)
-      setViewAsInput('')
-      return
-    }
-    if (input.includes('.')) {
-      setViewAsResolving(true)
-      try {
-        const resolved = await resolveEnsToAddress(input)
-        if (resolved) {
-          navigate(`/account/${resolved}`)
-          setViewAsInput('')
-        } else {
-          setViewAsError(t('account.viewAsNotFound', 'Could not resolve that name'))
-        }
-      } finally {
-        setViewAsResolving(false)
-      }
-      return
-    }
-    setViewAsError(t('account.viewAsInvalid', 'Enter a 0x address or ENS name'))
-  }, [viewAsInput, navigate, t])
-
   const sectionClass = `border p-4 ${
     isDark ? 'border-white/10 bg-white/[0.02]' : 'border-gray-200 bg-white'
   }`
@@ -447,29 +424,18 @@ export default function AccountView({ address }: AccountViewProps) {
             )}
           </div>
 
-          {/* View as */}
-          <div className="w-full sm:w-64">
-            <div className="flex gap-1">
-              <input
-                value={viewAsInput}
-                onChange={e => setViewAsInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter') void handleViewAs()
-                }}
-                placeholder={t('account.viewAsPlaceholder', 'View as address or ENS…')}
-                className={`flex-1 min-w-0 px-2 py-1.5 text-xs border bg-transparent outline-none focus:border-juice-orange ${
-                  isDark ? 'border-white/20 placeholder-gray-500' : 'border-gray-300 placeholder-gray-400'
-                }`}
-              />
-              <button
-                onClick={() => void handleViewAs()}
-                disabled={viewAsResolving}
-                className="px-3 py-1.5 text-xs bg-juice-orange text-juice-dark font-medium hover:bg-juice-orange/90 transition-colors disabled:opacity-50"
-              >
-                {viewAsResolving ? '…' : t('account.viewAs', 'View')}
-              </button>
-            </div>
-            {viewAsError && <div className="text-[10px] mt-1 text-red-500">{viewAsError}</div>}
+          {/* Activate site-wide view-as for this account. Account-page
+              navigation itself is covered by the ProjectSearch combobox. */}
+          <div className="w-full sm:w-auto">
+            <button
+              onClick={() => setViewAs(address)}
+              disabled={isViewingAsThis}
+              className="px-3 py-1.5 text-xs bg-juice-orange text-juice-dark font-medium hover:bg-juice-orange/90 transition-colors disabled:opacity-50"
+            >
+              {isViewingAsThis
+                ? t('account.viewingAsThis', 'Viewing site as this account')
+                : t('account.viewSiteAs', 'View site as this account')}
+            </button>
           </div>
         </div>
 
@@ -498,7 +464,7 @@ export default function AccountView({ address }: AccountViewProps) {
         {/* Activity */}
         <div className={`${sectionClass} mb-4`}>
           <h2 className={sectionTitleClass}>{t('account.activity', 'Activity')}</h2>
-          {isSelf && <InFlightActivity address={address} confirmedHashes={confirmedHashes} />}
+          {isConnectedSelf && <InFlightActivity address={address} confirmedHashes={confirmedHashes} />}
           {activityLoading ? (
             <div className={`text-xs ${mutedClass}`}>{t('account.loading', 'Loading…')}</div>
           ) : activityError ? (
