@@ -1092,9 +1092,24 @@ export async function quotePrepareMin(
   const { projectId, chainId, sucker, amount, termToken } = args
   const pid = BigInt(projectId)
   const client = clientOf(deps, chainId)
+  // Resolve the project's live terminal for this token from the directory —
+  // like the rest of the move flow — instead of assuming the flat
+  // JBMultiTerminal. The flat address remains the fallback when the directory
+  // read fails or reports no primary terminal.
+  const terminal = await client
+    .readContract({
+      address: JB_CONTRACTS.JBDirectory,
+      abi: jbDirectoryAbi,
+      functionName: 'primaryTerminalOf',
+      args: [pid, termToken],
+    })
+    .then(resolved =>
+      resolved && resolved !== zeroAddress ? (resolved as Address) : JB_CONTRACTS.JBMultiTerminal,
+    )
+    .catch(() => JB_CONTRACTS.JBMultiTerminal)
   const [preview, feeless, feeFreeSurplus] = await Promise.all([
     client.readContract({
-      address: JB_CONTRACTS.JBMultiTerminal,
+      address: terminal,
       abi: jbMultiTerminalAbi,
       functionName: 'previewCashOutFrom',
       args: [sucker, pid, amount, termToken, sucker, '0x'],
@@ -1102,7 +1117,7 @@ export async function quotePrepareMin(
     // The sucker's prepare cashes out with itself as BOTH beneficiary and the
     // terminal's _msgSender(), so it is the addr AND the caller here.
     client.readContract({ address: JB_CONTRACTS.JBFeelessAddresses, abi: feelessAbi, functionName: 'isFeelessFor', args: [sucker, pid, sucker] }),
-    client.readContract({ address: JB_CONTRACTS.JBMultiTerminal, abi: jbMultiTerminalAbi, functionName: 'feeFreeSurplusOf', args: [pid, termToken] }),
+    client.readContract({ address: terminal, abi: jbMultiTerminalAbi, functionName: 'feeFreeSurplusOf', args: [pid, termToken] }),
   ])
   const gross = preview[1]
   const taxRate = preview[2]

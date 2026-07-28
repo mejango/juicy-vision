@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { defaultChainId } from '../../config/environment'
 import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useSendReservedTokensFormState } from '../../hooks/useComponentState'
@@ -44,7 +45,7 @@ interface ChainReservedData {
   configurationError?: string
 }
 
-export default function SendReservedTokensForm({ projectId, chainId = '1', messageId }: SendReservedTokensFormProps) {
+export default function SendReservedTokensForm({ projectId, chainId = defaultChainId(), messageId }: SendReservedTokensFormProps) {
   // Persistent state (visible to all chat users)
   const { state: persistedState, updateState: updatePersistedState } = useSendReservedTokensFormState(messageId)
 
@@ -521,7 +522,7 @@ export default function SendReservedTokensForm({ projectId, chainId = '1', messa
             </div>
             {persistedState?.txHash && (
               <a
-                href={`${CHAIN_INFO[selectedChainId]?.slug ? `https://${CHAIN_INFO[selectedChainId].slug === 'eth' ? '' : CHAIN_INFO[selectedChainId].slug + '.'}etherscan.io` : 'https://etherscan.io'}/tx/${persistedState.txHash}`}
+                href={`${CHAIN_INFO[selectedChainId]?.explorerTx || 'https://etherscan.io/tx/'}${persistedState.txHash}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className={`text-xs mt-1 ml-6 underline block ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}

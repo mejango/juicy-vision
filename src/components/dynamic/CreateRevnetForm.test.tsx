@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import CreateRevnetForm from './CreateRevnetForm'
 import { useThemeStore, useAuthStore } from '../../stores'
@@ -53,7 +53,9 @@ vi.mock('../payment', () => ({
 
 // Get mocked wagmi
 import { useAccount } from 'wagmi'
+import { pinMetadata } from '../../services/ipfsPinning'
 const mockedUseAccount = useAccount as Mock
+const mockedPinMetadata = pinMetadata as Mock
 
 describe('CreateRevnetForm', () => {
   const user = userEvent.setup()
@@ -269,6 +271,35 @@ describe('CreateRevnetForm', () => {
 
       expect(screen.getByTestId('deploy-modal')).toBeInTheDocument()
       expect(screen.getByText('Name: My Test Revnet')).toBeInTheDocument()
+    })
+
+    it('pins the payment notice when one is entered', async () => {
+      render(<CreateRevnetForm />)
+
+      await user.type(screen.getByPlaceholderText('My Revnet'), 'Noticed Revnet')
+      await user.type(screen.getByPlaceholderText('TOKEN'), 'TEST')
+      await user.type(
+        screen.getByPlaceholderText(/shown to payers before they pay/i),
+        'Tokens are not equity.'
+      )
+      await user.click(screen.getByRole('button', { name: /Deploy Revnet/i }))
+
+      await waitFor(() => expect(mockedPinMetadata).toHaveBeenCalledTimes(1))
+      expect(mockedPinMetadata.mock.calls[0][0]).toMatchObject({
+        name: 'Noticed Revnet',
+        payDisclosure: 'Tokens are not equity.',
+      })
+    })
+
+    it('omits the payment notice key when left empty', async () => {
+      render(<CreateRevnetForm />)
+
+      await user.type(screen.getByPlaceholderText('My Revnet'), 'Plain Revnet')
+      await user.type(screen.getByPlaceholderText('TOKEN'), 'TEST')
+      await user.click(screen.getByRole('button', { name: /Deploy Revnet/i }))
+
+      await waitFor(() => expect(mockedPinMetadata).toHaveBeenCalledTimes(1))
+      expect('payDisclosure' in (mockedPinMetadata.mock.calls[0][0] as object)).toBe(false)
     })
 
     it('passes stage count to modal', async () => {

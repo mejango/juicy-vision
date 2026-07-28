@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { defaultChainId } from '../../config/environment'
 import { useThemeStore } from '../../stores'
 import { fetchEthPrice } from '../../services/bendystraw'
 import { getProjectDataHook, fetchResolvedNFTTiers, type ResolvedNFTTier } from '../../services/nft'
@@ -13,7 +14,7 @@ interface NFTGalleryProps {
 
 export default function NFTGallery({
   projectId,
-  chainId = '1',
+  chainId = defaultChainId(),
   columns = '3',
   showMintActions = 'true',
 }: NFTGalleryProps) {

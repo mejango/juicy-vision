@@ -27,6 +27,7 @@ import {
   suckerZeroHashes,
   unpackSuckerTimestamp,
 } from './suckerBridge'
+import { JB_CONTRACTS } from '../constants'
 
 // Deterministic leaves: keccak256 of 0x01 … 0x05 (same generator used to
 // derive the pinned vectors below from the website's implementation).
@@ -317,10 +318,18 @@ describe('quotePrepareMin', () => {
   // Mirrors the deployed contracts: JBFeelessAddresses only exposes the
   // 3-arg isFeelessFor(addr, projectId, caller) — a 1-arg call is an unknown
   // selector and reverts, exactly like on-chain.
-  function quoteClient(log: RecordedRead[]): PublicClient {
+  function quoteClient(
+    log: Array<RecordedRead & { address?: string }>,
+    options: { primaryTerminal?: string | Error } = {},
+  ): PublicClient {
     return {
-      readContract: async ({ functionName, args }: { functionName: string; args?: readonly unknown[] }) => {
-        log.push({ functionName, args: args ?? [] })
+      readContract: async ({ address, functionName, args }: { address?: string; functionName: string; args?: readonly unknown[] }) => {
+        log.push({ functionName, args: args ?? [], address })
+        if (functionName === 'primaryTerminalOf') {
+          const result = options.primaryTerminal ?? zeroAddress
+          if (result instanceof Error) throw result
+          return result
+        }
         if (functionName === 'previewCashOutFrom') return [{}, 1_000n, 1n, []]
         if (functionName === 'isFeelessFor') {
           if ((args ?? []).length !== 3) throw new Error('execution reverted (unknown selector)')
@@ -351,6 +360,34 @@ describe('quotePrepareMin', () => {
     expect(quote.gross).toBe(1_000n)
     expect(quote.net).toBe(975n)
     expect(quote.minReclaimed).toBe(965n)
+  })
+
+  it('quotes against the directory-resolved primary terminal, not the flat address', async () => {
+    const RESOLVED = '0x9999999999999999999999999999999999999999'
+    const log: Array<RecordedRead & { address?: string }> = []
+    await quotePrepareMin(
+      { projectId: 7, chainId: 1, sucker: SUCKER, amount: 100n, termToken: TERM_TOKEN },
+      { clientFor: () => quoteClient(log, { primaryTerminal: RESOLVED }) },
+    )
+    const resolve = log.find(entry => entry.functionName === 'primaryTerminalOf')
+    expect(resolve?.args).toEqual([7n, TERM_TOKEN])
+    const preview = log.find(entry => entry.functionName === 'previewCashOutFrom')
+    expect(preview?.address).toBe(RESOLVED)
+    const surplus = log.find(entry => entry.functionName === 'feeFreeSurplusOf')
+    expect(surplus?.address).toBe(RESOLVED)
+  })
+
+  it('falls back to the flat JBMultiTerminal when terminal resolution fails or is zero', async () => {
+    for (const primaryTerminal of [new Error('rpc down'), zeroAddress] as const) {
+      const log: Array<RecordedRead & { address?: string }> = []
+      const quote = await quotePrepareMin(
+        { projectId: 7, chainId: 1, sucker: SUCKER, amount: 100n, termToken: TERM_TOKEN },
+        { clientFor: () => quoteClient(log, { primaryTerminal }) },
+      )
+      const preview = log.find(entry => entry.functionName === 'previewCashOutFrom')
+      expect(preview?.address).toBe(JB_CONTRACTS.JBMultiTerminal)
+      expect(quote.gross).toBe(1_000n)
+    }
   })
 })
 

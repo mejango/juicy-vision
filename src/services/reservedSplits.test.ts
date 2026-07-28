@@ -7,10 +7,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   assemblePendingRows,
+  assertStageRulesetUnchanged,
   autoIssueKey,
   BURN_SENTINEL,
   dedupeStoredAllocations,
   fetchPendingReservedPerChain,
+  fetchStageReservedSplits,
+  fetchStageRulesetsPerChain,
   formatIssuancePercent,
   formatOfLimitPercent,
   groupSharePercent,
@@ -19,6 +22,8 @@ import {
   pendingShareOf,
   SPLIT_PERCENT_DENOMINATOR,
 } from './reservedSplits'
+import type { SimpleRuleset } from './bendystraw'
+import type { ReservedSplit } from './reservedSplits'
 
 describe('split percent math (1e9 denominator)', () => {
   it('uses the 1e9 split denominator', () => {
@@ -160,5 +165,140 @@ describe('auto-issuance allocation identity', () => {
     expect(rows).toHaveLength(2)
     expect(rows.find(row => row.stageId === '12345')?.storedTimestamp).toBe(200)
     expect(rows.find(row => row.stageId === '99')?.storedTimestamp).toBe(50)
+  })
+})
+
+describe('per-chain stage ruleset resolution', () => {
+  const ruleset = (id: string, start: number): SimpleRuleset => ({
+    id,
+    cycleNumber: 1,
+    start,
+    duration: 0,
+    weight: '0',
+    weightCutPercent: 0,
+    reservedPercent: 0,
+    cashOutTaxRate: 0,
+  })
+
+  // The same stage has a DIFFERENT ruleset id on every chain; stages are
+  // start-ascending, so the browsed stage index is what aligns them.
+  const stagesByChain: Record<number, SimpleRuleset[]> = {
+    1: [ruleset('11', 100), ruleset('12', 200), ruleset('13', 300)],
+    10: [ruleset('21', 100), ruleset('22', 200), ruleset('23', 300)],
+  }
+
+  const readStages = async (projectId: string, chainId: number) => {
+    if (projectId !== (chainId === 1 ? '5' : '9')) throw new Error(`wrong project id ${projectId} on ${chainId}`)
+    return stagesByChain[chainId]
+  }
+
+  const chainProjects = [
+    { chainId: 1, projectId: 5 },
+    { chainId: 10, projectId: 9 },
+  ]
+
+  it('resolves each chain’s own ruleset for the browsed stage index', async () => {
+    const rows = await fetchStageRulesetsPerChain(chainProjects, 2, { readStages })
+    expect(rows.map(row => [row.chainId, row.ruleset?.id])).toEqual([
+      [1, '13'],
+      [10, '23'],
+    ])
+  })
+
+  it('yields a null ruleset for a chain that has no such stage, or whose read failed', async () => {
+    const rows = await fetchStageRulesetsPerChain(chainProjects, 2, {
+      readStages: async (_projectId, chainId) => (chainId === 10 ? [] : stagesByChain[1]),
+    })
+    expect(rows[0].ruleset?.id).toBe('13')
+    expect(rows[1].ruleset).toBeNull()
+
+    const failed = await fetchStageRulesetsPerChain(chainProjects, 0, {
+      readStages: async (_projectId, chainId) => {
+        if (chainId === 10) throw new Error('rpc down')
+        return stagesByChain[1]
+      },
+    })
+    expect(failed[0].ruleset?.id).toBe('11')
+    expect(failed[1].ruleset).toBeNull()
+  })
+
+  it('reads one chain’s splits at the ruleset id belonging to THAT chain', async () => {
+    const seen: Array<[string, number, string]> = []
+    const split: ReservedSplit = {
+      percent: 1_000_000_000,
+      projectId: 0,
+      beneficiary: '0x0000000000000000000000000000000000000001',
+      preferAddToBalance: false,
+      lockedUntil: 0,
+      hook: '0x0000000000000000000000000000000000000000',
+    }
+    const readSplits = async (projectId: number | string, chainId: number, rulesetId: string) => {
+      seen.push([String(projectId), chainId, rulesetId])
+      return [split]
+    }
+
+    const home = await fetchStageReservedSplits({ chainId: 1, projectId: 5 }, 1, { readStages, readSplits })
+    const peer = await fetchStageReservedSplits({ chainId: 10, projectId: 9 }, 1, { readStages, readSplits })
+
+    expect(seen).toEqual([
+      ['5', 1, '12'],
+      ['9', 10, '22'],
+    ])
+    expect(home).toEqual({ chainId: 1, projectId: 5, rulesetId: '12', splits: [split] })
+    expect(peer.rulesetId).toBe('22')
+  })
+
+  it('reports an unreadable chain as null splits rather than throwing or faking an empty group', async () => {
+    const row = await fetchStageReservedSplits({ chainId: 10, projectId: 9 }, 0, {
+      readStages,
+      readSplits: async () => {
+        throw new Error('rpc down')
+      },
+    })
+    expect(row).toEqual({ chainId: 10, projectId: 9, rulesetId: '21', splits: null })
+  })
+
+  it('passes the pre-send stage guard while the browsed stage still maps to the reviewed ruleset', async () => {
+    await expect(
+      assertStageRulesetUnchanged({
+        chainProject: { chainId: 10, projectId: 9 },
+        stageIndex: 1,
+        expectedRulesetId: '22',
+        deps: { readStages },
+      }),
+    ).resolves.toBeUndefined()
+  })
+
+  it('fails the pre-send stage guard when the stage moved, vanished, or is unreadable', async () => {
+    const guard = (deps: Parameters<typeof assertStageRulesetUnchanged>[0]['deps']) =>
+      assertStageRulesetUnchanged({
+        chainProject: { chainId: 10, projectId: 9 },
+        stageIndex: 1,
+        expectedRulesetId: '22',
+        deps,
+      })
+
+    // A re-queued schedule shifted the stage onto a different ruleset id.
+    await expect(guard({ readStages: async () => [ruleset('21', 100), ruleset('99', 200)] })).rejects.toThrow(
+      /stages changed/i,
+    )
+    // The stage no longer exists.
+    await expect(guard({ readStages: async () => [ruleset('21', 100)] })).rejects.toThrow(/stages changed/i)
+    // Fail closed rather than sending blind when the schedule can't be read.
+    await expect(
+      guard({
+        readStages: async () => {
+          throw new Error('rpc down')
+        },
+      }),
+    ).rejects.toThrow(/stages changed/i)
+  })
+
+  it('reports a chain with no such stage as null splits and no ruleset id', async () => {
+    const row = await fetchStageReservedSplits({ chainId: 10, projectId: 9 }, 7, {
+      readStages,
+      readSplits: async () => [],
+    })
+    expect(row).toEqual({ chainId: 10, projectId: 9, rulesetId: null, splits: null })
   })
 })

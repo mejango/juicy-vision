@@ -4,8 +4,8 @@ import type { JBChainId } from '@bananapus/nana-sdk-core'
 import { tokenCurrencyId } from '@bananapus/nana-sdk-core/v6'
 import { useSettingsStore, useDebugStore } from '../../stores'
 import { VIEM_CHAINS, ZERO_ADDRESS, REV_OWNER, JB_CONTRACTS, JB_ROUTER_TERMINAL, JB_ROUTER_TERMINAL_REGISTRY, RPC_ENDPOINTS, USDC_ADDRESSES, MAINNET_VIEM_CHAINS, MAINNET_RPC_ENDPOINTS, NATIVE_TOKEN, type SupportedChainId } from '../../constants'
-import { fetchIpfsMetadata } from '../../utils/ipfs'
-import { IS_TESTNET, IS_LOCAL_ONLY_BROWSER_TEST } from '../../config/environment'
+import { fetchIpfsJson, fetchIpfsMetadata } from '../../utils/ipfs'
+import { IS_TESTNET, IS_LOCAL_ONLY_BROWSER_TEST, defaultChainId } from '../../config/environment'
 import { createCache, CACHE_DURATIONS, bendystrawCircuit } from '../../utils'
 import { getPaymentTerminal } from '../../utils/paymentTerminal'
 import { sanitizeTokenLabel } from '../../utils/erc20Safety'
@@ -17,6 +17,7 @@ import { mergeAccountActivityEvents, type AccountActivityQueryData } from './acc
 import {
   dedupeTokenHoldings,
   dedupeNftHoldings,
+  type HoldingsPage,
   type TokenHoldingRow,
   type NftHoldingRow,
 } from './accountHoldings'
@@ -644,6 +645,48 @@ async function fetchProjectOnChain(projectId: string, chainId: number): Promise<
   }
 }
 
+/** Current project metadata loaded for editing — the raw pinned JSON, never a display-parsed subset. */
+export interface CurrentProjectMetadata {
+  /** The exact URI stored on-chain by the recognized controller ('' when none is set). */
+  uri: string
+  /** The complete JSON at that URI ({} when no URI is set). Unknown keys are preserved verbatim. */
+  metadata: Record<string, unknown>
+}
+
+/**
+ * Read the CURRENT on-chain metadata for editing: JBController.uriOf via the
+ * recognized controller, then the raw IPFS JSON at that URI. Fails closed —
+ * any read failure throws so callers never merge edits over a partial object.
+ * Display paths must keep using {@link resolveProjectMetadataForDisplay}; this
+ * is the only sanctioned source for a metadata WRITE.
+ */
+export async function fetchCurrentProjectMetadataForEdit(
+  projectId: string,
+  chainId: number,
+): Promise<CurrentProjectMetadata> {
+  const publicClient = getPublicClient(chainId)
+  if (!publicClient) throw new Error(`Project metadata is unavailable on unsupported chain ${chainId}`)
+
+  // Throws when the project has no controller or the controller isn't recognized.
+  const controller = await readProjectController(publicClient, BigInt(projectId))
+
+  const uri = await publicClient.readContract({
+    address: controller,
+    abi: JB_CONTROLLER_URI_OF_ABI,
+    functionName: 'uriOf',
+    args: [BigInt(projectId)],
+  })
+
+  // No URI set yet — there is nothing on-chain to lose, so editing starts fresh.
+  if (!uri) return { uri: '', metadata: {} }
+
+  const json = await fetchIpfsJson<unknown>(uri)
+  if (!json || typeof json !== 'object' || Array.isArray(json)) {
+    throw new Error('The current project metadata could not be fetched')
+  }
+  return { uri, metadata: json as Record<string, unknown> }
+}
+
 // Cached display-name resolver for activity rows. It uses the same Bendystraw-
 // first metadata path as project cards, with the controller URI only as fallback.
 const projectNameCache = new Map<string, { name: string | null; expiresAt: number }>()
@@ -663,7 +706,7 @@ export async function resolveProjectNameForDisplay(projectId: number, chainId: n
   }
 }
 
-export async function fetchProject(projectId: string, chainId: number = 1, version: number = 6): Promise<Project> {
+export async function fetchProject(projectId: string, chainId: number = Number(defaultChainId()), version: number = 6): Promise<Project> {
   try {
     const data = await safeRequest<{ project: Project & { metadata: ProjectMetadata | string } }>(
       PROJECT_QUERY,
@@ -966,12 +1009,15 @@ export async function fetchActivityEvents(limit: number = 20, offset: number = 0
 // The top-level activityEvents filter has no beneficiary field, so the query
 // also hits the beneficiary-bearing event roots; the branches are merged and
 // deduped by sub-event id (mergeAccountActivityEvents), newest first. Offsets
-// page the from-branch only — the beneficiary roots return their newest rows
+// page the from-branch ONLY — the beneficiary roots return their newest rows
 // on every page and the merge (plus the caller's id-dedupe) absorbs repeats.
+// `fromCount` reports how many from-branch rows this page consumed so callers
+// can pass the right offset for the next page: the merged event count includes
+// beneficiary rows the offset must NOT advance past.
 export async function fetchAccountActivityEvents(
   address: string,
   options: { limit?: number; offset?: number } = {}
-): Promise<ActivityEvent[]> {
+): Promise<{ events: ActivityEvent[]; fromCount: number }> {
   const { limit = 25, offset = 0 } = options
   const data = await safeRequest<AccountActivityQueryData>(
     ACCOUNT_ACTIVITY_EVENTS_QUERY,
@@ -979,9 +1025,10 @@ export async function fetchAccountActivityEvents(
     { network: 'mainnet' }
   )
 
-  return mergeAccountActivityEvents(data)
+  const events = mergeAccountActivityEvents(data)
     .map(row => transformEvent(row as unknown as RawActivityEvent))
     .filter(event => event.type !== 'unknown')
+  return { events, fromCount: data?.activityEvents?.items?.length ?? 0 }
 }
 
 // One permission-holder grant row: `operator` may act for `account`'s project.
@@ -1007,25 +1054,38 @@ export async function fetchAccountOperatedPermissions(
   return data?.permissionHolders?.items ?? []
 }
 
-// Every project token balance the account holds, biggest first, deduped to
-// the highest indexed version per (chainId, projectId).
-export async function fetchAccountTokenHoldings(address: string): Promise<TokenHoldingRow[]> {
-  const data = await safeRequest<{ participants: { items: TokenHoldingRow[] } }>(
+// Generous explicit window for the account-holdings queries — without it the
+// server applies its own (much smaller) default silently. totalCount surfaces
+// when a whale wallet exceeds the window.
+const ACCOUNT_HOLDINGS_LIMIT = 1000
+
+// Every V6 project token balance the account holds, biggest first, deduped
+// per (chainId, projectId), plus the server total for truncation notices.
+export async function fetchAccountTokenHoldings(
+  address: string
+): Promise<HoldingsPage<TokenHoldingRow>> {
+  const data = await safeRequest<{ participants: { totalCount?: number; items: TokenHoldingRow[] } }>(
     ACCOUNT_TOKEN_HOLDINGS_QUERY,
-    { account: address.toLowerCase() }
+    { account: address.toLowerCase(), limit: ACCOUNT_HOLDINGS_LIMIT }
   )
-  return dedupeTokenHoldings(data?.participants?.items ?? [])
+  const items = data?.participants?.items ?? []
+  const totalCount = data?.participants?.totalCount ?? items.length
+  return { rows: dedupeTokenHoldings(items), totalCount, truncated: items.length < totalCount }
 }
 
-// Every store item (721 token) the account currently owns, deduped by
-// (chainId, tokenId) — the same physical token indexed under multiple
-// versions collapses to one item.
-export async function fetchAccountNftHoldings(address: string): Promise<NftHoldingRow[]> {
-  const data = await safeRequest<{ nfts: { items: NftHoldingRow[] } }>(
+// Every V6 store item (721 token) the account currently owns, deduped by
+// (chainId, hook, tokenId) — the hook is part of the identity because JB721
+// tokenIds repeat across collections on a chain.
+export async function fetchAccountNftHoldings(
+  address: string
+): Promise<HoldingsPage<NftHoldingRow>> {
+  const data = await safeRequest<{ nfts: { totalCount?: number; items: NftHoldingRow[] } }>(
     ACCOUNT_NFTS_QUERY,
-    { owner: address.toLowerCase() }
+    { owner: address.toLowerCase(), limit: ACCOUNT_HOLDINGS_LIMIT }
   )
-  return dedupeNftHoldings(data?.nfts?.items ?? [])
+  const items = data?.nfts?.items ?? []
+  const totalCount = data?.nfts?.totalCount ?? items.length
+  return { rows: dedupeNftHoldings(items), totalCount, truncated: items.length < totalCount }
 }
 
 // Read the holder's current claimed-token plus credit balance from JBTokens.
@@ -1599,7 +1659,7 @@ async function readLiveProjectRuleset(
 
 export async function fetchProjectWithRuleset(
   projectId: string,
-  chainId: number = 1,
+  chainId: number = Number(defaultChainId()),
   version: number = 6
 ): Promise<ProjectWithRuleset | null> {
   let indexedProject: IndexedRulesetProject | null = null

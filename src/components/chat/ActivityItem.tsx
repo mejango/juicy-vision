@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useThemeStore } from '../../stores'
 import { resolveEnsName, truncateAddress } from '../../utils/ens'
 import { getEventInfo, formatTimeAgo } from '../../utils/activityEvents'
 import { MAINNET_CHAINS } from '../../constants'
 import { resolveProjectNameForDisplay, type ActivityEvent } from '../../services/bendystraw/client'
+import { projectPathFor } from '../../utils/projectLink'
 import { IpfsImage } from '../ui/IpfsMedia'
 
 interface ActivityItemProps {
@@ -66,13 +68,28 @@ export default function ActivityItem({ event, onProjectClick }: ActivityItemProp
 
       {/* Content overlay */}
       <div className="relative z-10">
-        {/* Top row: Project name + time */}
+        {/* Top row: Project name (a real link to the project page — the row
+            itself keeps the ask-the-chat behavior) + time */}
         <div className="flex items-center gap-2">
-          <span className={`flex-1 min-w-0 text-xs font-medium truncate ${
-            theme === 'dark' ? 'text-juice-cyan' : 'text-teal-600'
-          }`}>
-            {projectName}
-          </span>
+          {(() => {
+            const pid = event.project?.projectId
+            const path = pid != null ? projectPathFor(event.chainId, pid) : null
+            const nameClass = `flex-1 min-w-0 text-xs font-medium truncate ${
+              theme === 'dark' ? 'text-juice-cyan' : 'text-teal-600'
+            }`
+            return path ? (
+              <Link
+                to={path}
+                onClick={(e) => e.stopPropagation()}
+                className={`${nameClass} hover:underline`}
+                title={`Open ${projectName}`}
+              >
+                {projectName}
+              </Link>
+            ) : (
+              <span className={nameClass}>{projectName}</span>
+            )
+          })()}
           <span className={`text-[10px] shrink-0 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
             {formatTimeAgo(event.timestamp)}
           </span>

@@ -1259,7 +1259,7 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSetJuicyId }: {
           <div className={`divide-y ${isDark ? 'divide-white/5' : 'divide-gray-100'}`}>
             {/* Pay Credits - fiat payment balance */}
             <div className="px-3 py-2 flex justify-between items-center text-xs">
-              <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{t('wallet.payCredits', 'Pay Credits')}</span>
+              <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{t('wallet.payCredits', 'Juice balance')}</span>
               <span className={isDark ? 'text-white' : 'text-gray-900'}>
                 {juiceLoading ? '...' : (juiceBalance?.balance ?? 0).toLocaleString()}
               </span>
@@ -2467,7 +2467,7 @@ function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: (
             <div className="flex justify-between items-center mb-1">
               <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>You'll receive</span>
               <span className={`text-sm font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                {amount.toLocaleString()} Pay Credits
+                {amount.toLocaleString()} Juice
               </span>
             </div>
             <div className="flex justify-between items-center">
@@ -2531,7 +2531,7 @@ function BuyJuiceView({ onBack, onSuccess }: { onBack: () => void; onSuccess?: (
           </div>
           <div>
             <p className={`text-xs font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              {amount} Pay Credits purchased
+              {amount} Juice purchased
             </p>
             <p className={`text-[10px] mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
               Credits available once payment is verified.
@@ -2718,7 +2718,7 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
       case 'passkey': return t('wallet.account', 'Account')
       case 'settings': return t('wallet.settings', 'Settings')
       case 'juicy_id': return t('wallet.setJuicyId', 'Set Juicy ID')
-      case 'buy_juice': return t('wallet.buyPayCredits', 'Buy Pay Credits')
+      case 'buy_juice': return t('wallet.buyPayCredits', 'Buy Juice')
       default: return t('wallet.connect', 'Connect')
     }
   }

@@ -621,34 +621,49 @@ ${ACCOUNT_ACTIVITY_PROJECT_FIELDS}
   }
 `
 
-// Every project token balance an account holds, biggest first. Bendystraw
-// indexes one participant row per project VERSION, so the same balance repeats
-// per version — callers dedupe to the highest version per (chainId, projectId).
+// Every V6 project token balance an account holds, biggest first (the site is
+// V6-only — legacy versions live on juicebox.money). suckerGroupId drives the
+// cross-chain grouping; creditBalance/erc20Balance split the total into
+// unclaimed credits vs claimed ERC-20. totalCount lets the view surface
+// truncation when the account holds more rows than the window.
 export const ACCOUNT_TOKEN_HOLDINGS_QUERY = `
-  query AccountTokenHoldings($account: String!) {
+  query AccountTokenHoldings($account: String!, $limit: Int) {
     participants(
-      where: { address: $account, balance_gt: "0" }
+      where: { address: $account, balance_gt: "0", version: 6 }
       orderBy: "balance"
       orderDirection: "desc"
+      limit: $limit
     ) {
+      totalCount
       items {
         chainId
         projectId
         version
         balance
+        creditBalance
+        erc20Balance
+        suckerGroupId
       }
     }
   }
 `
 
-// Every store item (721 token) an account currently owns. Rows repeat per
-// indexed version — callers dedupe by (chainId, tokenId).
+// Every V6 store item (721 token) an account currently owns, newest first.
+// The hook address is selected because it is part of the token's identity —
+// JB721 tokenIds repeat across every collection on a chain.
 export const ACCOUNT_NFTS_QUERY = `
-  query AccountNfts($owner: String!) {
-    nfts(where: { owner: $owner }) {
+  query AccountNfts($owner: String!, $limit: Int) {
+    nfts(
+      where: { owner: $owner, version: 6 }
+      orderBy: "createdAt"
+      orderDirection: "desc"
+      limit: $limit
+    ) {
+      totalCount
       items {
         chainId
         projectId
+        hook
         tokenId
         tierId
       }

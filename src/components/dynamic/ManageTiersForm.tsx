@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { defaultChainId } from '../../config/environment'
 import { formatUnits } from 'viem'
 import { useAccount } from 'wagmi'
 import { useThemeStore, useSettingsStore } from '../../stores'
@@ -60,7 +61,7 @@ interface ChainHookData {
   selected: boolean
 }
 
-export default function ManageTiersForm({ projectId, chainId = '1', messageId }: ManageTiersFormProps) {
+export default function ManageTiersForm({ projectId, chainId = defaultChainId(), messageId }: ManageTiersFormProps) {
   const { theme } = useThemeStore()
   const { pinataJwt } = useSettingsStore()
   const isDark = theme === 'dark'
@@ -779,7 +780,7 @@ export default function ManageTiersForm({ projectId, chainId = '1', messageId }:
                 </div>
                 {persistedState?.txHash && (
                   <a
-                    href={`https://${CHAIN_INFO[primaryChainId]?.slug === 'eth' ? '' : CHAIN_INFO[primaryChainId]?.slug + '.'}etherscan.io/tx/${persistedState.txHash}`}
+                    href={`${CHAIN_INFO[primaryChainId]?.explorerTx || 'https://etherscan.io/tx/'}${persistedState.txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className={`text-xs mt-1 ml-6 underline block ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}

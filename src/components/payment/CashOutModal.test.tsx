@@ -56,7 +56,7 @@ vi.mock('../../stores', () => {
 vi.mock('../../hooks', () => ({
   executeManagedTransaction: vi.fn(),
   useManagedWallet: () => ({ address: null }),
-  useWalletBalances: () => ({ perChain: [{ chainId: 1, eth: 10n ** 18n }], loading: false, available: true }),
+  useWalletBalances: () => ({ perChain: [{ chainId: 11155111, eth: 10n ** 18n }], loading: false, available: true }),
   formatEthBalance: (value: bigint) => value.toString(),
 }))
 
@@ -101,7 +101,7 @@ vi.mock('viem', async importOriginal => ({
 
 vi.mock('../../constants', async importOriginal => ({
   ...(await importOriginal<typeof import('../../constants')>()),
-  RPC_ENDPOINTS: { 1: ['https://rpc.test'] },
+  RPC_ENDPOINTS: { 11155111: ['https://rpc.test'] },
 }))
 
 const OUTCOME: CashOutPreviewOutcome = {
@@ -122,7 +122,7 @@ function renderModal(overrides: Partial<ComponentProps<typeof CashOutModal>> = {
     onClose: vi.fn(),
     projectId: '1',
     projectName: 'Test Project',
-    chainId: 1,
+    chainId: 11155111,
     tokenAmount: '100',
     tokenSymbol: 'TEST',
     reclaimToken: TOKEN,
@@ -155,7 +155,7 @@ describe('CashOutModal double-submit guard', () => {
     mocks.simulate.mockResolvedValue(undefined)
     mocks.waitForReceipt.mockResolvedValue(undefined)
     mocks.sendTransaction.mockResolvedValue('0xhash')
-    mocks.getChainId.mockResolvedValue(1)
+    mocks.getChainId.mockResolvedValue(11155111)
     mocks.switchChain.mockResolvedValue(undefined)
     mocks.addTransaction.mockReturnValue('tx-1')
   })

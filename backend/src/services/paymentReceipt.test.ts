@@ -1,6 +1,6 @@
 import { assertEquals, assertThrows } from 'std/assert/mod.ts';
 import { type Address, encodeAbiParameters, encodeEventTopics, type Hex } from 'viem';
-import { CONTRACTS } from '@shared/chains.ts';
+import { CONTRACTS, KNOWN_BUYBACK_HOOKS } from '@shared/chains.ts';
 import { verifyProtectedPaymentReceipt } from './paymentReceipt.ts';
 
 const PAY_EVENT_ABI = [{
@@ -121,6 +121,18 @@ Deno.test('payment receipt recovers buyback issuance emitted after the Pay event
     }),
     1_000n,
   );
+});
+
+Deno.test('payment receipt counts mints from every known-good buyback hook (registry-pinned pre-upgrade instance)', () => {
+  for (const hook of KNOWN_BUYBACK_HOOKS) {
+    assertEquals(
+      verifyProtectedPaymentReceipt({
+        ...expected(990n),
+        logs: [payLog(0n), mintLog(1_000n, hook as Address)],
+      }),
+      1_000n,
+    );
+  }
 });
 
 Deno.test('payment receipt rejects an unrelated controller mint', () => {

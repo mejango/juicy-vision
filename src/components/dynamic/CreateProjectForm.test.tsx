@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import CreateProjectForm from './CreateProjectForm'
 import { useThemeStore, useAuthStore } from '../../stores'
@@ -51,7 +51,9 @@ vi.mock('../payment', () => ({
 
 // Get mocked wagmi
 import { useAccount } from 'wagmi'
+import { pinMetadata } from '../../services/ipfsPinning'
 const mockedUseAccount = useAccount as Mock
+const mockedPinMetadata = pinMetadata as Mock
 
 describe('CreateProjectForm', () => {
   const user = userEvent.setup()
@@ -240,6 +242,33 @@ describe('CreateProjectForm', () => {
 
       expect(screen.getByTestId('launch-modal')).toBeInTheDocument()
       expect(screen.getByText('Project: My Test Project')).toBeInTheDocument()
+    })
+
+    it('pins the payment notice when one is entered', async () => {
+      render(<CreateProjectForm />)
+
+      await user.type(screen.getByPlaceholderText('My Project'), 'Noticed Project')
+      await user.type(
+        screen.getByPlaceholderText(/shown to payers before they pay/i),
+        'Payments are not investments.'
+      )
+      await user.click(screen.getByRole('button', { name: /Create Project/i }))
+
+      await waitFor(() => expect(mockedPinMetadata).toHaveBeenCalledTimes(1))
+      expect(mockedPinMetadata.mock.calls[0][0]).toMatchObject({
+        name: 'Noticed Project',
+        payDisclosure: 'Payments are not investments.',
+      })
+    })
+
+    it('omits the payment notice key when left empty', async () => {
+      render(<CreateProjectForm />)
+
+      await user.type(screen.getByPlaceholderText('My Project'), 'Plain Project')
+      await user.click(screen.getByRole('button', { name: /Create Project/i }))
+
+      await waitFor(() => expect(mockedPinMetadata).toHaveBeenCalledTimes(1))
+      expect('payDisclosure' in (mockedPinMetadata.mock.calls[0][0] as object)).toBe(false)
     })
 
     it('shows chain count on button for multi-chain', () => {

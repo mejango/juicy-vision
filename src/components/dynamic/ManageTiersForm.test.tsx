@@ -362,7 +362,7 @@ describe('ManageTiersForm', () => {
       render(<ManageTiersForm projectId="123" />)
 
       await waitFor(() => {
-        expect(nftService.fetchHookFlags).toHaveBeenCalledWith(mockHookAddress, 1)
+        expect(nftService.fetchHookFlags).toHaveBeenCalledWith(mockHookAddress, 11155111)
       })
     })
 
@@ -370,7 +370,7 @@ describe('ManageTiersForm', () => {
       render(<ManageTiersForm projectId="123" />)
 
       await waitFor(() => {
-        expect(nftService.fetchNFTTiersWithPermissions).toHaveBeenCalledWith(mockHookAddress, 1)
+        expect(nftService.fetchNFTTiersWithPermissions).toHaveBeenCalledWith(mockHookAddress, 11155111)
       })
     })
   })

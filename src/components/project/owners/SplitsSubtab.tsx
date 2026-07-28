@@ -12,7 +12,7 @@
  *                no CTA here.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { encodeFunctionData, zeroAddress } from "viem";
 import { jbControllerAbi } from "@bananapus/nana-sdk-core";
 import { useThemeStore } from "../../../stores";
@@ -36,12 +36,13 @@ import { formatTimeAgo } from "../../../utils";
 import {
   fetchPendingReservedPerChain,
   fetchReservedDistributions,
-  fetchReservedSplits,
+  fetchStageReservedSplits,
   formatIssuancePercent,
   formatOfLimitPercent,
   isBurnBeneficiary,
   pendingShareOf,
   readPendingReserved,
+  type ChainStageSplits,
   type PendingReservedRow,
   type ReservedDistributionRow,
   type ReservedSplit,
@@ -56,8 +57,11 @@ export interface SplitsSubtabProps {
   chainProjects?: ChainProject[];
   /** 'splits' = revnet per-stage view; 'reserved' = custom current-ruleset view. */
   variant: "splits" | "reserved";
-  /** Revnet-only "Edit splits" CTA — the dashboard opens the SetSplitsForm modal. */
-  onEditSplits?: () => void;
+  /**
+   * Revnet-only "Edit splits" CTA — the dashboard opens the SetSplitsForm modal
+   * for the BROWSED stage (its start-order index), not whatever stage is current.
+   */
+  onEditSplits?: (stageIndex: number) => void;
 }
 
 type DistributeStatus =
@@ -96,10 +100,20 @@ export function SplitsSubtab({
   const [stages, setStages] = useState<SimpleRuleset[] | null>(null);
   const [stagesError, setStagesError] = useState(false);
   const [stageIndex, setStageIndex] = useState<number | null>(null);
-  // Per-stage splits cache: undefined = not loaded yet, null = read failed.
+  // Splits cache keyed by stage index, then chain id. Splits are per-chain state
+  // under a per-chain ruleset id, so every chain is read on its own: a missing
+  // entry is still loading, and `splits: null` is that one chain failing.
   const [splitsByStage, setSplitsByStage] = useState<
-    Record<string, ReservedSplit[] | null>
+    Record<number, Record<number, ChainStageSplits>>
   >({});
+  const splitsInFlight = useRef<Set<string>>(new Set());
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [pendingRows, setPendingRows] = useState<PendingReservedRow[] | null>(
     null,
   );
@@ -152,25 +166,34 @@ export function SplitsSubtab({
   const shownStage = stages && shownIndex != null ? stages[shownIndex] : null;
   const isCurrent = shownIndex != null && shownIndex === currentIndex;
 
-  // Splits for the shown stage — cached per ruleset id so revisits don't re-read.
+  // Splits for the shown stage, read once per (stage, chain) — each chain
+  // resolves its own ruleset id for that stage and renders as soon as it lands,
+  // so one slow or failing chain never blocks the others.
   useEffect(() => {
-    if (!shownStage) return;
-    const key = String(shownStage.id);
-    if (splitsByStage[key] !== undefined) return;
-    let cancelled = false;
-    fetchReservedSplits(project.projectId, project.chainId, shownStage.id)
-      .then((splits) => {
-        if (!cancelled)
-          setSplitsByStage((previous) => ({ ...previous, [key]: splits }));
-      })
-      .catch(() => {
-        if (!cancelled)
-          setSplitsByStage((previous) => ({ ...previous, [key]: null }));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [shownStage, splitsByStage, project.projectId, project.chainId]);
+    if (shownIndex == null) return;
+    const stageIndex = shownIndex;
+    const loaded = splitsByStage[stageIndex] ?? {};
+    for (const chainProject of chainProjectList) {
+      if (loaded[chainProject.chainId] !== undefined) continue;
+      // Reads outlive this effect run (browsing stages re-runs it), so requests
+      // are de-duped by a live-request key rather than cancelled per run.
+      const key = `${stageIndex}:${chainProject.chainId}`;
+      if (splitsInFlight.current.has(key)) continue;
+      splitsInFlight.current.add(key);
+      fetchStageReservedSplits(chainProject, stageIndex)
+        .then((row) => {
+          if (!mounted.current) return;
+          setSplitsByStage((previous) => ({
+            ...previous,
+            [stageIndex]: {
+              ...(previous[stageIndex] ?? {}),
+              [row.chainId]: row,
+            },
+          }));
+        })
+        .finally(() => splitsInFlight.current.delete(key));
+    }
+  }, [shownIndex, chainProjectList, splitsByStage]);
 
   // Per-chain pending reserved (null-tolerant); refreshed after a distribute.
   useEffect(() => {
@@ -313,19 +336,21 @@ export function SplitsSubtab({
     );
   };
 
-  const renderChainBlock = (
-    pendingRow: PendingReservedRow,
-    splits: ReservedSplit[],
-  ) => {
-    const chainName =
-      CHAINS[pendingRow.chainId]?.name ?? `Chain ${pendingRow.chainId}`;
-    const hasPending =
-      isCurrent && pendingRow.pending != null && pendingRow.pending > 0n;
-    const status = statuses[pendingRow.chainId] ?? { kind: "idle" };
+  const renderChainBlock = (chainProject: ChainProject) => {
+    const chainId = chainProject.chainId;
+    const chainName = CHAINS[chainId]?.name ?? `Chain ${chainId}`;
+    const row =
+      shownIndex != null ? splitsByStage[shownIndex]?.[chainId] : undefined;
+    const pending =
+      pendingRows?.find((pendingRow) => pendingRow.chainId === chainId)
+        ?.pending ?? null;
+    const hasPending = isCurrent && pending != null && pending > 0n;
+    const status = statuses[chainId] ?? { kind: "idle" };
     const reservedPercent = shownStage?.reservedPercent ?? 0;
     return (
       <div
-        key={pendingRow.chainId}
+        key={chainId}
+        data-testid={`splits-chain-${chainId}`}
         className={`border-t pt-2 ${isDark ? "border-white/10" : "border-gray-100"}`}
       >
         <div
@@ -333,30 +358,44 @@ export function SplitsSubtab({
         >
           {chainName}
         </div>
-        <table
-          className={`w-full text-sm ${isDark ? "text-gray-200" : "text-gray-800"}`}
-        >
-          <tbody>
-            {splits.map((split, index) => (
-              <tr key={index}>
-                <td className="py-1.5 pr-3 w-[46%]">{splitAccount(split)}</td>
-                <td className="py-1.5 pr-3">
-                  <strong>
-                    {formatIssuancePercent(split.percent, reservedPercent)}
-                  </strong>{" "}
-                  <span className={`text-xs ${mutedText}`}>
-                    ({formatOfLimitPercent(split.percent)})
-                  </span>
-                </td>
-                <td className="py-1.5 text-right">
-                  {hasPending
-                    ? `${formatTokenCount18(pendingShareOf(pendingRow.pending as bigint, split.percent))} ${symbol}`
-                    : "—"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {row === undefined ? (
+          <p className={`text-sm ${mutedText}`}>Reading splits…</p>
+        ) : row.splits === null ? (
+          <p className="text-sm text-red-400" role="alert">
+            Could not read splits on {chainName}.
+          </p>
+        ) : !row.splits.length ? (
+          <p className={`text-sm ${bodyText}`}>
+            {reserved
+              ? `No reserved recipients set — reserved ${symbol} goes to the project owner.`
+              : "No splits configured for this stage — reserved tokens go to REVOwner."}
+          </p>
+        ) : (
+          <table
+            className={`w-full text-sm ${isDark ? "text-gray-200" : "text-gray-800"}`}
+          >
+            <tbody>
+              {row.splits.map((split, index) => (
+                <tr key={index}>
+                  <td className="py-1.5 pr-3 w-[46%]">{splitAccount(split)}</td>
+                  <td className="py-1.5 pr-3">
+                    <strong>
+                      {formatIssuancePercent(split.percent, reservedPercent)}
+                    </strong>{" "}
+                    <span className={`text-xs ${mutedText}`}>
+                      ({formatOfLimitPercent(split.percent)})
+                    </span>
+                  </td>
+                  <td className="py-1.5 text-right">
+                    {hasPending
+                      ? `${formatTokenCount18(pendingShareOf(pending as bigint, split.percent))} ${symbol}`
+                      : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
         {/* Per-chain permissionless Distribute — idle unless this chain has pending. */}
         <div className="flex items-center justify-end gap-3 mt-1">
           {status.kind === "running" ? (
@@ -379,7 +418,7 @@ export function SplitsSubtab({
             </span>
           ) : null}
           <button
-            onClick={() => distribute(pendingRow.chainId)}
+            onClick={() => distribute(chainId)}
             disabled={
               !hasPending || status.kind === "running" || status.kind === "done"
             }
@@ -407,16 +446,11 @@ export function SplitsSubtab({
     );
   };
 
-  const shownSplits = shownStage
-    ? splitsByStage[String(shownStage.id)]
-    : undefined;
-  // Chains whose pending read succeeded; before the per-chain reads land, the
-  // home chain renders (with a "—" pending) so the table isn't empty.
-  const shownChains: PendingReservedRow[] = pendingRows?.filter(
-    (row) => row.pending != null,
-  ).length
-    ? (pendingRows as PendingReservedRow[]).filter((row) => row.pending != null)
-    : [{ chainId: project.chainId, pending: null }];
+  // A past stage's ruleset can never be active again, so writing splits to it
+  // would be a no-op; the current and future stages are both editable
+  // (JBController.setSplitGroupsOf takes any ruleset id).
+  const stageEnded =
+    shownIndex != null && currentIndex != null && shownIndex < currentIndex;
 
   return (
     <div className={cardClass}>
@@ -478,51 +512,43 @@ export function SplitsSubtab({
             </p>
           ) : null}
 
-          {shownSplits === undefined ? (
-            <p className={`text-sm ${mutedText}`}>Reading splits…</p>
-          ) : shownSplits === null ? (
-            <p className="text-sm text-red-400" role="alert">
-              Could not read splits.
-            </p>
-          ) : !shownSplits.length ? (
-            <p className={`text-sm ${bodyText}`}>
-              {reserved
-                ? `No reserved recipients set — reserved ${symbol} goes to the project owner.`
-                : "No splits configured for this stage — reserved tokens go to REVOwner."}
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              {/* Standalone column header, then each chain as its own block. */}
-              <table className="w-full text-sm">
-                <thead>
-                  <tr
-                    className={`text-xs uppercase tracking-wide ${mutedText}`}
-                  >
-                    <th className="py-1.5 font-medium text-left w-[46%]">
-                      Account
-                    </th>
-                    <th className="py-1.5 font-medium text-left">Percentage</th>
-                    <th className="py-1.5 font-medium text-right">
-                      Pending splits
-                    </th>
-                  </tr>
-                </thead>
-              </table>
-              <div className="space-y-3">
-                {shownChains.map((pendingRow) =>
-                  renderChainBlock(pendingRow, shownSplits),
-                )}
-              </div>
+          <div className="overflow-x-auto">
+            {/* Standalone column header, then each chain as its own block —
+                every chain stores its own splits under its own ruleset id. */}
+            <table className="w-full text-sm">
+              <thead>
+                <tr className={`text-xs uppercase tracking-wide ${mutedText}`}>
+                  <th className="py-1.5 font-medium text-left w-[46%]">
+                    Account
+                  </th>
+                  <th className="py-1.5 font-medium text-left">Percentage</th>
+                  <th className="py-1.5 font-medium text-right">
+                    Pending splits
+                  </th>
+                </tr>
+              </thead>
+            </table>
+            <div className="space-y-3">
+              {chainProjectList.map((chainProject) =>
+                renderChainBlock(chainProject),
+              )}
             </div>
-          )}
+          </div>
 
           {/* Operator CTA — revnet-only; custom projects edit reserved recipients from the ruleset flow. */}
           {!reserved && onEditSplits ? (
             <div className="pt-2">
               <button
-                onClick={onEditSplits}
-                title="Edit the current stage’s split recipients (project operator only)"
-                className={`text-sm underline decoration-dotted underline-offset-2 transition-colors ${
+                onClick={() =>
+                  shownIndex != null && !stageEnded && onEditSplits(shownIndex)
+                }
+                disabled={shownIndex == null || stageEnded}
+                title={
+                  stageEnded
+                    ? "This stage has ended — its splits can no longer receive distributions"
+                    : `Edit stage ${(shownIndex ?? 0) + 1}’s split recipients (project operator only)`
+                }
+                className={`text-sm underline decoration-dotted underline-offset-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline ${
                   isDark
                     ? "text-juice-cyan hover:text-white"
                     : "text-cyan-700 hover:text-gray-900"

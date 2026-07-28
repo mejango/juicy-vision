@@ -43,6 +43,8 @@ export {
   fetchProjectAccountingContexts,
   fetchProjectSplits,
   fetchPendingReservedTokens,
+  fetchCurrentProjectMetadataForEdit,
+  type CurrentProjectMetadata,
   type Project,
   type ProjectMetadata,
   type ActivityEvent,
@@ -78,8 +80,10 @@ export {
 export {
   groupTokenHoldings,
   groupNftHoldings,
+  type HoldingsPage,
   type TokenHoldingRow,
   type NftHoldingRow,
+  type TokenHoldingChainRow,
   type TokenHoldingGroup,
   type NftHoldingGroup,
 } from './accountHoldings'

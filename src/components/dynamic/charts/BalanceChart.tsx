@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { defaultChainId } from '../../../config/environment'
 import {
   LineChart,
   Line,
@@ -53,7 +54,7 @@ interface DataPoint {
 
 export default function BalanceChart({
   projectId,
-  chainId = '1',
+  chainId = defaultChainId(),
   range: initialRange = '1y',
 }: BalanceChartProps) {
   const { theme } = useThemeStore()

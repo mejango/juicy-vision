@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { defaultChainId } from '../../config/environment'
 import { useThemeStore } from '../../stores'
 import { fetchEthPrice, fetchProject, type Project } from '../../services/bendystraw'
 import { getProjectDataHook, fetchResolvedNFTTiers, type ResolvedNFTTier } from '../../services/nft'
@@ -17,7 +18,7 @@ type SortOption = 'price-asc' | 'price-desc' | 'supply' | 'tierId'
 
 export default function Storefront({
   projectId,
-  chainId = '1',
+  chainId = defaultChainId(),
   sortBy = 'tierId',
   filterCategory = 'all',
   showSoldOut = 'true',

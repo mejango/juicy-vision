@@ -15,36 +15,54 @@ import {
 
 const SAFE = "0x1111111111111111111111111111111111111111" as const;
 
+const SAFE_ORIGIN = "https://app.safe.global";
+
 // Minimal Safe parent stub: answer postMessages by method, echoing the id back
-// on the window as a 'message' event.
-function installSafeParent(answers: Record<string, unknown>, delayMs = 0) {
+// on the window as a 'message' event. Replies carry the Safe origin and the
+// parent as their source (spoofable knobs for the validation tests below).
+function installSafeParent(
+  answers: Record<string, unknown>,
+  delayMs = 0,
+  reply?: { origin?: string; sourceIsParent?: boolean },
+) {
   const calls: Array<{
     id: string;
     method: string;
     params: { txs?: SafeTx[] };
+    targetOrigin?: string;
   }> = [];
   const parent = {
-    postMessage(msg: {
-      id: string;
-      method: string;
-      params: { txs?: SafeTx[] };
-    }) {
-      calls.push(msg);
+    postMessage(
+      msg: {
+        id: string;
+        method: string;
+        params: { txs?: SafeTx[] };
+      },
+      targetOrigin?: string,
+    ) {
+      calls.push({ ...msg, targetOrigin });
       const data = answers[msg.method];
-      const reply = () => {
-        window.dispatchEvent(
-          new MessageEvent("message", {
-            data: {
-              id: msg.id,
-              success: data !== undefined,
-              data,
-              version: "9.1.0",
-            },
-          }),
-        );
+      const send = () => {
+        const event = new MessageEvent("message", {
+          data: {
+            id: msg.id,
+            success: data !== undefined,
+            data,
+            version: "9.1.0",
+          },
+          origin: reply?.origin ?? SAFE_ORIGIN,
+        });
+        // jsdom's MessageEvent constructor brand-checks `source`; override the
+        // prototype getter with an own property so the stub parent can pose as
+        // the event source (or deliberately not).
+        Object.defineProperty(event, "source", {
+          configurable: true,
+          value: reply?.sourceIsParent === false ? null : parent,
+        });
+        window.dispatchEvent(event);
       };
-      if (delayMs) window.setTimeout(reply, delayMs);
-      else queueMicrotask(reply);
+      if (delayMs) window.setTimeout(send, delayMs);
+      else queueMicrotask(send);
     },
   };
   Object.defineProperty(window, "parent", {
@@ -144,6 +162,35 @@ describe("Safe App provider", () => {
     expect(
       calls.find((c) => c.method === "sendTransactions")?.params.txs,
     ).toEqual(txs);
+  });
+
+  it("posts to the Safe origin, never '*'", async () => {
+    const calls = installSafeParent({
+      getSafeInfo: { safeAddress: SAFE, chainId: 8453 },
+    });
+    await detectSafeApp(200);
+    expect(calls.length).toBeGreaterThan(0);
+    for (const call of calls) {
+      expect(call.targetOrigin).toBe(SAFE_ORIGIN);
+    }
+  });
+
+  it("ignores responses from a non-allowlisted origin", async () => {
+    installSafeParent(
+      { getSafeInfo: { safeAddress: SAFE, chainId: 8453 } },
+      0,
+      { origin: "https://evil.example" },
+    );
+    await expect(detectSafeApp(150)).resolves.toBeNull();
+  });
+
+  it("ignores responses whose source is not the parent window", async () => {
+    installSafeParent(
+      { getSafeInfo: { safeAddress: SAFE, chainId: 8453 } },
+      0,
+      { sourceIsParent: false },
+    );
+    await expect(detectSafeApp(150)).resolves.toBeNull();
   });
 
   it("rejects switching to a chain other than the Safe's", async () => {

@@ -154,18 +154,21 @@ vi.mock('../utils/ens', async importOriginal => ({
 }))
 
 function seedData() {
-  fetchAccountActivityEvents.mockResolvedValue([
-    {
-      id: 'evt-1',
-      chainId: 1,
-      timestamp: 1700000000,
-      type: 'pay',
-      amount: '1000000000000000000',
-      from: OWNER,
-      txHash: CONFIRMED_HASH,
-      project: { projectId: 3, name: 'NANA', decimals: 18, currency: 1 },
-    },
-  ])
+  fetchAccountActivityEvents.mockResolvedValue({
+    events: [
+      {
+        id: 'evt-1',
+        chainId: 1,
+        timestamp: 1700000000,
+        type: 'pay',
+        amount: '1000000000000000000',
+        from: OWNER,
+        txHash: CONFIRMED_HASH,
+        project: { projectId: 3, name: 'NANA', decimals: 18, currency: 1 },
+      },
+    ],
+    fromCount: 1,
+  })
   fetchProjectsByOwner.mockImplementation(async (address: string) => {
     if (address.toLowerCase() === OWNER.toLowerCase()) {
       return [
@@ -226,16 +229,25 @@ function seedData() {
     if (projectId === 5) return 'Operated Revnet'
     return null
   })
-  // Holdings: project 3's token held on two chains (already version-deduped by
-  // the fetcher), plus two tier-1 items of project 4's shop.
-  fetchAccountTokenHoldings.mockResolvedValue([
-    { chainId: 1, projectId: 3, version: 6, balance: '2000000000000000000' },
-    { chainId: 8453, projectId: 3, version: 6, balance: '1000000000000000000' },
-  ])
-  fetchAccountNftHoldings.mockResolvedValue([
-    { chainId: 1, projectId: 4, tokenId: '1000000001', tierId: 1 },
-    { chainId: 1, projectId: 4, tokenId: '1000000002', tierId: 1 },
-  ])
+  // Holdings: project 3's token held on two chains linked by a sucker group
+  // (already deduped by the fetcher), plus two tier-1 items of project 4's
+  // shop. The fetchers return pages carrying the server totalCount.
+  fetchAccountTokenHoldings.mockResolvedValue({
+    rows: [
+      { chainId: 1, projectId: 3, version: 6, balance: '2000000000000000000', suckerGroupId: 'g3' },
+      { chainId: 8453, projectId: 3, version: 6, balance: '1000000000000000000', suckerGroupId: 'g3' },
+    ],
+    totalCount: 2,
+    truncated: false,
+  })
+  fetchAccountNftHoldings.mockResolvedValue({
+    rows: [
+      { chainId: 1, projectId: 4, hook: '0xhook4', tokenId: '1000000001', tierId: 1 },
+      { chainId: 1, projectId: 4, hook: '0xhook4', tokenId: '1000000002', tierId: 1 },
+    ],
+    totalCount: 2,
+    truncated: false,
+  })
   fetchProjectTokenSymbol.mockResolvedValue('NANA')
   resolveShopItemMedia.mockResolvedValue({
     names: { 1: 'Cap' },
@@ -315,8 +327,8 @@ describe('AccountView', () => {
   })
 
   it('shows the empty state when the account holds nothing', async () => {
-    fetchAccountTokenHoldings.mockResolvedValue([])
-    fetchAccountNftHoldings.mockResolvedValue([])
+    fetchAccountTokenHoldings.mockResolvedValue({ rows: [], totalCount: 0, truncated: false })
+    fetchAccountNftHoldings.mockResolvedValue({ rows: [], totalCount: 0, truncated: false })
     render(<AccountView address={OWNER} />)
     fireEvent.click(screen.getByRole('button', { name: 'Holdings' }))
     expect(await screen.findByText('No project tokens held')).toBeInTheDocument()
@@ -434,5 +446,135 @@ describe('AccountView', () => {
     expect(screen.getByText('This is your connected account')).toBeInTheDocument()
     // …but the local in-flight store stays keyed to the real connection.
     expect(screen.queryByTestId('in-flight-tx')).not.toBeInTheDocument()
+  })
+
+  it('pages Load more by the from-branch consumed count, not the merged event count', async () => {
+    // Page 1: 25 from-branch rows plus 5 merged beneficiary rows (30 events).
+    const fromEvents = Array.from({ length: 25 }, (_, i) => ({
+      id: `from-${i}`,
+      chainId: 1,
+      timestamp: 1700001000 - i,
+      type: 'pay',
+      amount: '1',
+      from: OWNER,
+      project: { projectId: 3, name: 'NANA', decimals: 18, currency: 1 },
+    }))
+    const beneficiaryEvents = Array.from({ length: 5 }, (_, i) => ({
+      id: `ben-${i}`,
+      chainId: 1,
+      timestamp: 1700002000 - i,
+      type: 'pay',
+      amount: '1',
+      from: OTHER,
+      project: { projectId: 3, name: 'NANA', decimals: 18, currency: 1 },
+    }))
+    fetchAccountActivityEvents.mockResolvedValueOnce({
+      events: [...beneficiaryEvents, ...fromEvents],
+      fromCount: 25,
+    })
+    fetchAccountActivityEvents.mockResolvedValueOnce({
+      events: [
+        {
+          id: 'from-25',
+          chainId: 1,
+          timestamp: 1700000000,
+          type: 'pay',
+          amount: '1',
+          from: OWNER,
+          project: { projectId: 3, name: 'NANA', decimals: 18, currency: 1 },
+        },
+      ],
+      fromCount: 1,
+    })
+
+    render(<AccountView address={OWNER} />)
+    expect(await screen.findAllByTestId('activity-item')).toHaveLength(30)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    await waitFor(() =>
+      expect(fetchAccountActivityEvents).toHaveBeenLastCalledWith(OWNER, {
+        limit: 25,
+        // Offset advances by the 25 CONSUMED from-rows — not the 30 merged
+        // events — so no from-branch rows are skipped.
+        offset: 25,
+      })
+    )
+    expect(await screen.findAllByTestId('activity-item')).toHaveLength(31)
+  })
+
+  it('shows the credit/ERC-20 split alongside a holding total', async () => {
+    fetchAccountTokenHoldings.mockResolvedValue({
+      rows: [
+        {
+          chainId: 1,
+          projectId: 3,
+          version: 6,
+          balance: '2000000000000000000',
+          creditBalance: '500000000000000000',
+          erc20Balance: '1500000000000000000',
+          suckerGroupId: 'g3',
+        },
+      ],
+      totalCount: 1,
+      truncated: false,
+    })
+    render(<AccountView address={OWNER} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Holdings' }))
+
+    const tokenRows = await screen.findAllByTestId('token-holding')
+    expect(tokenRows[0]).toHaveTextContent('2 NANA')
+    expect(tokenRows[0]).toHaveTextContent('1.5 claimed')
+    expect(tokenRows[0]).toHaveTextContent('0.5 credits')
+  })
+
+  it('surfaces truncation when the server holds more rows than the window returned', async () => {
+    fetchAccountTokenHoldings.mockResolvedValue({
+      rows: [
+        { chainId: 1, projectId: 3, version: 6, balance: '2000000000000000000', suckerGroupId: 'g3' },
+      ],
+      totalCount: 1234,
+      truncated: true,
+    })
+    render(<AccountView address={OWNER} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Holdings' }))
+
+    const notice = await screen.findByTestId('token-holdings-truncated')
+    expect(notice).toHaveTextContent('Showing first 1 of 1234')
+  })
+
+  it('keeps sucker-group rows together even when per-chain projectIds diverge', async () => {
+    fetchAccountTokenHoldings.mockResolvedValue({
+      rows: [
+        { chainId: 1, projectId: 3, version: 6, balance: '2000000000000000000', suckerGroupId: 'g3' },
+        { chainId: 8453, projectId: 12, version: 6, balance: '1000000000000000000', suckerGroupId: 'g3' },
+      ],
+      totalCount: 2,
+      truncated: false,
+    })
+    render(<AccountView address={OWNER} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Holdings' }))
+
+    const tokenRows = await screen.findAllByTestId('token-holding')
+    expect(tokenRows).toHaveLength(1)
+    // Name and navigation come from the group's own leading row.
+    expect(tokenRows[0]).toHaveTextContent('NANA Project')
+    fireEvent.click(tokenRows[0])
+    expect(navigateMock).toHaveBeenCalledWith('/eth:3')
+  })
+
+  it('does not merge same-id projects from different chains without a sucker group', async () => {
+    fetchAccountTokenHoldings.mockResolvedValue({
+      rows: [
+        { chainId: 1, projectId: 3, version: 6, balance: '2000000000000000000' },
+        { chainId: 8453, projectId: 3, version: 6, balance: '1000000000000000000' },
+      ],
+      totalCount: 2,
+      truncated: false,
+    })
+    render(<AccountView address={OWNER} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Holdings' }))
+
+    const tokenRows = await screen.findAllByTestId('token-holding')
+    expect(tokenRows).toHaveLength(2)
   })
 })

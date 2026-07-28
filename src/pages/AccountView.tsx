@@ -5,6 +5,7 @@ import { useThemeStore } from '../stores'
 import { useViewAsStore } from '../stores/viewAsStore'
 import { useTransactionStore, type Transaction } from '../stores/transactionStore'
 import { useEnsNameResolved, useViewedAccount } from '../hooks'
+import { useDocumentTitle } from '../hooks/useDocumentTitle'
 import { useRelayrStatus } from '../hooks/relayr'
 import { useAllChainBalances } from '../components/wallet/useAllChainBalances'
 import ActivityItem from '../components/chat/ActivityItem'
@@ -62,6 +63,16 @@ const ACCOUNT_TABS: Array<{ id: AccountTabId; label: string }> = [
 export function parseAccountHash(hash: string): AccountTabId | null {
   const slug = hash.replace(/^#/, '').toLowerCase()
   return ACCOUNT_TABS.some(tab => tab.id === slug) ? (slug as AccountTabId) : null
+}
+
+// True when a raw 18-decimal balance string is present and positive.
+function isPositiveRaw(raw?: string): boolean {
+  if (!raw) return false
+  try {
+    return toTokenFloat(raw) > 0
+  } catch {
+    return false
+  }
 }
 
 // 18-decimal project-token balance for display ("<0.0001" floor, 4 dp).
@@ -263,6 +274,7 @@ export default function AccountView({ address }: AccountViewProps) {
     !!connectedAddress && connectedAddress.toLowerCase() === address.toLowerCase()
 
   const { ensName } = useEnsNameResolved(address)
+  useDocumentTitle(ensName || truncateAddress(address))
   const { balances, loading: balancesLoading } = useAllChainBalances(address)
 
   // Site-wide "View as" activation for this account
@@ -270,8 +282,11 @@ export default function AccountView({ address }: AccountViewProps) {
   const setViewAs = useViewAsStore(s => s.setViewAs)
   const isViewingAsThis = !!viewAs && viewAs.toLowerCase() === address.toLowerCase()
 
-  // Activity
+  // Activity. `fromOffset` tracks how many FROM-BRANCH rows have been
+  // consumed — the server offset pages only that branch, while `events` also
+  // contains merged beneficiary rows the offset must not advance past.
   const [events, setEvents] = useState<ActivityEvent[]>([])
+  const [fromOffset, setFromOffset] = useState(0)
   const [activityLoading, setActivityLoading] = useState(true)
   const [activityError, setActivityError] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
@@ -287,11 +302,15 @@ export default function AccountView({ address }: AccountViewProps) {
   const [operatedLoading, setOperatedLoading] = useState(true)
   const [operatedError, setOperatedError] = useState<string | null>(null)
 
-  // Holdings: project tokens + owned store items (null = still loading)
+  // Holdings: project tokens + owned store items (null = still loading).
+  // The truncation states carry "showing first N of M" when the account holds
+  // more rows than the query window returned.
   const [tokenHoldings, setTokenHoldings] = useState<TokenHoldingRowView[] | null>(null)
   const [tokenHoldingsError, setTokenHoldingsError] = useState<string | null>(null)
+  const [tokenTruncation, setTokenTruncation] = useState<{ shown: number; total: number } | null>(null)
   const [itemHoldings, setItemHoldings] = useState<NftHoldingRowView[] | null>(null)
   const [itemHoldingsError, setItemHoldingsError] = useState<string | null>(null)
+  const [itemTruncation, setItemTruncation] = useState<{ shown: number; total: number } | null>(null)
 
   // Active tab mirrors the project page's mechanism: state seeded from the URL
   // hash, written back on change, and re-read on hashchange (back/forward).
@@ -323,14 +342,16 @@ export default function AccountView({ address }: AccountViewProps) {
   useEffect(() => {
     let cancelled = false
     setEvents([])
+    setFromOffset(0)
     setActivityLoading(true)
     setActivityError(null)
     setHasMore(false)
     fetchAccountActivityEvents(address, { limit: ACTIVITY_PAGE_SIZE, offset: 0 })
       .then(page => {
         if (cancelled) return
-        setEvents(page)
-        setHasMore(page.length >= ACTIVITY_PAGE_SIZE)
+        setEvents(page.events)
+        setFromOffset(page.fromCount)
+        setHasMore(page.fromCount >= ACTIVITY_PAGE_SIZE)
       })
       .catch(err => {
         if (!cancelled) setActivityError(err instanceof Error ? err.message : 'Activity unavailable')
@@ -346,21 +367,24 @@ export default function AccountView({ address }: AccountViewProps) {
   const loadMore = useCallback(async () => {
     setLoadingMore(true)
     try {
+      // Page by the from-branch consumed count, NOT events.length — the merged
+      // feed also contains beneficiary rows the server offset would skip past.
       const page = await fetchAccountActivityEvents(address, {
         limit: ACTIVITY_PAGE_SIZE,
-        offset: events.length,
+        offset: fromOffset,
       })
       setEvents(prev => {
         const known = new Set(prev.map(e => e.id))
-        return [...prev, ...page.filter(e => !known.has(e.id))]
+        return [...prev, ...page.events.filter(e => !known.has(e.id))]
       })
-      setHasMore(page.length >= ACTIVITY_PAGE_SIZE)
+      setFromOffset(prev => prev + page.fromCount)
+      setHasMore(page.fromCount >= ACTIVITY_PAGE_SIZE)
     } catch {
       setHasMore(false)
     } finally {
       setLoadingMore(false)
     }
-  }, [address, events.length])
+  }, [address, fromOffset])
 
   // Owned projects: direct ownership plus projects owned by Safes the account co-owns
   useEffect(() => {
@@ -460,25 +484,33 @@ export default function AccountView({ address }: AccountViewProps) {
     }
   }, [address])
 
-  // Token holdings: participants rows (deduped to the highest indexed version
-  // per chain+project by the fetcher), grouped one row per project across
-  // chains, enriched with the project's display name + token symbol.
+  // Token holdings: V6 participant rows grouped one row per sucker group
+  // across chains (ungrouped rows stay per chain+project), enriched with the
+  // display name + token symbol resolved from the group's own leading row.
   useEffect(() => {
     let cancelled = false
     setTokenHoldings(null)
     setTokenHoldingsError(null)
+    setTokenTruncation(null)
     ;(async () => {
-      const groups = groupTokenHoldings(await fetchAccountTokenHoldings(address))
+      const page = await fetchAccountTokenHoldings(address)
+      const groups = groupTokenHoldings(page.rows)
       const rows: TokenHoldingRowView[] = await Promise.all(
         groups.map(async g => {
+          const home = g.chains[0]
           const [name, symbol] = await Promise.all([
-            resolveProjectNameForDisplay(g.projectId, g.chains[0].chainId).catch(() => null),
-            fetchProjectTokenSymbol(String(g.projectId), g.chains[0].chainId).catch(() => null),
+            resolveProjectNameForDisplay(home.projectId, home.chainId).catch(() => null),
+            fetchProjectTokenSymbol(String(home.projectId), home.chainId).catch(() => null),
           ])
           return { ...g, name, symbol }
         })
       )
-      if (!cancelled) setTokenHoldings(rows)
+      if (!cancelled) {
+        setTokenHoldings(rows)
+        setTokenTruncation(
+          page.truncated ? { shown: page.rows.length, total: page.totalCount } : null
+        )
+      }
     })().catch(err => {
       if (!cancelled) {
         setTokenHoldingsError(err instanceof Error ? err.message : 'Token holdings unavailable')
@@ -490,15 +522,17 @@ export default function AccountView({ address }: AccountViewProps) {
     }
   }, [address])
 
-  // Store-item holdings: owned 721s (deduped by chain+tokenId by the fetcher),
-  // grouped per chain+project with per-tier tallies, enriched with the
-  // project's name and the shop's tier name/media maps.
+  // Store-item holdings: owned 721s (deduped by chain+hook+tokenId by the
+  // fetcher), grouped per chain+project with per-tier tallies, enriched with
+  // the project's name and the shop's tier name/media maps.
   useEffect(() => {
     let cancelled = false
     setItemHoldings(null)
     setItemHoldingsError(null)
+    setItemTruncation(null)
     ;(async () => {
-      const groups = groupNftHoldings(await fetchAccountNftHoldings(address))
+      const page = await fetchAccountNftHoldings(address)
+      const groups = groupNftHoldings(page.rows)
       const rows: NftHoldingRowView[] = await Promise.all(
         groups.map(async g => {
           const [name, meta] = await Promise.all([
@@ -508,7 +542,12 @@ export default function AccountView({ address }: AccountViewProps) {
           return { ...g, name, meta }
         })
       )
-      if (!cancelled) setItemHoldings(rows)
+      if (!cancelled) {
+        setItemHoldings(rows)
+        setItemTruncation(
+          page.truncated ? { shown: page.rows.length, total: page.totalCount } : null
+        )
+      }
     })().catch(err => {
       if (!cancelled) {
         setItemHoldingsError(err instanceof Error ? err.message : 'Store items unavailable')
@@ -682,9 +721,9 @@ export default function AccountView({ address }: AccountViewProps) {
             <div className="space-y-2">
               {tokenHoldings.map(row => (
                 <button
-                  key={row.projectId}
+                  key={row.suckerGroupId ?? `${row.chains[0].chainId}:${row.chains[0].projectId}`}
                   data-testid="token-holding"
-                  onClick={() => goToProject(row.chains[0].chainId, row.projectId)}
+                  onClick={() => goToProject(row.chains[0].chainId, row.chains[0].projectId)}
                   className={`block w-full p-2 border text-left transition-colors ${
                     isDark
                       ? 'border-white/10 hover:bg-white/5'
@@ -711,12 +750,26 @@ export default function AccountView({ address }: AccountViewProps) {
                             {formatTokenBalance(c.balance)}{' '}
                             {row.symbol || t('account.tokensFallback', 'tokens')}
                           </span>
+                          {isPositiveRaw(c.creditBalance) && (
+                            <span className={mutedClass}>
+                              ({formatTokenBalance(c.erc20Balance ?? '0')}{' '}
+                              {t('account.claimed', 'claimed')},{' '}
+                              {formatTokenBalance(c.creditBalance!)}{' '}
+                              {t('account.credits', 'credits')})
+                            </span>
+                          )}
                         </span>
                       )
                     })}
                   </div>
                 </button>
               ))}
+              {tokenTruncation && (
+                <div className={`text-[10px] ${mutedClass}`} data-testid="token-holdings-truncated">
+                  {t('account.showingFirst', 'Showing first')} {tokenTruncation.shown}{' '}
+                  {t('account.of', 'of')} {tokenTruncation.total}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -789,6 +842,12 @@ export default function AccountView({ address }: AccountViewProps) {
                   </div>
                 )
               })}
+              {itemTruncation && (
+                <div className={`text-[10px] ${mutedClass}`} data-testid="item-holdings-truncated">
+                  {t('account.showingFirst', 'Showing first')} {itemTruncation.shown}{' '}
+                  {t('account.of', 'of')} {itemTruncation.total}
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -221,15 +221,20 @@ async function getBuildEnhancedSystemPrompt() {
 /**
  * Build the full system prompt including omnichain context (sync version for backward compat)
  * @deprecated Use buildEnhancedPrompt() for modular prompt loading and context management
+ *
+ * Exported for tests: the knowledge base must appear EXACTLY ONCE in the final
+ * prompt. The chat pipeline passes an enhanced prompt that already embeds
+ * OMNICHAIN_CONTEXT (contextManager.buildEnhancedSystemPrompt is the canonical
+ * injection site), so appending it again here doubled it on every invocation.
  */
-function buildSystemPromptSync(customSystem?: string, includeOmnichain = true): string {
+export function buildSystemPromptSync(customSystem?: string, includeOmnichain = true): string {
   const parts: string[] = [];
 
   // Start with default or custom system
   parts.push(customSystem || SYSTEM_PROMPT);
 
-  // Add omnichain knowledge if enabled
-  if (includeOmnichain) {
+  // Add omnichain knowledge if enabled and not already embedded upstream
+  if (includeOmnichain && !(customSystem && customSystem.includes(OMNICHAIN_CONTEXT))) {
     parts.push('\n\n---\n\n# Knowledge Base\n');
     parts.push(OMNICHAIN_CONTEXT);
   }

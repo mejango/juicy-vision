@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { defaultChainId } from '../../config/environment'
 import { useAccount } from "wagmi";
 import { formatEther, formatUnits, parseUnits, parseEther } from "viem";
 import { useThemeStore } from "../../stores";
@@ -103,7 +104,7 @@ function formStateToRulesetConfig(
   mustStartAtOrAfter: number,
   existingConfig?: ProjectRuleset,
   existingLimits?: FundAccessLimits | null,
-  chainId: number = 1,
+  chainId: number = Number(defaultChainId()),
   existingSplitGroups: JBSplitGroupData[] = [],
   existingFundAccessLimitGroups: FundAccessLimits[] = [],
   defaultAccountingContext?: AccountingContext,
@@ -270,7 +271,7 @@ function formStateToRulesetConfig(
 
 export default function QueueRulesetForm({
   projectId,
-  chainId = "1",
+  chainId = defaultChainId(),
   messageId,
 }: QueueRulesetFormProps) {
   const [project, setProject] = useState<Project | null>(null);
@@ -1267,7 +1268,7 @@ export default function QueueRulesetForm({
                       return (
                         <a
                           key={cid}
-                          href={`https://${chain?.slug === "eth" ? "" : chain?.slug + "."}etherscan.io/tx/${hash}`}
+                          href={`${chain?.explorerTx || "https://etherscan.io/tx/"}${hash}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className={`text-xs ml-6 underline block ${isDark ? "text-gray-400 hover:text-gray-300" : "text-gray-500 hover:text-gray-600"}`}

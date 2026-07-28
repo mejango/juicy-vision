@@ -20,6 +20,7 @@
  */
 
 import type { Address, PublicClient } from 'viem'
+import type { SimpleRuleset } from './bendystraw'
 import { jbContractAddress, jbSplitsAbi, type JBChainId } from '@bananapus/nana-sdk-core'
 import { getAmountToAutoIssue, RESERVED_TOKEN_SPLIT_GROUP_ID } from '@bananapus/nana-sdk-core/v6'
 
@@ -229,6 +230,118 @@ export async function fetchReservedSplits(
     lockedUntil: Number(split.lockedUntil),
     hook: split.hook,
   }))
+}
+
+/**
+ * One chain's ruleset for a browsed stage. The same stage is a DIFFERENT
+ * ruleset id on every chain, so a stage is identified by its start-order index
+ * (fetchAllRulesets is start-ascending and index-aligned across chains) and
+ * resolved to a ruleset per chain.
+ */
+export interface ChainStageRuleset {
+  chainId: number
+  projectId: number | string
+  /** That chain's ruleset for the stage; null = the chain has no such stage, or the read failed. */
+  ruleset: SimpleRuleset | null
+}
+
+/** One chain's reserved splits for a browsed stage. */
+export interface ChainStageSplits {
+  chainId: number
+  projectId: number | string
+  /** The ruleset id the splits were read at, on that chain; null = unresolved. */
+  rulesetId: string | null
+  /** Reserved-group splits; null = unreadable (never a fake empty group). */
+  splits: ReservedSplit[] | null
+}
+
+/** Injectable for tests: swap the per-chain ruleset/splits readers. */
+export interface StageSplitsDeps {
+  readStages?: (projectId: string, chainId: number) => Promise<SimpleRuleset[]>
+  readSplits?: (
+    projectId: number | string,
+    chainId: number,
+    rulesetId: string,
+  ) => Promise<ReservedSplit[]>
+}
+
+async function defaultReadStages(projectId: string, chainId: number): Promise<SimpleRuleset[]> {
+  const { fetchAllRulesets } = await import('./bendystraw')
+  return fetchAllRulesets(projectId, chainId)
+}
+
+/**
+ * Resolve the browsed stage's ruleset on every chain the project lives on. A
+ * chain that can't be read (or has no stage at that index) yields a null
+ * ruleset so callers fail closed on that chain alone.
+ */
+export async function fetchStageRulesetsPerChain(
+  chainProjects: readonly ChainProject[],
+  stageIndex: number,
+  deps: StageSplitsDeps = {},
+): Promise<ChainStageRuleset[]> {
+  const readStages = deps.readStages ?? defaultReadStages
+  const settled = await Promise.allSettled(
+    chainProjects.map(cp => readStages(String(cp.projectId), cp.chainId)),
+  )
+  return chainProjects.map((cp, index) => {
+    const result = settled[index]
+    return {
+      chainId: cp.chainId,
+      projectId: cp.projectId,
+      ruleset: result && result.status === 'fulfilled' ? (result.value[stageIndex] ?? null) : null,
+    }
+  })
+}
+
+/**
+ * One chain's reserved splits for the browsed stage, read at THAT chain's
+ * ruleset id with THAT chain's project id. Never throws — an unreadable chain
+ * reports null splits so the other chains keep rendering.
+ */
+export async function fetchStageReservedSplits(
+  chainProject: ChainProject,
+  stageIndex: number,
+  deps: StageSplitsDeps = {},
+): Promise<ChainStageSplits> {
+  const [{ ruleset }] = await fetchStageRulesetsPerChain([chainProject], stageIndex, deps)
+  const base = { chainId: chainProject.chainId, projectId: chainProject.projectId }
+  if (!ruleset) return { ...base, rulesetId: null, splits: null }
+  const readSplits = deps.readSplits ?? fetchReservedSplits
+  try {
+    return {
+      ...base,
+      rulesetId: ruleset.id,
+      splits: await readSplits(chainProject.projectId, chainProject.chainId, ruleset.id),
+    }
+  } catch {
+    return { ...base, rulesetId: ruleset.id, splits: null }
+  }
+}
+
+/**
+ * Pre-send guard for an edit aimed at a browsed stage: the stage must still map
+ * to the ruleset id that was reviewed. This is the stage-scoped counterpart of
+ * assertCurrentRulesetId, which only fits an edit aimed at the current ruleset —
+ * a queued stage is legitimately not the current one. Fails closed: an
+ * unreadable schedule aborts rather than writing splits to a stale ruleset.
+ */
+export async function assertStageRulesetUnchanged(params: {
+  chainProject: ChainProject
+  stageIndex: number
+  expectedRulesetId: string
+  deps?: StageSplitsDeps
+}): Promise<void> {
+  const [{ ruleset }] = await fetchStageRulesetsPerChain(
+    [params.chainProject],
+    params.stageIndex,
+    params.deps ?? {},
+  )
+  if (!ruleset || ruleset.id !== params.expectedRulesetId) {
+    throw new Error(
+      `The project stages changed on chain ${params.chainProject.chainId}. Close this review and load the latest configuration.`,
+    )
+  }
 }
 
 /** Injectable for tests: swap the per-chain pending reader. */

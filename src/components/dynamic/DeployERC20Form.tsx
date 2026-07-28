@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { defaultChainId } from '../../config/environment'
 import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useDeployERC20FormState } from '../../hooks/useComponentState'
@@ -36,7 +37,7 @@ interface ChainTokenData {
   configurationError?: string
 }
 
-export default function DeployERC20Form({ projectId, chainId = '1', messageId }: DeployERC20FormProps) {
+export default function DeployERC20Form({ projectId, chainId = defaultChainId(), messageId }: DeployERC20FormProps) {
   // Persistent state (visible to all chat users)
   const { state: persistedState, updateState: updatePersistedState } = useDeployERC20FormState(messageId)
 
@@ -469,7 +470,7 @@ export default function DeployERC20Form({ projectId, chainId = '1', messageId }:
               </div>
               {persistedState?.txHash && (
                 <a
-                  href={`${CHAIN_INFO[selectedChainId]?.slug ? `https://${CHAIN_INFO[selectedChainId].slug === 'eth' ? '' : CHAIN_INFO[selectedChainId].slug + '.'}etherscan.io` : 'https://etherscan.io'}/tx/${persistedState.txHash}`}
+                  href={`${CHAIN_INFO[selectedChainId]?.explorerTx || 'https://etherscan.io/tx/'}${persistedState.txHash}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className={`text-xs mt-1 ml-6 underline block ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}

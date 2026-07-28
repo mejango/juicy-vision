@@ -486,7 +486,7 @@ It covers Basics (name, ticker, tagline, description, logo, chains) → Ruleset 
 | Level | Owner | Technical | Action |
 |-------|-------|-----------|--------|
 | I keep control | User wallet | owner = connected wallet | launchProject or launch721Project |
-| Autonomous | REVDeployer contract | Staged parameters, no human control | **deployRevnet** |
+| Autonomous | REVOwner singleton contract | Staged parameters, no human control | **deployRevnet** |
 
 **When user picks "Autonomous operation", show \`<juice-component type="create-revnet-form" />\`.**
 
@@ -787,7 +787,7 @@ query ActivityEvents($limit: Int, $offset: Int) {
 }
 \`\`\`
 
-**Revnet detection:** use the project's \`isRevnet\` flag — never infer from the owner address.
+**Revnet detection:** a project is a revnet only while its JBProjects NFT is owned by the recognized REVOwner singleton, verified live on-chain. The indexer's \`isRevnet\` flag is informational only and can be stale — never classify from it alone, and never infer from an arbitrary owner address.
 
 **Ruleset state** is not a project relation — read it on-chain via \`JBController.currentRulesetOf\` or from \`rulesetQueuedEvent\` rows.
 
@@ -812,11 +812,12 @@ export const HOOK_DEVELOPER_CONTEXT = `
 **Projects** - On-chain funding accounts with rulesets, terminals, tokens.
 
 **Rulesets:**
-- weight: Tokens per currency unit (18 decimals)
+- weight: Tokens per currency unit (18 decimals). SENTINEL: weight = 1 means "inherit the previous ruleset's cut-adjusted weight"; weight = 0 is REAL zero issuance — never substitute one for the other
 - weightCutPercent: Issuance decrease per cycle (0-1e9, 1e9=100%)
 - reservedPercent: % to reserved vs payer (0-10000)
 - cashOutTaxRate: Bonding curve (0=full proportional, 10000=disabled)
-- baseCurrency: 1=ETH, 2=USD
+- baseCurrency: 1=ETH, 2=USD. Issuance converts through JBPrices when the paid currency differs from baseCurrency — a base currency with no registered price feed for the accounting token REVERTS pays. Prefer a baseCurrency matching a live accounting-context currency (native = 61166); the queue-ruleset guard blocks others
+- metadata: declared uint16 but only the LOWER 14 BITS are stored on-chain (upper 2 masked)
 - pausePay, allowOwnerMinting
 
 **Terminals:** pay(), cashOutTokensOf(), sendPayoutsOf(), useAllowanceOf()
@@ -834,8 +835,16 @@ export const HOOK_DEVELOPER_CONTEXT = `
 - **Protocol fee:** The standard 2.5% fee can apply to payouts, surplus allowances, and cash outs depending on the exact path and feeless status
 - **Fee destination:** Fees are not skimmed away — they are \`pay\`s into NANA (project 1), so the fee payer's beneficiary receives NANA tokens. Revnet cash-out and loan fees instead mint REV (project 3) tokens
 - **Fail-open:** If the fee payment reverts, the fee is forgiven (\`FeeReverted\`); payouts to another project in the same terminal are fee-free
-- **Cash-out preview:** \`previewCashOutFrom\` reports the reclaim before the terminal applies any protocol fee; the executable form uses a 97.5% minimum and allows no additional client-side slippage beyond the stated fee ceiling
+- **Cash-out preview:** \`previewCashOutFrom\` reports the reclaim BEFORE the terminal applies any protocol fee. The cash-out form nets the 2.5% protocol fee where it applies (non-zero cashOutTaxRate fees the whole reclaim; zero tax fees only min(reclaim, feeFreeSurplusOf)) and then floors the on-chain \`minTokensReclaimed\` by the user-selected max slippage (0.5% / 1% / 3%, default 1%) below that net figure
 - **Exceptions and held fees:** Read live feeless and held-fee state before claiming a fee or refund outcome
+
+### Encoding & Safety Invariants (transaction-critical)
+
+- **Two currency vocabularies — never mix them:** an accounting-context \`currency\` is the LOW 32 BITS of the token address (\`uint32(uint160(token))\`; native = 61166), while a payout split \`groupId\` is the FULL token address as a uint256. Reserved-token splits use the protocol reserved group (1). Never compare ids across the two vocabularies.
+- **Fund access limits:** "unlimited" is the explicit uint224 max sentinel — an EMPTY fund-access list means NO withdrawals, not unlimited. Payout limits refill each cycle; surplus allowances apply ONCE per ruleset. Limits are PER CHAIN: a 10 ETH payout limit deployed to 4 chains authorizes 40 ETH total — size per-chain limits accordingly.
+- **Permissions:** \`JBPermissions.setPermissionsFor\` REPLACES the operator's entire permission set for that account + project. Always include the existing ids to keep; an empty array revokes everything.
+- **721 tiers:** \`initialSupply\` must be 1…999,999,999 inclusive (0 and anything larger revert; 999,999,999 is the "unlimited" convention). Tiers must be sorted by category ascending. \`discountPercent\` uses denominator 200 (a 20% discount is 40 on-chain).
+- **Suckers (cross-chain):** ERC-20 token mappings need \`minGas\` >= 200,000 (below reverts). Canonical USDC must bridge over CCIP lanes — the OP/Base/Arbitrum NATIVE bridges deliver bridged USDC.e and strand funds in escrow. Native-bridge sucker deployers carry ONLY the native token and connect ONLY Ethereum↔L2, never L2↔L2 (use CCIP for L2↔L2).
 
 ### Hooks
 
@@ -996,6 +1005,8 @@ contract FullHook is IJBRulesetDataHook, IJBPayHook, IJBCashOutHook, ERC165 {
 Control when queued rulesets become active.
 
 **JBDeadline Pattern:** Requires minimum delay between queue time and ruleset start.
+
+**HAZARD:** a JBDeadline whose delay EXCEEDS the ruleset cycle duration can never approve anything — the configuration is locked forever. Always check delay < duration before attaching one.
 \`\`\`
 Queue ruleset → approvalHook.approvalStatusOf() called
   → ApprovalExpected: queued but not yet active
@@ -1005,8 +1016,8 @@ Queue ruleset → approvalHook.approvalStatusOf() called
 
 ### Contract-as-Owner Pattern
 
-**REVDeployer Model (Revnets):**
-- Contract owns project NFT (not EOA)
+**REVOwner Model (Revnets):**
+- The singleton REVOwner contract owns the revnet's project NFT (not an EOA, and not REVDeployer — the deployer only deploys)
 - Implements hooks and controls configuration
 - Delegates authority via JBPermissions
 - Project operates autonomously with staged parameters

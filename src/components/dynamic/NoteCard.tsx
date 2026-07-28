@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
+import { defaultChainId } from '../../config/environment'
 import { useAccount } from 'wagmi'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
 import { useTranslation } from 'react-i18next'
@@ -28,7 +29,7 @@ const CHAIN_INFO = MAINNET_CHAINS as unknown as Record<string, { name: string; s
 
 type PaymentToken = 'ETH' | 'USDC'
 
-export default function NoteCard({ projectId, chainId: initialChainId = '1', defaultNote = '' }: NoteCardProps) {
+export default function NoteCard({ projectId, chainId: initialChainId = defaultChainId(), defaultNote = '' }: NoteCardProps) {
   const { t } = useTranslation()
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)

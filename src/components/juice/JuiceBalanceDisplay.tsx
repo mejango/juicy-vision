@@ -67,7 +67,7 @@ export default function JuiceBalanceDisplay({ compact = false }: JuiceBalanceDis
           <div className="flex items-center gap-2">
             <span className="text-2xl">💳</span>
             <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-              Pay Credits
+              Juice balance
             </span>
           </div>
           <button

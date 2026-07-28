@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { defaultChainId } from '../../config/environment'
 import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useSetSplitsFormState } from '../../hooks/useComponentState'
@@ -6,6 +7,7 @@ import {
   fetchProject,
   fetchProjectWithRuleset,
   fetchProjectSplits,
+  isRevnetProject,
   type Project,
   type JBSplitData,
 } from '../../services/bendystraw'
@@ -18,6 +20,7 @@ import { useManagedWallet } from '../../hooks'
 import { buildSplit } from '../../utils/splitSafety'
 import { JBP6_FEE_LP_SPLIT_HOOK } from './create-flow/builders'
 import { resolveProjectChains } from '../../utils/projectChains'
+import { fetchStageRulesetsPerChain } from '../../services/reservedSplits'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { IpfsImage } from '../ui/IpfsMedia'
 
@@ -25,6 +28,12 @@ interface SetSplitsFormProps {
   projectId: string
   chainId?: string
   messageId?: string // For persisting state to server (visible to all chat users)
+  /**
+   * Start-order index of the stage being edited. Splits live per (project, ruleset, group)
+   * and the same stage is a different ruleset id on every chain, so the browsed stage is
+   * resolved to each chain's own ruleset. Omitted = the current ruleset on each chain.
+   */
+  stageIndex?: number
 }
 
 // Chain info for display
@@ -43,6 +52,10 @@ interface ChainSplitsData {
   payoutGroupId: string | null
   payoutToken: string | null
   configurationComplete: boolean
+  // JBSplits.splitsOf falls back to the FALLBACK_RULESET_ID (0) group whenever the active
+  // ruleset's group is empty, so clearing a group only takes effect if the fallback is empty too.
+  fallbackPayoutNonEmpty: boolean
+  fallbackReservedNonEmpty: boolean
   error?: string
   selected: boolean
 }
@@ -179,7 +192,7 @@ function splitSetsMatch(left: JBSplitData[], right: JBSplitData[]): boolean {
   )
 }
 
-export default function SetSplitsForm({ projectId, chainId = '1', messageId }: SetSplitsFormProps) {
+export default function SetSplitsForm({ projectId, chainId = defaultChainId(), messageId, stageIndex }: SetSplitsFormProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { isConnected, address: connectedAddress } = useAccount()
@@ -261,10 +274,14 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
     builtSplits.payout.map(editableFingerprint).join('|') !== primaryData.payoutSplits.map(splitFingerprint).join('|') ||
     builtSplits.reserved.map(editableFingerprint).join('|') !== primaryData.reservedSplits.map(splitFingerprint).join('|')
   )
-  const clearsEffectiveSplits = !!primaryData && (
-    (primaryData.payoutSplits.length > 0 && payoutSplits.length === 0) ||
-    (primaryData.reservedSplits.length > 0 && reservedSplits.length === 0)
-  )
+  // Emptying a group is a legitimate edit — JBSplits accepts an empty group and the whole share
+  // then accrues to the project owner. It's only blocked when the fallback (ruleset 0) group is
+  // non-empty, because splitsOf would then serve those default splits instead of nothing.
+  const clearsToFallbackPayout = !!primaryData &&
+    primaryData.payoutSplits.length > 0 && payoutSplits.length === 0 && primaryData.fallbackPayoutNonEmpty
+  const clearsToFallbackReserved = !!primaryData &&
+    primaryData.reservedSplits.length > 0 && reservedSplits.length === 0 && primaryData.fallbackReservedNonEmpty
+  const clearsEffectiveSplits = clearsToFallbackPayout || clearsToFallbackReserved
   const chainIsCompatible = useCallback((chainData: ChainSplitsData) => !primaryData || (
     chainData.configurationComplete &&
     splitSetsMatch(chainData.payoutSplits, primaryData.payoutSplits) &&
@@ -290,11 +307,24 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
         setProject(projectData)
         setChainMappingAvailable(chainResolution.mappingAvailable)
 
+        // An edit aimed at a browsed stage must write THAT stage's ruleset on each chain —
+        // the same stage carries a different ruleset id per chain, and the current ruleset
+        // is only the right target when no stage was browsed.
+        const stageRulesets = stageIndex == null
+          ? null
+          : await fetchStageRulesetsPerChain(
+              chainResolution.chains.map(chain => ({ chainId: chain.chainId, projectId: chain.projectId })),
+              stageIndex,
+            )
+
         // Fetch splits from all chains
         const splitsPromises = chainResolution.chains.map(async (chain): Promise<ChainSplitsData> => {
           try {
             const chainProject = await fetchProjectWithRuleset(String(chain.projectId), chain.chainId)
-            const rulesetId = chainProject?.currentRuleset?.id || '0'
+            const stageRuleset = stageRulesets?.find(row => row.chainId === chain.chainId)?.ruleset ?? null
+            const rulesetId = stageRulesets
+              ? (stageRuleset?.id ?? '0')
+              : (chainProject?.currentRuleset?.id || '0')
 
             let payoutSplits: JBSplitData[] = []
             let reservedSplits: JBSplitData[] = []
@@ -302,13 +332,15 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
             let payoutToken: string | null = null
             let configurationComplete = false
             let configurationError: string | undefined
+            let fallbackPayoutNonEmpty = false
+            let fallbackReservedNonEmpty = false
 
             if (rulesetId !== '0') {
-              const splitsData = await fetchProjectSplits(
-                String(chain.projectId),
-                chain.chainId,
-                rulesetId
-              )
+              const [splitsData, fallbackSplitsData] = await Promise.all([
+                fetchProjectSplits(String(chain.projectId), chain.chainId, rulesetId),
+                // The fallback (ruleset 0) groups decide whether clearing a group is effective.
+                fetchProjectSplits(String(chain.projectId), chain.chainId, '0'),
+              ])
               payoutSplits = splitsData.payoutSplits
               reservedSplits = splitsData.reservedSplits
               const contexts = splitsData.accountingContexts || []
@@ -319,6 +351,10 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
                   group => group.groupId === payoutGroupId,
                 )?.splits ?? []
               }
+              fallbackReservedNonEmpty = fallbackSplitsData.reservedSplits.length > 0
+              fallbackPayoutNonEmpty = payoutGroupId
+                ? (fallbackSplitsData.splitGroups?.find(group => group.groupId === payoutGroupId)?.splits.length ?? 0) > 0
+                : false
               configurationComplete = splitsData.configurationComplete === true && !!payoutGroupId
               if (contexts.length !== 1) {
                 configurationError = 'Split editing requires one unambiguous live payout token'
@@ -334,13 +370,20 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
               payoutSplits,
               reservedSplits,
               baseCurrency: chainProject?.currentRuleset?.baseCurrency ?? 1,
-              rulesetDuration: chainProject?.currentRuleset?.duration ?? 0,
+              // Locks are scoped to the ruleset being edited, so read the duration of THAT ruleset.
+              rulesetDuration: stageRulesets
+                ? (stageRuleset?.duration ?? 0)
+                : (chainProject?.currentRuleset?.duration ?? 0),
               owner: chainProject?.owner ?? '',
               payoutGroupId,
               payoutToken,
               configurationComplete: rulesetId !== '0' && configurationComplete,
+              fallbackPayoutNonEmpty,
+              fallbackReservedNonEmpty,
               error: rulesetId === '0'
-                ? 'Current ruleset unavailable'
+                ? (stageRulesets
+                  ? `Stage ${(stageIndex ?? 0) + 1} has no ruleset on this chain`
+                  : 'Current ruleset unavailable')
                 : configurationError,
               selected: chain.chainId === primaryChainId &&
                 chain.projectId === parseInt(projectId) &&
@@ -360,6 +403,9 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
               payoutGroupId: null,
               payoutToken: null,
               configurationComplete: false,
+              // Fail closed: an unverified chain can't prove clearing a group is effective.
+              fallbackPayoutNonEmpty: true,
+              fallbackReservedNonEmpty: true,
               error: err instanceof Error ? err.message : 'Could not verify the current split configuration',
               selected: false,
             }
@@ -402,7 +448,7 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
     }
 
     load()
-  }, [projectId, primaryChainId])
+  }, [projectId, primaryChainId, stageIndex])
 
   useEffect(() => {
     const ids = [...payoutSplits, ...reservedSplits]
@@ -445,14 +491,13 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
     }
   }, [isLocked])
 
-  // Remove a split
+  // Remove a split. An actively locked row is never removable — JBSplits._setSplitsOf requires
+  // every currently-locked split to be resubmitted, so dropping one would revert the transaction.
   const handleRemoveSplit = useCallback((type: 'payout' | 'reserved', id: string) => {
     if (isLocked) return
-    if (type === 'payout') {
-      setPayoutSplits(prev => prev.filter(s => s.id !== id))
-    } else {
-      setReservedSplits(prev => prev.filter(s => s.id !== id))
-    }
+    const removeFn = (prev: EditableSplit[]) => prev.filter(s => s.id !== id || s.isLocked)
+    if (type === 'payout') setPayoutSplits(removeFn)
+    else setReservedSplits(removeFn)
   }, [isLocked])
 
   // Merge a partial patch into one split (skips actively-locked rows, which must resubmit byte-identical).
@@ -819,6 +864,7 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
             ) : !isLocked && primaryData?.configurationComplete && (
               <button
                 onClick={() => handleRemoveSplit(type, split.id)}
+                aria-label="Remove split"
                 className={`px-2 py-1 text-xs ${isDark ? 'text-red-400 hover:text-red-300' : 'text-red-600 hover:text-red-700'}`}
               >
                 Remove
@@ -886,6 +932,17 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
               <ProjectLink chainSlug={chainInfo.slug} projectId={projectId} className={`text-xs hover:underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}>
                 {project?.name || `Project #${projectId}`}
               </ProjectLink>
+              {stageIndex != null && (
+                <div
+                  data-testid="splits-target-stage"
+                  className={`text-xs ${isDark ? 'text-amber-400' : 'text-amber-600'}`}
+                >
+                  Editing stage {stageIndex + 1}
+                  {primaryData?.rulesetId && primaryData.rulesetId !== '0'
+                    ? ` · ruleset #${primaryData.rulesetId} on ${chainInfo.shortName || chainInfo.name}`
+                    : ''}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1008,6 +1065,35 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
                 {reservedTotal < 100 && ` (${(100 - reservedTotal).toFixed(2)}% to project owner)`}
               </div>
 
+              {/* The recurring operator confusion: this tab routes reserved tokens, it does not
+                  decide how many are reserved. That rate lives in the ruleset. */}
+              <div
+                data-testid="reserved-percent-explainer"
+                className={`mb-3 p-3 text-xs ${isDark ? 'bg-amber-500/10 text-amber-300' : 'bg-amber-50 text-amber-700'}`}
+              >
+                <p>
+                  This decides who receives reserved tokens, not how many tokens are reserved. The
+                  reserved rate lives in the ruleset — removing every split here sends the whole
+                  reserved share to the project owner, it does not stop tokens being reserved.
+                </p>
+                {isRevnetProject(project) ? (
+                  <p className="mt-2">
+                    This is a revnet, so its reserved rate is fixed per stage by the configuration set at
+                    deployment. It can't be changed by queueing a ruleset — only a stage change alters it.
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => window.dispatchEvent(new CustomEvent('juice:send-message', {
+                      detail: { message: `Queue a ruleset for project ${projectId} that sets the reserved rate to 0%` },
+                    }))}
+                    className="mt-2 underline font-medium"
+                  >
+                    Set the reserved rate to 0% instead
+                  </button>
+                )}
+              </div>
+
               <div className="space-y-2 mb-4">
                 {reservedSplits.map(split => renderSplitRow(split, 'reserved'))}
                 {reservedSplits.length === 0 && (
@@ -1082,7 +1168,7 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
                     return (
                       <a
                         key={cid}
-                        href={`https://${chain?.slug === 'eth' ? '' : chain?.slug + '.'}etherscan.io/tx/${hash}`}
+                        href={`${chain?.explorerTx || 'https://etherscan.io/tx/'}${hash}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className={`text-xs ml-6 underline block ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}
@@ -1116,8 +1202,13 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
           )}
 
           {clearsEffectiveSplits && (
-            <div className={`mb-3 p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
-              Removing every effective split is blocked because default splits may remain active on-chain. Use the full configuration site to change default split groups explicitly.
+            <div
+              data-testid="splits-fallback-warning"
+              className={`mb-3 p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}
+            >
+              Emptying the {clearsToFallbackReserved ? 'reserved-token' : 'payout'} group is blocked here because this
+              project has default splits stored under the fallback ruleset, which would take over as soon as this
+              group is empty. Use the full configuration site to change default split groups explicitly.
             </div>
           )}
 
@@ -1161,6 +1252,7 @@ export default function SetSplitsForm({ projectId, chainId = '1', messageId }: S
           payoutSplits={submittablePayoutSplits}
           reservedSplits={submittableReservedSplits}
           baseCurrency={baseCurrency}
+          stageIndex={stageIndex}
           onConfirmed={handleConfirmed}
           onError={handleError}
         />

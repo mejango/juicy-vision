@@ -24,6 +24,7 @@ import {
   jbContractAddress,
   jbControllerAbi,
   jbDirectoryAbi,
+  jbMultiTerminalAbi,
   jbTerminalStoreAbi,
   jbTokensAbi,
   type JBChainId,
@@ -35,6 +36,7 @@ import {
   getCreditBalance,
 } from '@bananapus/nana-sdk-core/v6'
 import { NATIVE_TOKEN, USDC_ADDRESSES, type SupportedChainId } from '../constants'
+import { cashOutProtocolFee } from '../utils/terminalPreview'
 import { publicClientFor } from './projectTx'
 
 /** The accounting token a chain's monetary values (cash out, loan) are denominated in. */
@@ -55,8 +57,21 @@ export interface YouPositionRow {
   creditBalance: bigint | null
   /** balance − creditBalance; null when either side is unreadable. */
   erc20Balance: bigint | null
-  /** What `balance` reclaims right now, in the accounting token's units. */
+  /**
+   * What `balance` reclaims right now, in the accounting token's units, NET of
+   * the 2.5% protocol fee where it applies (tax != 0 fees the whole reclaim;
+   * tax == 0 fees only min(reclaim, feeFreeSurplusOf)). null = unreadable —
+   * including when the fee inputs can't be read; never a gross value posing
+   * as spendable.
+   */
   cashOutValue: bigint | null
+  /**
+   * Whether this chain's ruleset scopes cash-outs to LOCAL balances. When
+   * false the per-chain quote prices against the omnichain surplus, so
+   * summing per-chain quotes double counts — the total must be suppressed.
+   * null = ruleset unreadable.
+   */
+  cashOutScopedToLocal: boolean | null
   /** REVLoans borrowable-now against `balance`. null = no loans on this chain / unreadable. */
   maxLoan: bigint | null
   /** Cash-out delay unlock timestamp (unix seconds). 0 or past = unlocked. */
@@ -130,6 +145,7 @@ function emptyRow(chainId: number): YouPositionRow {
     creditBalance: null,
     erc20Balance: null,
     cashOutValue: null,
+    cashOutScopedToLocal: null,
     maxLoan: null,
     lockedUntil: null,
     accountingToken: null,
@@ -156,7 +172,7 @@ async function loadChainPosition(
 
   // The cash-out denominator lives on the project's ACTUAL controller (pending
   // reserved tokens are controller storage), so resolve it from the directory.
-  const supplyJob: Promise<bigint | null> = (async () => {
+  const controllerJob: Promise<Address | null> = (async () => {
     if (!jbDirectory) return null
     const controller = await client.readContract({
       address: jbDirectory,
@@ -164,16 +180,42 @@ async function loadChainPosition(
       functionName: 'controllerOf',
       args: [projectId],
     })
-    if (!controller || controller === zeroAddress) return null
-    return client.readContract({
-      address: controller,
-      abi: jbControllerAbi,
-      functionName: 'totalTokenSupplyWithReservedTokensOf',
-      args: [projectId],
-    })
+    return !controller || controller === zeroAddress ? null : controller
   })().catch(() => null)
 
-  const [balance, creditBalance, supply, accountingToken, lockedUntil] = await Promise.all([
+  const supplyJob: Promise<bigint | null> = controllerJob
+    .then(controller =>
+      controller
+        ? client.readContract({
+            address: controller,
+            abi: jbControllerAbi,
+            functionName: 'totalTokenSupplyWithReservedTokensOf',
+            args: [projectId],
+          })
+        : null,
+    )
+    .catch(() => null)
+
+  // The live ruleset metadata prices the protocol fee (cashOutTaxRate) and
+  // says whether cash-outs are scoped to this chain's local balances.
+  const rulesetJob: Promise<{ cashOutTaxRate: bigint; scopeCashOutsToLocalBalances: boolean } | null> =
+    controllerJob
+      .then(async controller => {
+        if (!controller) return null
+        const [, metadata] = await client.readContract({
+          address: controller,
+          abi: jbControllerAbi,
+          functionName: 'currentRulesetOf',
+          args: [projectId],
+        })
+        return {
+          cashOutTaxRate: BigInt(metadata.cashOutTaxRate),
+          scopeCashOutsToLocalBalances: Boolean(metadata.scopeCashOutsToLocalBalances),
+        }
+      })
+      .catch(() => null)
+
+  const [balance, creditBalance, supply, ruleset, accountingToken, lockedUntil] = await Promise.all([
     jbTokens
       ? client
           .readContract({
@@ -186,6 +228,7 @@ async function loadChainPosition(
       : Promise.resolve(null),
     getCreditBalance(client, { chainId: cid, projectId, holder: account }).catch(() => null),
     supplyJob,
+    rulesetJob,
     getAccountingContexts(client, { chainId: cid, projectId })
       .then(contexts => (contexts.length ? describeAccountingToken(chainId, contexts[0]) : null))
       .catch(() => null),
@@ -201,14 +244,17 @@ async function loadChainPosition(
 
   // Cash out value: what `balance` tokens reclaim now, in the accounting token.
   // Guarded by the supply read so a nonsense balance > supply never queries the
-  // store with arguments the contract math would misprice.
+  // store with arguments the contract math would misprice. The gross reclaim is
+  // then netted of the protocol fee — an ambient "worth now" figure that
+  // ignores the 2.5% fee overstates what the wallet can actually take out.
+  const cashOutScopedToLocal = ruleset ? ruleset.scopeCashOutsToLocalBalances : null
   let cashOutValue: bigint | null = null
   if (balance != null) {
     if (balance === 0n) {
       cashOutValue = 0n
     } else if (supply != null && supply >= balance && accountingToken) {
       const store = v6AddressOf('JBTerminalStore', chainId)
-      cashOutValue = store
+      const gross = store
         ? await client
             .readContract({
               address: store,
@@ -225,6 +271,41 @@ async function loadChainPosition(
             })
             .catch(() => null)
         : null
+      if (gross != null && gross === 0n) {
+        cashOutValue = 0n
+      } else if (gross != null && ruleset) {
+        // feeFreeSurplusOf reduces the fee ONLY on zero-tax rulesets, so it is
+        // read only then — from the project's primary terminal for the token.
+        let feeFreeSurplus: bigint | null = 0n
+        if (ruleset.cashOutTaxRate === 0n) {
+          feeFreeSurplus = await (async () => {
+            if (!jbDirectory) return null
+            const terminal = await client.readContract({
+              address: jbDirectory,
+              abi: jbDirectoryAbi,
+              functionName: 'primaryTerminalOf',
+              args: [projectId, accountingToken.token],
+            })
+            if (!terminal || terminal === zeroAddress) return null
+            return client.readContract({
+              address: terminal,
+              abi: jbMultiTerminalAbi,
+              functionName: 'feeFreeSurplusOf',
+              args: [projectId, accountingToken.token],
+            })
+          })().catch(() => null)
+        }
+        cashOutValue =
+          feeFreeSurplus == null
+            ? null
+            : gross -
+              cashOutProtocolFee({
+                reclaimAmount: gross,
+                cashOutTaxRate: ruleset.cashOutTaxRate,
+                beneficiaryIsFeeless: false,
+                feeFreeSurplus,
+              })
+      }
     }
   }
 
@@ -247,7 +328,17 @@ async function loadChainPosition(
             .catch(() => null)
   }
 
-  return { chainId, balance, creditBalance, erc20Balance, cashOutValue, maxLoan, lockedUntil, accountingToken }
+  return {
+    chainId,
+    balance,
+    creditBalance,
+    erc20Balance,
+    cashOutValue,
+    cashOutScopedToLocal,
+    maxLoan,
+    lockedUntil,
+    accountingToken,
+  }
 }
 
 /**
@@ -290,6 +381,13 @@ export function monetaryTotalIfComplete(
   field: 'cashOutValue' | 'maxLoan',
 ): bigint | null {
   if (!rows.length) return null
+  // When cash-outs are NOT scoped to local balances, every chain quotes
+  // against the shared omnichain surplus — the per-chain estimates are each
+  // "what this chain would pay alone" and summing them prices phantom value.
+  // Show the per-chain rows, never a total.
+  if (field === 'cashOutValue' && rows.some(row => row.cashOutScopedToLocal !== true)) {
+    return null
+  }
   const first = rows[0].accountingToken
   if (!first) return null
   const unit = `${first.symbol}@${first.decimals}`

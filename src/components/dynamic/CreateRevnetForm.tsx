@@ -29,6 +29,8 @@ interface RevnetFormState {
   name: string
   ticker: string
   tagline: string
+  /** Notice shown to payers before they pay. Omitted from the pinned JSON when blank. */
+  payDisclosure: string
   autoDeploySuckers: boolean
 }
 
@@ -45,6 +47,7 @@ const DEFAULT_FORM_STATE: RevnetFormState = {
   name: '',
   ticker: '',
   tagline: '',
+  payDisclosure: '',
   autoDeploySuckers: true,
 }
 
@@ -141,6 +144,8 @@ export default function CreateRevnetForm({ defaultChainIds }: CreateRevnetFormPr
         name: formState.name,
         tagline: formState.tagline,
         tokenSymbol: formState.ticker,
+        // Set/clear semantics: a blank notice leaves the key out entirely.
+        ...(formState.payDisclosure.trim() ? { payDisclosure: formState.payDisclosure.trim() } : {}),
       }, `revnet-${formState.name}`)
       setPreparedProjectUri(uri)
       setShowModal(true)
@@ -150,7 +155,7 @@ export default function CreateRevnetForm({ defaultChainIds }: CreateRevnetFormPr
     } finally {
       setPreparingMetadata(false)
     }
-  }, [configurationValid, isManagedMode, operatorAddress, formState.name, formState.tagline, formState.ticker])
+  }, [configurationValid, isManagedMode, operatorAddress, formState.name, formState.tagline, formState.ticker, formState.payDisclosure])
 
   // Build stage configurations for modal
   const stageConfigurations: REVStageConfig[] = stageError
@@ -279,6 +284,23 @@ export default function CreateRevnetForm({ defaultChainIds }: CreateRevnetFormPr
                 onChange={(e) => updateFormState('tagline', e.target.value)}
                 placeholder="A revenue network for..."
                 className={`w-full px-3 py-2 text-sm outline-none ${
+                  isDark
+                    ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-500'
+                    : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'
+                }`}
+              />
+            </div>
+
+            <div>
+              <label className={`block text-xs mb-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                Payment notice (optional)
+              </label>
+              <textarea
+                value={formState.payDisclosure}
+                onChange={(e) => updateFormState('payDisclosure', e.target.value)}
+                placeholder="Shown to payers before they pay."
+                rows={2}
+                className={`w-full px-3 py-2 text-sm outline-none resize-none ${
                   isDark
                     ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-500'
                     : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'

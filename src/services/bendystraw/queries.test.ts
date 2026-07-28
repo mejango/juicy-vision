@@ -155,27 +155,42 @@ describe('GraphQL Query Structure', () => {
   })
 
   describe('ACCOUNT_TOKEN_HOLDINGS_QUERY', () => {
-    it('filters positive balances for the account, biggest first', () => {
+    it('filters positive V6 balances for the account, biggest first, with an explicit window', () => {
       expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('participants(')
       expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('address: $account')
       expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('balance_gt: "0"')
+      expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('version: 6')
       expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('orderBy: "balance"')
       expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('orderDirection: "desc"')
+      expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('limit: $limit')
+      expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('totalCount')
     })
 
-    it('selects the version so callers can dedupe per-version duplicate rows', () => {
+    it('selects the grouping key and the credit/erc20 split', () => {
       expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('chainId')
       expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('projectId')
       expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('version')
       expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('balance')
+      expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('creditBalance')
+      expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('erc20Balance')
+      expect(ACCOUNT_TOKEN_HOLDINGS_QUERY).toContain('suckerGroupId')
     })
   })
 
   describe('ACCOUNT_NFTS_QUERY', () => {
-    it('filters by owner and selects the dedupe + display fields', () => {
-      expect(ACCOUNT_NFTS_QUERY).toContain('nfts(where: { owner: $owner })')
+    it('filters by owner on V6, newest first, with an explicit window + totalCount', () => {
+      expect(ACCOUNT_NFTS_QUERY).toContain('owner: $owner')
+      expect(ACCOUNT_NFTS_QUERY).toContain('version: 6')
+      expect(ACCOUNT_NFTS_QUERY).toContain('orderBy: "createdAt"')
+      expect(ACCOUNT_NFTS_QUERY).toContain('orderDirection: "desc"')
+      expect(ACCOUNT_NFTS_QUERY).toContain('limit: $limit')
+      expect(ACCOUNT_NFTS_QUERY).toContain('totalCount')
+    })
+
+    it('selects the hook — part of the token identity — plus the display fields', () => {
       expect(ACCOUNT_NFTS_QUERY).toContain('chainId')
       expect(ACCOUNT_NFTS_QUERY).toContain('projectId')
+      expect(ACCOUNT_NFTS_QUERY).toContain('hook')
       expect(ACCOUNT_NFTS_QUERY).toContain('tokenId')
       expect(ACCOUNT_NFTS_QUERY).toContain('tierId')
     })

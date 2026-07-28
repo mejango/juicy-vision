@@ -19,6 +19,7 @@ import { SPLIT_GROUP_RESERVED } from '../../constants/abis/jbSplits'
 import { RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
 import { getProjectController } from '../../utils/paymentTerminal'
 import { assertCurrentRulesetId } from '../../utils/projectTrust'
+import { assertStageRulesetUnchanged } from '../../services/reservedSplits'
 import { buildSplitGroup } from '../../utils/splitSafety'
 import { fetchProjectSplits, type JBSplitData } from '../../services/bendystraw'
 import { useGuardedTx } from '../useGuardedTx'
@@ -55,6 +56,8 @@ interface UseOmnichainSetSplitsReturn {
     chainData: ChainSplitData[]
     payoutSplits: FormSplit[]
     reservedSplits: FormSplit[]
+    /** Start-order index of the stage being edited; omitted = the current ruleset. */
+    stageIndex?: number
   }) => Promise<void>
   bundleState: BundleState
   isExecuting: boolean
@@ -217,8 +220,30 @@ export function useOmnichainSetSplits(
     chainData: ChainSplitData[]
     payoutSplits: FormSplit[]
     reservedSplits: FormSplit[]
+    stageIndex?: number
   }) => {
-    const { chainData, payoutSplits, reservedSplits } = params
+    const { chainData, payoutSplits, reservedSplits, stageIndex } = params
+
+    // A queued stage is legitimately not the current ruleset, so the pre-send
+    // guard checks the ruleset the edit actually targets.
+    const assertTargetRulesetUnchanged = async (
+      chain: Pick<ChainSplitData, 'chainId' | 'projectId' | 'rulesetId'>,
+      client: PublicClient,
+    ) => {
+      if (stageIndex == null) {
+        await assertCurrentRulesetId({
+          client,
+          projectId: BigInt(chain.projectId),
+          expectedRulesetId: BigInt(chain.rulesetId),
+        })
+        return
+      }
+      await assertStageRulesetUnchanged({
+        chainProject: { chainId: chain.chainId, projectId: chain.projectId },
+        stageIndex,
+        expectedRulesetId: chain.rulesetId,
+      })
+    }
 
     if (chainData.length === 0 || new Set(chainData.map(chain => chain.chainId)).size !== chainData.length) {
       bundle._setError('Split chains must be a non-empty unique list')
@@ -285,11 +310,7 @@ export function useOmnichainSetSplits(
             publicClient,
             BigInt(chain.projectId)
           )
-          await assertCurrentRulesetId({
-            client: publicClient,
-            projectId: BigInt(chain.projectId),
-            expectedRulesetId: BigInt(chain.rulesetId),
-          })
+          await assertTargetRulesetUnchanged(chain, publicClient)
 
           console.log(`Chain ${chain.chainId}: Project ${chain.projectId} uses controller ${controller}`)
 
@@ -368,11 +389,7 @@ export function useOmnichainSetSplits(
             if (currentController.toLowerCase() !== reviewedChain.controller.toLowerCase()) {
               throw new Error(`The project controller changed on chain ${reviewedChain.chainId}`)
             }
-            await assertCurrentRulesetId({
-              client: reviewedChain.publicClient,
-              projectId: BigInt(reviewedChain.projectId),
-              expectedRulesetId: BigInt(reviewedChain.rulesetId),
-            })
+            await assertTargetRulesetUnchanged(reviewedChain, reviewedChain.publicClient)
           },
           review: {
             title: 'Review project split update',

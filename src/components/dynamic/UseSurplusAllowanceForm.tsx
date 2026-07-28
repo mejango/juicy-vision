@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { defaultChainId } from '../../config/environment'
 import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useUseSurplusAllowanceFormState } from '../../hooks/useComponentState'
@@ -38,7 +39,7 @@ interface ChainAllowanceData {
   configurationError?: string
 }
 
-export default function UseSurplusAllowanceForm({ projectId, chainId = '1', messageId }: UseSurplusAllowanceFormProps) {
+export default function UseSurplusAllowanceForm({ projectId, chainId = defaultChainId(), messageId }: UseSurplusAllowanceFormProps) {
   const { state: persistedState, updateState: updatePersistedState } = useUseSurplusAllowanceFormState(messageId)
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'

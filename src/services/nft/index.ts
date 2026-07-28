@@ -1,7 +1,7 @@
 // NFT tier fetching service for Juicebox 721 hooks
 
 import { createPublicClient, http, zeroAddress, type PublicClient } from 'viem'
-import { VIEM_CHAINS, MAINNET_VIEM_CHAINS, RPC_ENDPOINTS, MAINNET_RPC_ENDPOINTS, JB_CONTRACTS, JB_OMNICHAIN_DEPLOYER, JB_BUYBACK_HOOK, JB_BUYBACK_HOOK_REGISTRY, type SupportedChainId } from '../../constants/chains'
+import { VIEM_CHAINS, MAINNET_VIEM_CHAINS, RPC_ENDPOINTS, MAINNET_RPC_ENDPOINTS, JB_CONTRACTS, JB_OMNICHAIN_DEPLOYER, JB_BUYBACK_HOOKS, JB_BUYBACK_HOOK_REGISTRY, type SupportedChainId } from '../../constants/chains'
 import { REV_OWNER_ADDRESS, REV_OWNER_TIERED_721_HOOK_ABI } from '../../constants/abis/revDeployer'
 import {
   decodeEncodedIPFSUriCandidates,
@@ -29,7 +29,9 @@ import type { JB721TierConfigInput } from '../tiersHook'
 
 const CT_DEPLOYER = '0xf21b8717cb50e497e90f375ec532557dd9022655' as const
 const RECOGNIZED_NON_721_DATA_HOOKS = new Set([
-  JB_BUYBACK_HOOK.toLowerCase(),
+  // Every known-good buyback hook: projects can be registry-pinned to the
+  // pre-upgrade instance.
+  ...JB_BUYBACK_HOOKS.map(hook => hook.toLowerCase()),
   JB_BUYBACK_HOOK_REGISTRY.toLowerCase(),
 ])
 const DIRECTORY_ABI = [{

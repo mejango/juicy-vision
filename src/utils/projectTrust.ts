@@ -1,6 +1,7 @@
 import { type Address, type PublicClient, zeroAddress } from 'viem'
 import {
   JB_BUYBACK_HOOK,
+  JB_BUYBACK_HOOKS,
   JB_BUYBACK_HOOK_REGISTRY,
   JB_CONTRACTS,
   JB_OMNICHAIN_DEPLOYER,
@@ -11,6 +12,10 @@ import { requireRecognized721Hook } from '../services/nft'
 import { requireRecognizedLpSplitHookClone } from './addressRegistry'
 import { JB_CONTROLLER_ABI } from '../constants/abis/jbController'
 import { getProjectController } from './paymentTerminal'
+
+// Recognition, not targeting: live projects can be registry-pinned to the
+// pre-upgrade buyback hook; new routing always uses JB_BUYBACK_HOOK.
+const RECOGNIZED_BUYBACK_HOOKS = new Set(JB_BUYBACK_HOOKS.map(a => a.toLowerCase()))
 
 const RECOGNIZED_APPROVAL_HOOKS = new Set([
   '0xd25264015483caa5c34643942d41f94bed5f1e92', // JBDeadline3Hours
@@ -150,7 +155,7 @@ async function requireRecognizedDataHook(
 ): Promise<void> {
   if (isZero(address)) return
   const normalized = address.toLowerCase()
-  if (normalized === JB_BUYBACK_HOOK.toLowerCase()) return
+  if (RECOGNIZED_BUYBACK_HOOKS.has(normalized)) return
 
   if (normalized === JB_BUYBACK_HOOK_REGISTRY.toLowerCase()) {
     const resolvedHook = await client.readContract({
@@ -159,7 +164,7 @@ async function requireRecognizedDataHook(
       functionName: 'hookOf',
       args: [projectId],
     })
-    if (resolvedHook.toLowerCase() !== JB_BUYBACK_HOOK.toLowerCase()) {
+    if (!RECOGNIZED_BUYBACK_HOOKS.has(resolvedHook.toLowerCase())) {
       throw new Error(`Buyback hook not recognized: ${resolvedHook}`)
     }
     return

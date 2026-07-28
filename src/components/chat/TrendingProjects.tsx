@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useThemeStore } from '../../stores'
 import { fetchProjects, type Project } from '../../services/bendystraw'
 import { CHAINS } from '../../constants'
+import { projectPathFor } from '../../utils/projectLink'
 
 interface TrendingProjectsProps {
   onProjectClick?: (query: string) => void
@@ -88,38 +90,58 @@ export default function TrendingProjects({ onProjectClick }: TrendingProjectsPro
 
   return (
     <div className="py-1">
-      {rows.map((row, i) => (
-        <button
-          key={row.projectId}
-          type="button"
-          onClick={() => handleClick(row)}
-          className={`flex items-center gap-2.5 px-3 py-3 -mx-4 border-b text-left transition-colors ${
-            isDark ? 'border-white/10 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-50'
-          }`}
-        >
-          <span className={`text-xs w-4 text-right shrink-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-            {i + 1}
-          </span>
-          {row.logoUri ? (
-            <img
-              src={row.logoUri.replace('ipfs://', 'https://ipfs.io/ipfs/')}
-              alt=""
-              className="w-10 h-10 object-cover shrink-0"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-            />
-          ) : (
-            <span className={`w-10 h-10 shrink-0 flex items-center justify-center text-sm ${isDark ? 'bg-white/10 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
-              {row.name.slice(0, 1).toUpperCase()}
+      {rows.map((row, i) => {
+        // The row keeps the ask-the-chat behavior; the project name itself is
+        // a real link to the project page (it stops propagation).
+        const path = projectPathFor(row.chainIds[0], row.projectId)
+        return (
+          <div
+            key={row.projectId}
+            role="button"
+            tabIndex={0}
+            onClick={() => handleClick(row)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') handleClick(row)
+            }}
+            className={`flex items-center gap-2.5 px-3 py-3 -mx-4 border-b text-left cursor-pointer transition-colors ${
+              isDark ? 'border-white/10 hover:bg-white/5' : 'border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            <span className={`text-xs w-4 text-right shrink-0 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              {i + 1}
             </span>
-          )}
-          <span className="flex-1 min-w-0">
-            <span className={`block text-xs truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>{row.name}</span>
-            <span className={`block text-[11px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-              {row.payments} payment{row.payments === 1 ? '' : 's'}
+            {row.logoUri ? (
+              <img
+                src={row.logoUri.replace('ipfs://', 'https://ipfs.io/ipfs/')}
+                alt=""
+                className="w-10 h-10 object-cover shrink-0"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+              />
+            ) : (
+              <span className={`w-10 h-10 shrink-0 flex items-center justify-center text-sm ${isDark ? 'bg-white/10 text-gray-400' : 'bg-gray-100 text-gray-500'}`}>
+                {row.name.slice(0, 1).toUpperCase()}
+              </span>
+            )}
+            <span className="flex-1 min-w-0">
+              {path ? (
+                <Link
+                  to={path}
+                  onClick={(e) => e.stopPropagation()}
+                  className={`block text-xs truncate hover:underline ${isDark ? 'text-white' : 'text-gray-900'}`}
+                  title={`Open ${row.name}`}
+                >
+                  {row.name}
+                </Link>
+              ) : (
+                <span className={`block text-xs truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>{row.name}</span>
+              )}
+              <span className={`block text-[11px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                {row.payments} payment{row.payments === 1 ? '' : 's'}
+              </span>
             </span>
-          </span>
-        </button>
-      ))}
+          </div>
+        )
+      })}
     </div>
   )
 }

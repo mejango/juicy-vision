@@ -91,6 +91,18 @@ describe('runGuardedTx', () => {
     mocks.readContract.mockResolvedValue(0n)
   })
 
+  it('refuses a mainnet chain in testnet mode before anything else runs', async () => {
+    // The vitest setup runs the app in testnet mode; chain 1 is mainnet.
+    await expect(runGuardedTx(walletContext(), request({ chainId: 1 }))).rejects.toThrow(
+      /mainnet chain \(1\).*testnet mode/,
+    )
+
+    expect(mocks.review).not.toHaveBeenCalled()
+    expect(mocks.simulate).not.toHaveBeenCalled()
+    expect(mocks.sendTransaction).not.toHaveBeenCalled()
+    expect(useTransactionStore.getState().transactions).toEqual([])
+  })
+
   it('fails closed when exact-call review is cancelled and sends nothing', async () => {
     mocks.review.mockRejectedValue(new Error('Transaction review cancelled. Nothing was sent.'))
     const reverify = vi.fn()

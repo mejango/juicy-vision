@@ -151,14 +151,30 @@ function AddressDisplay({ address, chainId, isDark }: { address: string; chainId
   )
 }
 
+// Resolve the ruleset baseCurrency governing a subtree: an object's own
+// `baseCurrency` (or its `metadata.baseCurrency`) wins over the inherited one,
+// so a `weight` renders in the denomination of ITS ruleset's metadata.
+function resolveTreeBaseCurrency(value: unknown, inherited?: number): number | undefined {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return inherited
+  const record = value as Record<string, unknown>
+  const candidates = [record.baseCurrency, (record.metadata as Record<string, unknown> | undefined)?.baseCurrency]
+  for (const candidate of candidates) {
+    if (typeof candidate === 'number') return candidate
+    if (typeof candidate === 'string' && /^\d+$/.test(candidate)) return parseInt(candidate)
+  }
+  return inherited
+}
+
 // Component to render a parameter row with support for nested objects
-function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '' }: {
+function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '', baseCurrency }: {
   name: string;
   value: unknown;
   isDark: boolean;
   depth?: number;
   parentName?: string;
   chainId?: string;
+  /** The ruleset baseCurrency in effect for this subtree, when resolvable. */
+  baseCurrency?: number;
 }) {
   const [expanded, setExpanded] = useState(depth < 2) // Auto-expand first 2 levels
   const isComplex = isComplexValue(value)
@@ -185,7 +201,7 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '
   }
 
   if (!isComplex) {
-    const formattedValue = formatSimpleValue(value, name, chainId)
+    const formattedValue = formatSimpleValue(value, name, chainId, { baseCurrency })
     const isIpfsUri = typeof value === 'string' && value.startsWith('ipfs://')
     const isAddress = typeof value === 'string' && value.startsWith('0x') && value.length === 42
 
@@ -254,7 +270,7 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '
             <span className={`font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>{displayName}</span>
             <div className={`mt-0.5 space-y-0 border-l pl-3 ml-1.5 ${isDark ? 'border-gray-700' : 'border-gray-300'}`}>
               {Object.entries(innerValue as Record<string, unknown>).map(([k, v]) => (
-                <ParamRow key={k} name={k} value={v} isDark={isDark} depth={depth + 1} parentName={name} chainId={chainId} />
+                <ParamRow key={k} name={k} value={v} isDark={isDark} depth={depth + 1} parentName={name} chainId={chainId} baseCurrency={resolveTreeBaseCurrency(innerValue, baseCurrency)} />
               ))}
             </div>
           </div>
@@ -287,7 +303,7 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '
             {expanded && (
               <div className={`mt-0.5 space-y-0 border-l pl-3 ml-1.5 ${isDark ? 'border-gray-700' : 'border-gray-300'}`}>
                 {fields.map(([k, v]) => (
-                  <ParamRow key={k} name={k} value={v} isDark={isDark} depth={depth + 1} parentName={name} chainId={chainId} />
+                  <ParamRow key={k} name={k} value={v} isDark={isDark} depth={depth + 1} parentName={name} chainId={chainId} baseCurrency={resolveTreeBaseCurrency(innerValue, baseCurrency)} />
                 ))}
               </div>
             )}
@@ -326,7 +342,7 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '
                 <div key={i} className={`${i > 0 ? 'pt-1 border-t ' + (isDark ? 'border-gray-700/50' : 'border-gray-200') : ''}`}>
                   {typeof item === 'object' && item !== null ? (
                     Object.entries(item as Record<string, unknown>).map(([k, v]) => (
-                      <ParamRow key={k} name={k} value={v} isDark={isDark} depth={depth + 1} parentName={name} chainId={chainId} />
+                      <ParamRow key={k} name={k} value={v} isDark={isDark} depth={depth + 1} parentName={name} chainId={chainId} baseCurrency={resolveTreeBaseCurrency(item, baseCurrency)} />
                     ))
                   ) : (
                     <span className="font-mono">{String(item)}</span>
@@ -367,7 +383,7 @@ function ParamRow({ name, value, isDark, depth = 0, parentName = '', chainId = '
       {expanded && (
         <div className={`mt-0.5 space-y-0 border-l pl-3 ml-1.5 ${isDark ? 'border-gray-700' : 'border-gray-300'}`}>
           {entries.map(([k, v]) => (
-            <ParamRow key={k} name={k} value={v} isDark={isDark} depth={depth + 1} parentName={name} chainId={chainId} />
+            <ParamRow key={k} name={k} value={v} isDark={isDark} depth={depth + 1} parentName={name} chainId={chainId} baseCurrency={resolveTreeBaseCurrency(value, baseCurrency)} />
           ))}
         </div>
       )}
@@ -462,7 +478,7 @@ export default function TechnicalDetails({
               Parameters
             </div>
             {Object.entries(parameters).map(([key, value]) => (
-              <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={chainIdStr} />
+              <ParamRow key={key} name={key} value={value} isDark={isDark} chainId={chainIdStr} baseCurrency={resolveTreeBaseCurrency(parameters)} />
             ))}
           </div>
         </div>

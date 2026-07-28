@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { defaultChainId } from '../../config/environment'
 import { formatUnits } from "viem";
 import { tokenCurrencyId } from "@bananapus/nana-sdk-core/v6";
 import { useThemeStore } from "../../stores";
@@ -780,7 +781,7 @@ function Section({
 
 export default function RulesetSchedule({
   projectId,
-  chainId = "1",
+  chainId = defaultChainId(),
 }: RulesetScheduleProps) {
   const { theme } = useThemeStore();
   const isDark = theme === "dark";

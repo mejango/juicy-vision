@@ -119,7 +119,7 @@ vi.mock("viem", async (importOriginal) => ({
   mainnet: { id: 1 },
   optimism: { id: 10 },
   base: { id: 8453 },
-  arbitrum: { id: 42161 },
+  arbitrum: { id: 421614 },
 }));
 
 // Mock ethers for NFT metadata ID calculations.
@@ -150,7 +150,7 @@ vi.mock("../constants", async (importOriginal) => ({
   USDC_ADDRESSES: {
     1: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48" as `0x${string}`,
     10: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85" as `0x${string}`,
-    42161: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831" as `0x${string}`,
+    421614: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831" as `0x${string}`,
     8453: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" as `0x${string}`,
   },
 }));
@@ -231,7 +231,7 @@ describe("useTransactionExecutor", () => {
     // Setup default mock behaviors
     mockGetWalletClient.mockResolvedValue({
       account: { address: mockAddress },
-      getChainId: mockGetChainId.mockResolvedValue(42161),
+      getChainId: mockGetChainId.mockResolvedValue(421614),
       sendTransaction: mockSendTransaction.mockResolvedValue("0xtxhash123"),
     });
 
@@ -302,7 +302,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "25",
               memo: "Test payment",
               token: "PAY_CREDITS",
@@ -345,7 +345,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "25",
               memo: "Test payment",
               token: "PAY_CREDITS",
@@ -364,7 +364,7 @@ describe("useTransactionExecutor", () => {
       expect(JSON.parse(mockFetch.mock.calls[0][1].body)).toMatchObject({
         amount: 25,
         projectId: 456,
-        chainId: 42161,
+        chainId: 421614,
       });
     });
 
@@ -381,7 +381,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "25",
               token: "PAY_CREDITS",
               payUs: false,
@@ -415,7 +415,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               memo: "ETH payment",
               token: "ETH",
@@ -469,7 +469,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-direct-swap",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               memo: "",
               token: "ETH",
@@ -533,7 +533,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-usdc-direct-swap",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "1",
               memo: "",
               token: "USDC",
@@ -568,7 +568,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161, // Want to pay on Arbitrum
+              chainId: 421614, // Want to pay on Arbitrum
               amount: "0.1",
               token: "ETH",
               payUs: false,
@@ -581,7 +581,7 @@ describe("useTransactionExecutor", () => {
       });
 
       await waitFor(() => {
-        expect(mockSwitchChainAsync).toHaveBeenCalledWith({ chainId: 42161 });
+        expect(mockSwitchChainAsync).toHaveBeenCalledWith({ chainId: 421614 });
       });
     });
 
@@ -604,7 +604,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-cancelled",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               memo: "No send",
               token: "ETH",
@@ -634,7 +634,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-balance-failed",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               token: "ETH",
             },
@@ -678,7 +678,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-quote-changed",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               token: "ETH",
             },
@@ -737,7 +737,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-managed-native",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               token: "ETH",
             },
@@ -747,7 +747,7 @@ describe("useTransactionExecutor", () => {
 
       await waitFor(() =>
         expect(mockExecuteManagedTransaction).toHaveBeenCalledWith(
-          42161,
+          421614,
           "0x130f5dd2bd8805443cf41755253d778a75a67f53",
           expect.any(String),
           "100000000000000000",
@@ -773,7 +773,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "25",
               memo: "USDC payment",
               token: "USDC",
@@ -805,7 +805,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "25",
               token: "USDC",
               payUs: false,
@@ -837,7 +837,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-usdc-insufficient",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "25",
               token: "USDC",
             },
@@ -887,7 +887,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-router-usdc",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "25",
               token: "USDC",
             },
@@ -929,7 +929,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               token: "ETH",
               payUs: false,
@@ -960,7 +960,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               token: "ETH",
               payUs: false,
@@ -991,7 +991,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               token: "ETH",
               memo: "",
@@ -1028,7 +1028,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               token: "ETH",
               memo: "",
@@ -1056,7 +1056,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               token: "ETH",
               memo: "",
@@ -1103,7 +1103,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-add-balance",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               token: "ETH",
               action: "addToBalance",
@@ -1133,7 +1133,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               token: "ETH",
               payUs: false,
@@ -1167,7 +1167,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               token: "ETH",
               payUs: false,
@@ -1200,7 +1200,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               token: "ETH",
               payUs: false,
@@ -1221,6 +1221,36 @@ describe("useTransactionExecutor", () => {
           }),
         );
       });
+    });
+
+    it("blocks a mainnet-chain payment while the app is in testnet mode", async () => {
+      renderHook(() => useTransactionExecutor());
+
+      await act(async () => {
+        window.dispatchEvent(
+          new CustomEvent("juice:pay-project", {
+            detail: {
+              txId: "tx-env-guard",
+              projectId: "456",
+              chainId: 42161, // Arbitrum MAINNET — cross-environment in tests
+              amount: "0.1",
+              token: "ETH",
+            },
+          }),
+        );
+      });
+
+      await waitFor(() => {
+        expect(mockUpdateTransaction).toHaveBeenCalledWith(
+          "tx-env-guard",
+          expect.objectContaining({
+            status: "failed",
+            error: expect.stringMatching(/Blocked: chain 42161 .*testnet mode/),
+          }),
+        );
+      });
+      expect(mockSendTransaction).not.toHaveBeenCalled();
+      expect(mockPublicCall).not.toHaveBeenCalled();
     });
 
     it("handles unsupported chain", async () => {
@@ -1249,7 +1279,9 @@ describe("useTransactionExecutor", () => {
           "tx-123",
           expect.objectContaining({
             status: "failed",
-            error: "Unsupported chain",
+            // The environment guard rejects out-of-environment chains before
+            // the viem chain lookup can label them merely unsupported.
+            error: expect.stringMatching(/Blocked: chain 999999/),
           }),
         );
       });
@@ -1272,7 +1304,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               token: "ETH",
               payUs: false,
@@ -1306,7 +1338,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               token: "ETH",
               payUs: false,
@@ -1321,7 +1353,7 @@ describe("useTransactionExecutor", () => {
       await waitFor(() => {
         expect(mockCreateTransactionRecord).toHaveBeenCalledWith(
           expect.objectContaining({
-            chainId: 42161,
+            chainId: 421614,
             fromAddress: mockAddress,
             amount: "0.1",
             projectId: "456",
@@ -1339,7 +1371,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               token: "ETH",
               payUs: false,
@@ -1373,7 +1405,7 @@ describe("useTransactionExecutor", () => {
             detail: {
               txId: "tx-123",
               projectId: "456",
-              chainId: 42161,
+              chainId: 421614,
               amount: "0.1",
               token: "ETH",
               payUs: false,

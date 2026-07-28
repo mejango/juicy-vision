@@ -26,6 +26,10 @@ interface MockState {
   delay: bigint | Error
   borrowableNow: bigint | Error
   contexts: Array<{ token: Address; decimals: number; currency: number }> | Error
+  /** Ruleset metadata read (fee + scope inputs). Error = unreadable ruleset. */
+  ruleset?: Error
+  scopeLocal: boolean
+  feeFreeSurplus: bigint | Error
 }
 
 interface RecordedCall {
@@ -43,6 +47,8 @@ function defaults(): MockState {
     delay: 0n,
     borrowableNow: 3n * 10n ** 18n,
     contexts: [{ token: NATIVE_TOKEN, decimals: 18, currency: NATIVE_CURRENCY }],
+    scopeLocal: true,
+    feeFreeSurplus: 0n,
   }
 }
 
@@ -72,6 +78,17 @@ function mockClient(state: MockState, calls: RecordedCall[] = []): PublicClient 
           const cashOutCount = args[1] as bigint
           return calculateCashOutValue(state.surplus, resolve(state.supply), cashOutCount, state.taxRate)
         }
+        case 'currentRulesetOf': {
+          if (state.ruleset instanceof Error) throw state.ruleset
+          return [
+            {},
+            { cashOutTaxRate: state.taxRate, scopeCashOutsToLocalBalances: state.scopeLocal },
+          ] as const
+        }
+        case 'primaryTerminalOf':
+          return '0x7777777777777777777777777777777777777777'
+        case 'feeFreeSurplusOf':
+          return resolve(state.feeFreeSurplus)
         case 'cashOutDelayOf':
           return resolve(state.delay)
         case 'borrowableAmountFrom':
@@ -90,6 +107,7 @@ function row(overrides: Partial<YouPositionRow>): YouPositionRow {
     creditBalance: 0n,
     erc20Balance: 1n,
     cashOutValue: 1n,
+    cashOutScopedToLocal: true,
     maxLoan: 1n,
     lockedUntil: null,
     accountingToken: { token: NATIVE_TOKEN, symbol: 'ETH', decimals: 18, currency: NATIVE_CURRENCY },
@@ -170,9 +188,11 @@ describe('loadYouPosition', () => {
     expect(result.balance).toBe(state.balance)
     expect(result.creditBalance).toBe(state.credit)
     expect(result.erc20Balance).toBe((state.balance as bigint) - (state.credit as bigint))
-    expect(result.cashOutValue).toBe(
-      calculateCashOutValue(state.surplus, state.supply as bigint, state.balance as bigint, state.taxRate),
-    )
+    // The row's cash-out value is NET of the 2.5% protocol fee (tax != 0 fees
+    // the whole reclaim: gross − floor(gross / 40)).
+    const gross = calculateCashOutValue(state.surplus, state.supply as bigint, state.balance as bigint, state.taxRate)
+    expect(result.cashOutValue).toBe(gross - gross / 40n)
+    expect(result.cashOutScopedToLocal).toBe(true)
     expect(result.maxLoan).toBe(state.borrowableNow)
     expect(result.lockedUntil).toBe(2_000_000_000n)
     expect(result.accountingToken).toEqual({
@@ -200,6 +220,7 @@ describe('loadYouPosition', () => {
       creditBalance: null,
       erc20Balance: null,
       cashOutValue: null,
+      cashOutScopedToLocal: null,
       maxLoan: null,
       lockedUntil: null,
       accountingToken: null,
@@ -245,6 +266,47 @@ describe('loadYouPosition', () => {
     state.supply = 1n
     const [result] = await loadYouPosition(project, CHAINS_HOME, ACCOUNT, { clientFor: () => mockClient(state) })
     expect(result.cashOutValue).toBeNull()
+  })
+
+  it('zero-tax rulesets fee only min(reclaim, feeFreeSurplusOf)', async () => {
+    const state = defaults()
+    state.taxRate = 0
+    // Gross (proportional at zero tax) = 50e18 × 100/1000 = 5e18.
+    state.feeFreeSurplus = 2n * 10n ** 18n // fee = 2e18/40 = 0.05e18
+    const calls: RecordedCall[] = []
+    const [result] = await loadYouPosition(project, CHAINS_HOME, ACCOUNT, { clientFor: () => mockClient(state, calls) })
+    expect(result.cashOutValue).toBe(5n * 10n ** 18n - (2n * 10n ** 18n) / 40n)
+    expect(calls.some(call => call.functionName === 'feeFreeSurplusOf')).toBe(true)
+  })
+
+  it('non-zero-tax rulesets never read feeFreeSurplusOf', async () => {
+    const state = defaults()
+    const calls: RecordedCall[] = []
+    await loadYouPosition(project, CHAINS_HOME, ACCOUNT, { clientFor: () => mockClient(state, calls) })
+    expect(calls.some(call => call.functionName === 'feeFreeSurplusOf')).toBe(false)
+  })
+
+  it('a failed zero-tax fee read nulls the value instead of showing gross', async () => {
+    const state = defaults()
+    state.taxRate = 0
+    state.feeFreeSurplus = new Error('terminal read failed')
+    const [result] = await loadYouPosition(project, CHAINS_HOME, ACCOUNT, { clientFor: () => mockClient(state) })
+    expect(result.cashOutValue).toBeNull()
+  })
+
+  it('an unreadable ruleset nulls the cash-out value and the scope flag', async () => {
+    const state = defaults()
+    state.ruleset = new Error('ruleset read failed')
+    const [result] = await loadYouPosition(project, CHAINS_HOME, ACCOUNT, { clientFor: () => mockClient(state) })
+    expect(result.cashOutValue).toBeNull()
+    expect(result.cashOutScopedToLocal).toBeNull()
+  })
+
+  it('reports the omnichain cash-out scope from the ruleset metadata', async () => {
+    const state = defaults()
+    state.scopeLocal = false
+    const [result] = await loadYouPosition(project, CHAINS_HOME, ACCOUNT, { clientFor: () => mockClient(state) })
+    expect(result.cashOutScopedToLocal).toBe(false)
   })
 
   it('treats credits exceeding the balance as an unknown split', async () => {
@@ -346,5 +408,26 @@ describe('accounting-token + totals helpers', () => {
         'cashOutValue',
       ),
     ).toBe(3n)
+  })
+
+  it('suppresses the summed cash-out total when any chain is not locally scoped', () => {
+    // Local quotes against a shared omnichain surplus don't sum to anything
+    // real — the per-chain rows stand alone, the total must be null.
+    expect(
+      monetaryTotalIfComplete(
+        [row({ cashOutValue: 2n }), row({ cashOutValue: 3n, cashOutScopedToLocal: false })],
+        'cashOutValue',
+      ),
+    ).toBeNull()
+    expect(
+      monetaryTotalIfComplete([row({ cashOutScopedToLocal: null })], 'cashOutValue'),
+    ).toBeNull()
+    // The loan total is unaffected by the cash-out scope flag.
+    expect(
+      monetaryTotalIfComplete(
+        [row({ maxLoan: 2n, cashOutScopedToLocal: false }), row({ maxLoan: 3n })],
+        'maxLoan',
+      ),
+    ).toBe(5n)
   })
 })

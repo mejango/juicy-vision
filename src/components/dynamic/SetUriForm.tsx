@@ -1,20 +1,32 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { defaultChainId } from '../../config/environment'
 import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useSetUriFormState } from '../../hooks/useComponentState'
 import {
   fetchProject,
+  fetchCurrentProjectMetadataForEdit,
   type Project,
+  type CurrentProjectMetadata,
 } from '../../services/bendystraw'
+import { pinFileToBackend, pinMetadata } from '../../services/ipfsPinning'
 import { resolveIpfsUri } from '../../utils/ipfs'
+import {
+  customPropertiesOf,
+  editsFromMetadata,
+  mergeWithCustomProperties,
+  metadataEquals,
+  parseCustomPropertiesJson,
+  type ProjectMetadataEdits,
+} from '../../utils/projectMetadataEdit'
 import { SetUriModal } from '../payment'
 import { ProjectLink } from './ProjectLink'
 import { useManagedWallet } from '../../hooks'
 import { resolveProjectChains } from '../../utils/projectChains'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { IpfsImage } from '../ui/IpfsMedia'
+import { CreateFlowTheme, ImagePicker } from './create-flow/controls'
 import { MAINNET_CHAINS } from '../../constants'
-import { isIpfsCid } from '@bananapus/nana-sdk-core'
 
 interface SetUriFormProps {
   projectId: string
@@ -32,17 +44,49 @@ interface ChainProjectData {
   selected: boolean
 }
 
-// Validate IPFS CID format (basic check)
-function isValidIpfsCid(value: string): boolean {
-  return isIpfsCid(extractCid(value))
+interface EditableFields {
+  name: string
+  tagline: string
+  description: string
+  logoUri: string
+  infoUri: string
+  payDisclosure: string
+  tagsText: string
+  tagsEditable: boolean
+  /** Raw JSON of every key the managed inputs don't cover — edited as-is in the Advanced section. */
+  customJsonText: string
 }
 
-// Extract CID from input (handles both raw CIDs and ipfs:// URIs)
-function extractCid(value: string): string {
-  return value.replace(/^ipfs:\/\//, '').trim()
+function fieldsFromMetadata(metadata: Record<string, unknown>): EditableFields {
+  const prefilled = editsFromMetadata(metadata)
+  const custom = customPropertiesOf(metadata)
+  return {
+    name: prefilled.name,
+    tagline: prefilled.tagline,
+    description: prefilled.description,
+    logoUri: prefilled.logoUri,
+    infoUri: prefilled.infoUri,
+    payDisclosure: prefilled.payDisclosure,
+    tagsText: prefilled.tags.join(', '),
+    tagsEditable: prefilled.tagsEditable,
+    customJsonText: Object.keys(custom).length > 0 ? JSON.stringify(custom, null, 2) : '',
+  }
 }
 
-export default function SetUriForm({ projectId, chainId = '1', messageId }: SetUriFormProps) {
+function editsFromFields(fields: EditableFields): ProjectMetadataEdits {
+  return {
+    name: fields.name,
+    tagline: fields.tagline,
+    description: fields.description,
+    logoUri: fields.logoUri,
+    infoUri: fields.infoUri,
+    payDisclosure: fields.payDisclosure,
+    tags: fields.tagsText.split(',').map(tag => tag.trim()).filter(Boolean),
+    tagsEditable: fields.tagsEditable,
+  }
+}
+
+export default function SetUriForm({ projectId, chainId = defaultChainId(), messageId }: SetUriFormProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { isConnected } = useAccount()
@@ -57,6 +101,12 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [reloadNonce, setReloadNonce] = useState(0)
+
+  // Current on-chain metadata — the merge base. null + metadataError means the
+  // fetch failed and saving stays blocked (never merge over a partial object).
+  const [currentMetadata, setCurrentMetadata] = useState<CurrentProjectMetadata | null>(null)
+  const [metadataError, setMetadataError] = useState<string | null>(null)
 
   // Chain state
   const [chainProjectData, setChainProjectData] = useState<ChainProjectData[]>([])
@@ -64,28 +114,44 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
   const primaryChainId = parseInt(chainId)
 
   // Form state
+  const [fields, setFields] = useState<EditableFields | null>(null)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [logoBusy, setLogoBusy] = useState(false)
+  const [preparing, setPreparing] = useState(false)
+  const [preparationError, setPreparationError] = useState<string | null>(null)
   const [newUri, setNewUri] = useState('')
   const [showModal, setShowModal] = useState(false)
 
   // Derived state
   const selectedChains = chainProjectData.filter(cd => cd.selected)
   const isOmnichain = chainProjectData.length > 1
-  const currentUri = project?.metadataUri || ''
-  const newCid = extractCid(newUri)
-  const normalizedUri = newCid ? `ipfs://${newCid}` : ''
-  const isValidUri = newUri.trim() === '' || isValidIpfsCid(newUri)
-  const hasChange = newCid && newCid !== extractCid(currentUri)
+  const currentUri = currentMetadata?.uri || ''
+  // null = the Advanced JSON is invalid, which blocks saving.
+  const parsedCustom = useMemo(
+    () => fields ? parseCustomPropertiesJson(fields.customJsonText) : null,
+    [fields],
+  )
+  const customJsonInvalid = !!fields && parsedCustom === null
+  const mergedMetadata = useMemo(
+    () => currentMetadata && fields && parsedCustom
+      ? mergeWithCustomProperties(currentMetadata.metadata, editsFromFields(fields), parsedCustom)
+      : null,
+    [currentMetadata, fields, parsedCustom],
+  )
+  const hasChange = !!currentMetadata && !!mergedMetadata && !metadataEquals(mergedMetadata, currentMetadata.metadata)
+  const nameValid = !!fields && fields.name.trim().length > 0
 
   // Dispatch event to open wallet panel
   const openWalletPanel = () => {
     window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))
   }
 
-  // Load project data
+  // Load project data + the CURRENT on-chain metadata JSON (the merge base)
   useEffect(() => {
     async function load() {
       setLoading(true)
       setError(null)
+      setMetadataError(null)
 
       try {
         const [projectData, chainResolution] = await Promise.all([
@@ -103,13 +169,36 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
       } catch (err) {
         console.error('Failed to load project:', err)
         setError('Failed to load project data')
+        setLoading(false)
+        return
+      }
+
+      try {
+        const current = await fetchCurrentProjectMetadataForEdit(projectId, primaryChainId)
+        const prefilled = fieldsFromMetadata(current.metadata)
+        setCurrentMetadata(current)
+        setFields(prefilled)
+        // Surface existing custom fields immediately so operators can see them.
+        setAdvancedOpen(prefilled.customJsonText !== '')
+      } catch (err) {
+        console.error('Failed to load current project metadata:', err)
+        setCurrentMetadata(null)
+        setFields(null)
+        setMetadataError(
+          'The current project metadata could not be loaded. Editing is disabled so existing fields are never overwritten with a partial copy.'
+        )
       } finally {
         setLoading(false)
       }
     }
 
     load()
-  }, [projectId, primaryChainId])
+  }, [projectId, primaryChainId, reloadNonce])
+
+  const updateField = useCallback(<K extends keyof EditableFields>(key: K, value: EditableFields[K]) => {
+    if (isLocked) return
+    setFields(prev => prev ? { ...prev, [key]: value } : prev)
+  }, [isLocked])
 
   // Toggle chain selection
   const toggleChainSelection = useCallback((chainId: number) => {
@@ -134,11 +223,11 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
   const handleStarted = useCallback(() => {
     updatePersistedState({
       status: 'in_progress',
-      uri: normalizedUri,
+      uri: newUri,
       selectedChains: selectedChains.map(c => c.chainId),
       submittedAt: new Date().toISOString(),
     })
-  }, [updatePersistedState, normalizedUri, selectedChains])
+  }, [updatePersistedState, newUri, selectedChains])
 
   const handleError = useCallback((errorMsg: string) => {
     updatePersistedState({
@@ -147,26 +236,60 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
     })
   }, [updatePersistedState])
 
-  // Submit handler
-  const handleSubmit = useCallback(() => {
-    if (isLocked || selectedChains.length === 0) return
-    if (!newCid || !isValidUri) return
+  // Pin the merged metadata (current JSON spread first, edited fields on top),
+  // then review the exact pinned URI. The form never accepts a hand-pasted CID.
+  const handleSubmit = useCallback(async () => {
+    if (isLocked || preparing || logoBusy || selectedChains.length === 0) return
+    if (!currentMetadata || !mergedMetadata || !hasChange || !nameValid || !fields || customJsonInvalid) return
 
     if (!hasActiveWallet) {
       openWalletPanel()
       return
     }
 
-    // Save reviewed inputs without claiming execution has started.
-    updatePersistedState({
-      status: 'pending',
-      uri: normalizedUri,
-      selectedChains: selectedChains.map(c => c.chainId),
-      submittedAt: new Date().toISOString(),
-    })
+    setPreparing(true)
+    setPreparationError(null)
+    try {
+      const uri = await pinMetadata(mergedMetadata, `project-${fields.name.trim()}`)
+      setNewUri(uri)
+      // Save reviewed inputs without claiming execution has started.
+      updatePersistedState({
+        status: 'pending',
+        uri,
+        selectedChains: selectedChains.map(c => c.chainId),
+        submittedAt: new Date().toISOString(),
+      })
+      setShowModal(true)
+    } catch (err) {
+      setPreparationError(err instanceof Error ? err.message : 'Could not prepare the updated metadata')
+    } finally {
+      setPreparing(false)
+    }
+  }, [
+    isLocked,
+    preparing,
+    logoBusy,
+    selectedChains,
+    currentMetadata,
+    mergedMetadata,
+    hasChange,
+    nameValid,
+    fields,
+    customJsonInvalid,
+    hasActiveWallet,
+    updatePersistedState,
+  ])
 
-    setShowModal(true)
-  }, [isLocked, selectedChains, newCid, normalizedUri, isValidUri, hasActiveWallet, updatePersistedState])
+  const handleLogoPick = useCallback((file: File) => {
+    if (isLocked) return
+    setLogoBusy(true)
+    pinFileToBackend(file, file.name)
+      .then(uri => setFields(prev => prev ? { ...prev, logoUri: uri } : prev))
+      .catch((err: unknown) => {
+        setPreparationError(err instanceof Error ? err.message : 'Could not upload the logo')
+      })
+      .finally(() => setLogoBusy(false))
+  }, [isLocked])
 
   // Loading state
   if (loading) {
@@ -200,6 +323,13 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
 
   const logoUrl = project?.logoUri ? resolveIpfsUri(project.logoUri) : null
   const chainInfo = CHAIN_INFO[primaryChainId] || CHAIN_INFO[1]
+
+  const inputClass = `w-full px-3 py-2.5 text-sm outline-none ${
+    isDark
+      ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-600'
+      : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'
+  } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''}`
+  const fieldLabelClass = `text-xs font-medium mb-1 block ${isDark ? 'text-gray-300' : 'text-gray-600'}`
 
   return (
     <div className="w-full">
@@ -298,125 +428,265 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
           )}
         </div>
 
-        {/* New URI Input */}
-        <div className="p-4">
-          <div className={`text-xs font-medium mb-2 ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
-            New Metadata URI
-          </div>
-          <input
-            type="text"
-            value={newUri}
-            onChange={(e) => setNewUri(e.target.value)}
-            disabled={isLocked}
-            placeholder="ipfs://Qm... or paste IPFS CID"
-            className={`w-full px-3 py-2.5 text-sm font-mono outline-none ${
-              isDark
-                ? 'bg-juice-dark border border-white/10 text-white placeholder-gray-600'
-                : 'bg-white border border-gray-200 text-gray-900 placeholder-gray-400'
-            } ${isLocked ? 'opacity-50 cursor-not-allowed' : ''} ${
-              newUri && !isValidUri ? 'border-red-500' : ''
-            }`}
-          />
-          {newUri && !isValidUri && (
-            <div className={`mt-1 text-xs ${isDark ? 'text-red-400' : 'text-red-600'}`}>
-              Please enter a valid IPFS CID
+        {/* Fail-closed: without the current JSON, editing would overwrite unknown fields. */}
+        {metadataError && (
+          <div className="p-4">
+            <div className={`p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
+              {metadataError}
             </div>
-          )}
-          <div className={`mt-2 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-            The metadata URI points to a JSON file containing project info (name, description, logo, etc.)
+            <button
+              onClick={() => setReloadNonce(n => n + 1)}
+              className={`mt-3 w-full py-2 text-sm font-medium border-2 transition-colors ${
+                isDark
+                  ? 'border-white/20 text-white hover:bg-white/10'
+                  : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              Retry
+            </button>
           </div>
-        </div>
+        )}
 
-        {/* Submit Section */}
-        <div className={`p-4 border-t ${isDark ? 'border-gray-600/50' : 'border-gray-200'}`}>
-          {/* Transaction Status Indicator */}
-          {isLocked && (
-            <div className={`mb-3 p-3 text-sm ${
-              persistedState?.status === 'completed'
-                ? isDark ? 'bg-green-500/10' : 'bg-green-50'
-                : persistedState?.status === 'failed'
-                  ? isDark ? 'bg-red-500/10' : 'bg-red-50'
-                  : isDark ? 'bg-purple-500/10' : 'bg-purple-50'
-            }`}>
-              <div className={`flex items-center gap-2 ${
-                persistedState?.status === 'completed'
-                  ? isDark ? 'text-green-400' : 'text-green-600'
-                  : persistedState?.status === 'failed'
-                    ? isDark ? 'text-red-400' : 'text-red-600'
-                    : isDark ? 'text-purple-400' : 'text-purple-600'
-              }`}>
-                {persistedState?.status === 'completed' ? (
-                  <>
-                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    <span>Metadata updated successfully!</span>
-                  </>
-                ) : persistedState?.status === 'failed' ? (
-                  <>
-                    <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                    <span>Transaction failed</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    <span>Transaction pending...</span>
-                  </>
-                )}
-              </div>
-              {persistedState?.txHashes && Object.keys(persistedState.txHashes).length > 0 && (
-                <div className="mt-2 space-y-1">
-                  {Object.entries(persistedState.txHashes).map(([cid, hash]) => {
-                    const chain = CHAIN_INFO[parseInt(cid)]
-                    return (
-                      <a
-                        key={cid}
-                        href={`https://${chain?.slug === 'eth' ? '' : chain?.slug + '.'}etherscan.io/tx/${hash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`text-xs ml-6 underline block ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}
-                      >
-                        {chain?.name || `Chain ${cid}`}: View on explorer
-                      </a>
-                    )
-                  })}
+        {/* Metadata editor */}
+        {fields && currentMetadata && (
+          <div className="p-4 space-y-4">
+            <div>
+              <label className={fieldLabelClass}>Name</label>
+              <input
+                type="text"
+                data-testid="seturi-name"
+                value={fields.name}
+                onChange={(e) => updateField('name', e.target.value)}
+                disabled={isLocked || preparing}
+                placeholder="Project name"
+                className={inputClass}
+              />
+              {!nameValid && (
+                <div className={`mt-1 text-xs ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+                  A project name is required
                 </div>
               )}
-              {persistedState?.error && (
-                <p className={`text-xs mt-1 ml-6 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                  {persistedState.error}
-                </p>
+            </div>
+
+            <div>
+              <label className={fieldLabelClass}>Tagline</label>
+              <input
+                type="text"
+                data-testid="seturi-tagline"
+                value={fields.tagline}
+                onChange={(e) => updateField('tagline', e.target.value)}
+                disabled={isLocked || preparing}
+                placeholder="A brief one-sentence summary"
+                className={inputClass}
+              />
+            </div>
+
+            <div>
+              <label className={fieldLabelClass}>Description</label>
+              <textarea
+                data-testid="seturi-description"
+                value={fields.description}
+                onChange={(e) => updateField('description', e.target.value)}
+                disabled={isLocked || preparing}
+                placeholder="What is this project about?"
+                rows={3}
+                className={inputClass}
+              />
+            </div>
+
+            <div>
+              <label className={fieldLabelClass}>Logo</label>
+              <CreateFlowTheme.Provider value={{ isDark }}>
+                <ImagePicker
+                  uri={fields.logoUri}
+                  busy={logoBusy}
+                  onPick={handleLogoPick}
+                  onClear={() => updateField('logoUri', '')}
+                />
+              </CreateFlowTheme.Provider>
+            </div>
+
+            <div>
+              <label className={fieldLabelClass}>Website</label>
+              <input
+                type="text"
+                data-testid="seturi-infouri"
+                value={fields.infoUri}
+                onChange={(e) => updateField('infoUri', e.target.value)}
+                disabled={isLocked || preparing}
+                placeholder="https://…"
+                className={inputClass}
+              />
+            </div>
+
+            {fields.tagsEditable && (
+              <div>
+                <label className={fieldLabelClass}>Tags</label>
+                <input
+                  type="text"
+                  data-testid="seturi-tags"
+                  value={fields.tagsText}
+                  onChange={(e) => updateField('tagsText', e.target.value)}
+                  disabled={isLocked || preparing}
+                  placeholder="art, music, community"
+                  className={inputClass}
+                />
+                <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                  Comma-separated. Tags help with project discovery.
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className={fieldLabelClass}>Payment notice</label>
+              <textarea
+                data-testid="seturi-pay-disclosure"
+                value={fields.payDisclosure}
+                onChange={(e) => updateField('payDisclosure', e.target.value)}
+                disabled={isLocked || preparing}
+                placeholder="Shown to payers before they pay. Leave empty for none."
+                rows={2}
+                className={inputClass}
+              />
+            </div>
+
+            {/* Advanced: raw JSON for every key the managed inputs don't cover */}
+            <div>
+              <button
+                type="button"
+                onClick={() => setAdvancedOpen(open => !open)}
+                className={`text-xs font-medium flex items-center gap-1 ${isDark ? 'text-gray-300 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                <span>{advancedOpen ? '▾' : '▸'}</span>
+                Advanced: custom fields
+              </button>
+              {advancedOpen && (
+                <div className="mt-2">
+                  <textarea
+                    data-testid="seturi-custom-json"
+                    value={fields.customJsonText}
+                    onChange={(e) => updateField('customJsonText', e.target.value)}
+                    disabled={isLocked || preparing}
+                    placeholder={'{\n  "myCustomField": "value"\n}'}
+                    rows={6}
+                    spellCheck={false}
+                    className={`${inputClass} font-mono`}
+                  />
+                  {customJsonInvalid && (
+                    <div data-testid="seturi-custom-json-error" className={`mt-1 text-xs ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+                      Custom fields must be a valid JSON object. Fix it to save.
+                    </div>
+                  )}
+                  <div className={`mt-1 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                    Every metadata field the inputs above don't cover, saved exactly as written.
+                    Remove a key to delete it; the inputs above win if a key appears in both.
+                  </div>
+                </div>
               )}
             </div>
-          )}
+          </div>
+        )}
 
-          <button
-            onClick={handleSubmit}
-            disabled={isLocked || selectedChains.length === 0 || !hasChange || !isValidUri}
-            className={`w-full py-3 text-sm font-bold transition-colors ${
-              isLocked || selectedChains.length === 0 || !hasChange || !isValidUri
-                ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
-                : 'bg-purple-500 hover:bg-purple-500/90 text-white'
-            }`}
-          >
-            {persistedState?.status === 'completed'
-              ? 'Updated'
-              : persistedState?.status === 'in_progress'
-                ? 'Pending...'
-                : `Update Metadata${selectedChains.length > 1 ? ` on ${selectedChains.length} Chains` : ''}`}
-          </button>
+        {/* Submit Section */}
+        {fields && currentMetadata && (
+          <div className={`p-4 border-t ${isDark ? 'border-gray-600/50' : 'border-gray-200'}`}>
+            {/* Transaction Status Indicator */}
+            {isLocked && (
+              <div className={`mb-3 p-3 text-sm ${
+                persistedState?.status === 'completed'
+                  ? isDark ? 'bg-green-500/10' : 'bg-green-50'
+                  : persistedState?.status === 'failed'
+                    ? isDark ? 'bg-red-500/10' : 'bg-red-50'
+                    : isDark ? 'bg-purple-500/10' : 'bg-purple-50'
+              }`}>
+                <div className={`flex items-center gap-2 ${
+                  persistedState?.status === 'completed'
+                    ? isDark ? 'text-green-400' : 'text-green-600'
+                    : persistedState?.status === 'failed'
+                      ? isDark ? 'text-red-400' : 'text-red-600'
+                      : isDark ? 'text-purple-400' : 'text-purple-600'
+                }`}>
+                  {persistedState?.status === 'completed' ? (
+                    <>
+                      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>Metadata updated successfully!</span>
+                    </>
+                  ) : persistedState?.status === 'failed' ? (
+                    <>
+                      <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      <span>Transaction failed</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 flex-shrink-0 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      <span>Transaction pending...</span>
+                    </>
+                  )}
+                </div>
+                {persistedState?.txHashes && Object.keys(persistedState.txHashes).length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {Object.entries(persistedState.txHashes).map(([cid, hash]) => {
+                      const chain = CHAIN_INFO[parseInt(cid)]
+                      return (
+                        <a
+                          key={cid}
+                          href={`${chain?.explorerTx || 'https://etherscan.io/tx/'}${hash}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`text-xs ml-6 underline block ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}
+                        >
+                          {chain?.name || `Chain ${cid}`}: View on explorer
+                        </a>
+                      )
+                    })}
+                  </div>
+                )}
+                {persistedState?.error && (
+                  <p className={`text-xs mt-1 ml-6 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    {persistedState.error}
+                  </p>
+                )}
+              </div>
+            )}
 
-          <p className={`mt-3 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-            {isOmnichain
-              ? 'The metadata URI will be updated on all selected chains. This affects how the project appears across the ecosystem.'
-              : 'Update the metadata URI for this project. This affects how the project name, description, and logo appear.'}
-          </p>
-        </div>
+            {preparationError && (
+              <div className={`mb-3 p-3 text-sm ${isDark ? 'bg-red-500/10 text-red-400' : 'bg-red-50 text-red-600'}`}>
+                {preparationError}
+              </div>
+            )}
+
+            <button
+              onClick={handleSubmit}
+              disabled={isLocked || preparing || logoBusy || selectedChains.length === 0 || !hasChange || !nameValid || customJsonInvalid}
+              className={`w-full py-3 text-sm font-bold transition-colors ${
+                isLocked || preparing || logoBusy || selectedChains.length === 0 || !hasChange || !nameValid || customJsonInvalid
+                  ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
+                  : 'bg-purple-500 hover:bg-purple-500/90 text-white'
+              }`}
+            >
+              {persistedState?.status === 'completed'
+                ? 'Updated'
+                : persistedState?.status === 'in_progress'
+                  ? 'Pending...'
+                  : preparing
+                    ? 'Preparing metadata...'
+                    : `Update Metadata${selectedChains.length > 1 ? ` on ${selectedChains.length} Chains` : ''}`}
+            </button>
+
+            <p className={`mt-3 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+              {isOmnichain
+                ? 'Your edits are merged into the current metadata (custom fields are kept), pinned to IPFS, and the pinned URI is set on all selected chains.'
+                : 'Your edits are merged into the current metadata (custom fields are kept), pinned to IPFS, and the pinned URI is set for this project.'}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Modal */}
@@ -426,7 +696,7 @@ export default function SetUriForm({ projectId, chainId = '1', messageId }: SetU
           onClose={() => setShowModal(false)}
           projectName={project?.name}
           chainProjectData={selectedChains}
-          newUri={normalizedUri}
+          newUri={newUri}
           currentUri={currentUri}
           onStarted={handleStarted}
           onConfirmed={handleConfirmed}

@@ -12,6 +12,7 @@ import { SPLIT_GROUP_RESERVED } from '../../constants/abis/jbSplits'
 import { CHAINS as CHAIN_INFO, RPC_ENDPOINTS, VIEM_CHAINS, type SupportedChainId } from '../../constants'
 import { getProjectController } from '../../utils/paymentTerminal'
 import { assertCurrentRulesetId } from '../../utils/projectTrust'
+import { assertStageRulesetUnchanged } from '../../services/reservedSplits'
 import { simulateTransaction } from '../../utils/transactionSafety'
 import { buildSplitGroup } from '../../utils/splitSafety'
 import { fetchProjectSplits, type JBSplitData } from '../../services/bendystraw'
@@ -53,6 +54,8 @@ interface SetSplitsModalProps {
   payoutSplits: EditableSplit[]
   reservedSplits: EditableSplit[]
   baseCurrency: number
+  /** Start-order index of the stage being edited; omitted = the current ruleset. */
+  stageIndex?: number
   onConfirmed?: (txHashes: Record<number, string>, bundleId?: string) => void
   onError?: (error: string) => void
 }
@@ -81,6 +84,7 @@ export default function SetSplitsModal({
   chainSplitsData,
   payoutSplits,
   reservedSplits,
+  stageIndex,
   onConfirmed,
   onError,
 }: SetSplitsModalProps) {
@@ -298,11 +302,21 @@ export default function SetSplitsModal({
           publicClient,
           BigInt(chainData.projectId),
         )
-        await assertCurrentRulesetId({
-          client: publicClient,
-          projectId: BigInt(chainData.projectId),
-          expectedRulesetId: BigInt(chainData.rulesetId),
-        })
+        // A queued stage is legitimately not the current ruleset, so guard the
+        // ruleset the edit actually targets.
+        if (stageIndex == null) {
+          await assertCurrentRulesetId({
+            client: publicClient,
+            projectId: BigInt(chainData.projectId),
+            expectedRulesetId: BigInt(chainData.rulesetId),
+          })
+        } else {
+          await assertStageRulesetUnchanged({
+            chainProject: { chainId: chainData.chainId, projectId: chainData.projectId },
+            stageIndex,
+            expectedRulesetId: chainData.rulesetId,
+          })
+        }
         return controller
       }
       const controllerAddress = await resolveFreshController()
@@ -368,7 +382,7 @@ export default function SetSplitsModal({
       updateChainState(chainData.chainId, { status: 'failed', error: errorMessage })
       throw err
     }
-  }, [walletClient, address, buildSplitGroups, addTransaction, updateChainState, isManagedMode, managedAddress, assertReviewedSplitsUnchanged, assertCurrentAccount, guarded])
+  }, [walletClient, address, buildSplitGroups, addTransaction, updateChainState, isManagedMode, managedAddress, assertReviewedSplitsUnchanged, assertCurrentAccount, guarded, stageIndex])
 
   // Start the set splits process
   const handleStart = useCallback(async () => {
@@ -390,6 +404,7 @@ export default function SetSplitsModal({
     if (useOmnichain && isOmnichain) {
       // Use Relayr omnichain execution
       await setSplits({
+        stageIndex,
         chainData: chainSplitsData.map(cd => ({
           chainId: cd.chainId,
           projectId: cd.projectId,
@@ -430,7 +445,7 @@ export default function SetSplitsModal({
       }
       setCurrentChainIndex(-1)
     }
-  }, [walletClient, chainSplitsData, setSplitsOnChain, isManagedMode, useOmnichain, isOmnichain, setSplits, payoutSplits, reservedSplits, assertReviewedSplitsUnchanged, updateChainState, onError, assertCurrentAccount, guarded])
+  }, [walletClient, chainSplitsData, setSplitsOnChain, isManagedMode, useOmnichain, isOmnichain, setSplits, payoutSplits, reservedSplits, assertReviewedSplitsUnchanged, updateChainState, onError, assertCurrentAccount, guarded, stageIndex])
 
   const handleClose = useCallback(() => {
     resetOmnichain()

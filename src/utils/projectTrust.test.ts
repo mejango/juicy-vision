@@ -22,6 +22,9 @@ const ADDRESS_REGISTRY = '0x581bfd1ead279e0a27b736e49494db3a7d85993c' as Address
 const HOOK_IMPLEMENTATION = '0x2222222222222222222222222222222222222222' as Address
 const CT_DEPLOYER = '0xf21b8717cb50e497e90f375ec532557dd9022655' as Address
 const UNKNOWN = '0x9999999999999999999999999999999999999999' as Address
+// The pre-upgrade JBBuybackHook instance (deploy-all-v6 post-deploy status);
+// registry-pinned projects can still resolve to it.
+const PRE_UPGRADE_BUYBACK_HOOK = '0xc7c8334b09e43a38c20b43cf0f824e074280b566' as Address
 
 function currentRuleset(
   dataHook: Address,
@@ -187,6 +190,33 @@ describe('current project operation safety', () => {
         return currentRuleset(JB_BUYBACK_HOOK_REGISTRY, true, true)
       }
       if (functionName === 'hookOf') return JB_BUYBACK_HOOK
+      throw new Error(`Unexpected read: ${functionName}`)
+    })
+
+    await expect(assertCurrentProjectPayConfigurationTrusted({ client, projectId: PROJECT_ID }))
+      .resolves.toBe(RULESET_ID)
+  })
+
+  it('accepts the pre-upgrade hook behind the buyback registry (registry-pinned project)', async () => {
+    const client = mockClient((functionName) => {
+      if (functionName === 'controllerOf') return JB_CONTRACTS.JBController
+      if (functionName === 'currentRulesetOf') {
+        return currentRuleset(JB_BUYBACK_HOOK_REGISTRY, true, true)
+      }
+      if (functionName === 'hookOf') return PRE_UPGRADE_BUYBACK_HOOK
+      throw new Error(`Unexpected read: ${functionName}`)
+    })
+
+    await expect(assertCurrentProjectPayConfigurationTrusted({ client, projectId: PROJECT_ID }))
+      .resolves.toBe(RULESET_ID)
+  })
+
+  it('accepts the pre-upgrade hook wired directly as the data hook', async () => {
+    const client = mockClient((functionName) => {
+      if (functionName === 'controllerOf') return JB_CONTRACTS.JBController
+      if (functionName === 'currentRulesetOf') {
+        return currentRuleset(PRE_UPGRADE_BUYBACK_HOOK, true, true)
+      }
       throw new Error(`Unexpected read: ${functionName}`)
     })
 

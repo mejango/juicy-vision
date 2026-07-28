@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { defaultChainId } from '../../config/environment'
 import {
   AreaChart,
   Area,
@@ -96,7 +97,7 @@ function calculatePriceAtTimestamp(timestamp: number, rulesets: Ruleset[]): numb
 
 export default function PriceChart({
   projectId,
-  chainId = '1',
+  chainId = defaultChainId(),
   range: initialRange = '1y',
   showHistory = false,
 }: PriceChartProps) {

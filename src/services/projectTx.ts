@@ -40,6 +40,7 @@ import {
   type TransactionReviewCall,
 } from "../utils/transactionReview";
 import { useTransactionStore } from "../stores/transactionStore";
+import { assertChainMatchesEnvironment } from "../config/environment";
 
 export type GuardedTxPhase =
   | "reverifying"
@@ -164,6 +165,9 @@ export async function runGuardedTx(
   req: GuardedTxRequest,
 ): Promise<`0x${string}`> {
   const { chainId, to, data } = req;
+  // Environment guard: never send a testnet-mode transaction to a mainnet
+  // chain (or vice versa), regardless of what upstream chose as the target.
+  assertChainMatchesEnvironment(chainId);
   const value = req.value ?? 0n;
 
   const calls: TransactionReviewCall[] = [];

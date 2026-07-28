@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { defaultChainId } from '../../config/environment'
 import { useThemeStore } from '../../stores'
 import { fetchEthPrice } from '../../services/bendystraw'
 import { getProjectDataHook, fetchNFTTier, fetchTierMetadata, type ResolvedNFTTier } from '../../services/nft'
@@ -13,7 +14,7 @@ interface NFTCardProps {
 export default function NFTCard({
   projectId,
   tierId,
-  chainId = '1',
+  chainId = defaultChainId(),
 }: NFTCardProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'

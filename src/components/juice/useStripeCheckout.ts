@@ -74,7 +74,7 @@ export function useStripeCheckout({ enabled = true, onSuccess }: UseStripeChecko
 
   const startCheckout = useCallback(async () => {
     if (!token) {
-      setError('Please sign in to purchase Pay Credits')
+      setError('Please sign in to buy Juice')
       return
     }
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { defaultChainId } from '../../../config/environment'
 import {
   BarChart,
   Bar,
@@ -126,7 +127,7 @@ function aggregateByDay(
 
 export default function VolumeChart({
   projectId,
-  chainId = '1',
+  chainId = defaultChainId(),
   range: initialRange = '1y',
 }: VolumeChartProps) {
   const { theme } = useThemeStore()

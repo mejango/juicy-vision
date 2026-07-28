@@ -194,7 +194,7 @@ export function isNativeToken(address: Address): boolean {
 export function getPaymentTokenAddress(token: 'ETH' | 'USDC' | 'PAY_CREDITS', chainId: number): Address {
   if (token === 'ETH') return NATIVE_TOKEN
   if (token === 'PAY_CREDITS') {
-    throw new Error('Pay credits are not an on-chain payment token')
+    throw new Error('Juice balance is not an on-chain payment token')
   }
   const usdc = USDC_ADDRESSES[chainId as SupportedChainId]
   if (!usdc) throw new Error(`USDC is not configured for chain ${chainId}`)

@@ -75,8 +75,19 @@ import {
 import { useSafeApp } from "./useSafeApp";
 import { submitTrackedTokenApproval } from "../services/trackedTokenApproval";
 import { quoteDirectBuy } from "../services/ammMarket";
+import { chainMatchesEnvironment, IS_TESTNET } from "../config/environment";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
+
+/**
+ * Environment guard for the pay/add-to-balance write path: a testnet-mode
+ * session must never send to a mainnet chain (and vice versa). Returns the
+ * user-facing error, or null when the chain matches the current mode.
+ */
+function chainEnvironmentError(chainId: number): string | null {
+  if (chainMatchesEnvironment(chainId)) return null;
+  return `Blocked: chain ${chainId} is not a ${IS_TESTNET ? "testnet" : "mainnet"} chain and the app is in ${IS_TESTNET ? "testnet" : "mainnet"} mode`;
+}
 
 // Chain configs
 const CHAINS: Record<number, Chain> = ALL_VIEM_CHAINS;
@@ -151,6 +162,8 @@ export function useTransactionExecutor() {
 
       let backendTxId: string | null = null;
       try {
+        const environmentError = chainEnvironmentError(chainId);
+        if (environmentError) throw new Error(environmentError);
         if (detectingSafe) {
           throw new Error(
             "Connecting to Safe{Wallet}. Wait for the Safe context to finish loading.",
@@ -161,7 +174,7 @@ export function useTransactionExecutor() {
         }
         if (detail.token === "PAY_CREDITS") {
           throw new Error(
-            "Pay Credits cannot be added directly to an onchain project balance",
+            "Juice balance cannot be added directly to an onchain project balance",
           );
         }
         if (!safeInfo && isManagedMode && isUsdc) {
@@ -572,6 +585,14 @@ export function useTransactionExecutor() {
       const { txId, projectId, chainId, amount, memo, token, hookAddress } =
         detail;
       const tierIds = detail.tierIds ?? (detail.tierId ? [detail.tierId] : []);
+
+      // Environment guard first: even a queued Juice-balance spend records a
+      // target chain, so a cross-environment chain is refused outright.
+      const environmentError = chainEnvironmentError(chainId);
+      if (environmentError) {
+        updateTransaction(txId, { status: "failed", error: environmentError });
+        return;
+      }
 
       // Handle PAY_CREDITS payments via API
       if (token === "PAY_CREDITS") {

@@ -1,25 +1,12 @@
 import { useState } from 'react'
 import { useThemeStore } from '../../stores'
+import { MAINNET_CHAINS } from '../../constants'
 import {
   useAdminJuiceSpends,
   useAdminJuiceStats,
   useProcessSpend,
   type JuiceSpend,
 } from '../hooks'
-
-const CHAIN_NAMES: Record<number, string> = {
-  1: 'Ethereum',
-  10: 'Optimism',
-  8453: 'Base',
-  42161: 'Arbitrum',
-}
-
-const CHAIN_EXPLORERS: Record<number, string> = {
-  1: 'https://etherscan.io/tx/',
-  10: 'https://optimistic.etherscan.io/tx/',
-  8453: 'https://basescan.org/tx/',
-  42161: 'https://arbiscan.io/tx/',
-}
 
 function StatusBadge({ status, isDark }: { status: string; isDark: boolean }) {
   const colors: Record<string, string> = {
@@ -85,7 +72,7 @@ function SpendRow({
   isProcessing: boolean
 }) {
   const createdAt = new Date(spend.createdAt)
-  const chainName = CHAIN_NAMES[spend.chainId] || `Chain ${spend.chainId}`
+  const chainName = MAINNET_CHAINS[spend.chainId]?.name || `Chain ${spend.chainId}`
 
   return (
     <tr className={isDark ? 'border-zinc-700' : 'border-gray-200'}>
@@ -138,7 +125,7 @@ function SpendRow({
         )}
         {spend.txHash && (
           <a
-            href={`${CHAIN_EXPLORERS[spend.chainId] || 'https://etherscan.io/tx/'}${spend.txHash}`}
+            href={`${MAINNET_CHAINS[spend.chainId]?.explorerTx || 'https://etherscan.io/tx/'}${spend.txHash}`}
             target="_blank"
             rel="noopener noreferrer"
             className={`text-xs underline ${isDark ? 'text-gray-400 hover:text-gray-300' : 'text-gray-500 hover:text-gray-600'}`}

@@ -54,14 +54,24 @@ export async function invokeAiForChat(params: InvokeAiParams): Promise<ChatMessa
   const optimizedContext = await buildOptimizedContext(chatId, userId);
   const chatHistory = formatContextForClaude(optimizedContext);
 
-  // Build enhanced system prompt with transaction state and user context
-  // Phase 1: Enable sub-modules for token efficiency
-  // Phase 2: Enable semantic detection when embeddings are available
+  // Build enhanced system prompt with transaction state and user context.
+  //
+  // ─── DEAD BRANCH WARNING ────────────────────────────────────────────────
+  // `useSubModules: true` is currently a NO-OP: buildEnhancedPrompt only takes
+  // the modular/sub-module branch when `messages` is passed, and this call
+  // passes none — so it ALWAYS falls through to the legacy full SYSTEM_PROMPT
+  // from shared/prompts.ts. Nothing under shared/prompts/** ever reaches a
+  // model. Do not "fix" a prompt by editing the modular tree; the live prompt
+  // is the shared/prompts.ts monolith. Wiring the modular branch live is a
+  // deliberate decision with its own review (intent detection quality,
+  // keyword-gated reference modules, duplicated address tables), not a
+  // drive-by change here.
+  // ────────────────────────────────────────────────────────────────────────
   const { systemPrompt: enhancedSystem, intents, semanticResult } = await buildEnhancedPrompt({
     chatId,
     userId: userId,
     includeOmnichain: true,
-    useSubModules: true, // Phase 1: Granular sub-module loading
+    useSubModules: true, // See DEAD BRANCH WARNING above — currently unreachable.
     useSemanticDetection: false, // Phase 2: Enable when embeddings are seeded
   });
 

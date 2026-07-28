@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { defaultChainId } from '../../../config/environment'
 import { formatUnits } from 'viem'
 import {
   PieChart,
@@ -46,7 +47,7 @@ function formatProjectTokenBalance(balance: bigint): string {
 
 export default function HoldersChart({
   projectId,
-  chainId = '1',
+  chainId = defaultChainId(),
   limit = 10,
 }: HoldersChartProps) {
   const { theme } = useThemeStore()

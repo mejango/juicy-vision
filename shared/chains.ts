@@ -158,6 +158,19 @@ export const CONTRACTS = {
   JBBuybackHookRegistry: '0x72f55a54cd53410a5ff175508a5a384227081788',
 } as const;
 
+/**
+ * Every known-good JBBuybackHook deployment: the current TwapOracleUpgrade
+ * instance (CONTRACTS.JBBuybackHook) plus the pre-upgrade instance that
+ * projects can remain pinned to via JBBuybackHookRegistry. Recognition and
+ * receipt checks use this SET; routing always targets the current hook.
+ * Verified against deploy-all-v6 post-deploy status (JBBuybackHook +
+ * JBBuybackHook__TwapOracleUpgrade). Not deployed on OP Sepolia.
+ */
+export const KNOWN_BUYBACK_HOOKS = [
+  CONTRACTS.JBBuybackHook,
+  '0xc7c8334b09e43a38c20b43cf0f824e074280b566',
+] as const;
+
 // Native token address
 export const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe';
 export const NATIVE_TOKEN_CURRENCY = 61166;

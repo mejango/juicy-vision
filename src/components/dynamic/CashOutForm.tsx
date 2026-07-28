@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { defaultChainId } from '../../config/environment'
 import { useAccount } from 'wagmi'
 import { formatUnits, parseUnits } from 'viem'
 import { useThemeStore, useAuthStore, useViewAsStore } from '../../stores'
@@ -27,7 +28,7 @@ interface CashOutFormProps {
   messageId?: string // For persisting state to server (visible to all chat users)
 }
 
-export default function CashOutForm({ projectId, chainId: initialChainId = '1', messageId }: CashOutFormProps) {
+export default function CashOutForm({ projectId, chainId: initialChainId = defaultChainId(), messageId }: CashOutFormProps) {
   // Persistent state (visible to all chat users)
   const { state: persistedState, updateState: updatePersistedState } = useCashOutFormState(messageId)
 

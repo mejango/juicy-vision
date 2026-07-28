@@ -6,6 +6,12 @@ interface ProjectSummaryProps {
   projectName: string
   balance: string // in project's native currency units
   volume: string // in project's native currency units
+  /**
+   * Bendystraw's time-of-payment USD volume (1e18-scaled raw string). When
+   * present this prices the volume line — multiplying historical volume by
+   * TODAY'S spot price misstates what was actually processed.
+   */
+  volumeUsd?: string
   paymentsCount: number
   balanceAvailable?: boolean
   volumeAvailable?: boolean
@@ -37,6 +43,7 @@ export default function ProjectSummary({
   projectName,
   balance,
   volume,
+  volumeUsd,
   paymentsCount,
   balanceAvailable = true,
   volumeAvailable = true,
@@ -65,7 +72,15 @@ export default function ProjectSummary({
         : formatBalanceNative(raw, currency, decimals)
 
     const balanceStr = fmtValue(balance)
-    const volumeStr = fmtValue(volume)
+    // Volume prefers the indexer's time-of-payment USD total over converting
+    // the native total at today's spot price. formatBalanceUsd with currency 2
+    // renders an already-USD raw amount (1e18-scaled) without a price feed.
+    const volumeUsdNum =
+      volumeUsd && /^\d+$/.test(volumeUsd) ? toTokenFloat(volumeUsd, 18) : null
+    const volumeStr =
+      volumeUsdNum != null && volumeUsdNum > 0
+        ? formatBalanceUsd(volumeUsd!, null, 2, 18)
+        : fmtValue(volume)
     const balanceNum = toTokenFloat(balance, decimals)
     const volumeNum = toTokenFloat(volume, decimals)
     const age = createdAt ? getProjectAge(createdAt) : null
@@ -145,7 +160,7 @@ export default function ProjectSummary({
     }
 
     return result
-  }, [projectName, balance, volume, paymentsCount, balanceAvailable, volumeAvailable, paymentsAvailable, createdAt, isRevnet, hasNftHook, connectedChainsCount, ethPrice, currency, decimals])
+  }, [projectName, balance, volume, volumeUsd, paymentsCount, balanceAvailable, volumeAvailable, paymentsAvailable, createdAt, isRevnet, hasNftHook, connectedChainsCount, ethPrice, currency, decimals])
 
   return (
     <div className={`p-4 rounded-lg ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>

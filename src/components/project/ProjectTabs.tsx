@@ -67,7 +67,8 @@ export interface ProjectTabsProps {
   onUseAllowance: (kindTokenAddress: string) => void
   onEditMetadata: () => void
   onEditToken: () => void
-  onEditSplits: () => void
+  /** Opens the splits editor for a browsed stage (start-order index); omitted = the current ruleset. */
+  onEditSplits: (stageIndex?: number) => void
   onDeployErc20: () => void
   onCashOut: () => void
 }

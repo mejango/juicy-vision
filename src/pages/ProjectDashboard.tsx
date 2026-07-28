@@ -60,6 +60,7 @@ import SetSplitsForm from "../components/dynamic/SetSplitsForm";
 import SetUriForm from "../components/dynamic/SetUriForm";
 import { ChainMappingWarning } from "../components/dynamic/ChainMappingWarning";
 import ProjectTabs from "../components/project/ProjectTabs";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import {
   parseProjectHash,
   projectHashFor,
@@ -88,7 +89,12 @@ interface ProjectDashboardProps {
 
 // Every action modal is the same portal + backdrop + close-button shell around a
 // form; these specs drive the single renderModals() used by both layouts.
-type ProjectFormProps = { projectId: string; chainId: string };
+type ProjectFormProps = {
+  projectId: string;
+  chainId: string;
+  /** Splits editor only: the browsed stage's start-order index. */
+  stageIndex?: number;
+};
 const MODAL_SPECS: Array<{
   type: Exclude<ModalType, null>;
   Form: ComponentType<ProjectFormProps>;
@@ -218,6 +224,7 @@ export default function ProjectDashboard({
   }, [setActiveTab]);
 
   const [project, setProject] = useState<Project | null>(null);
+  useDocumentTitle(project?.name || `Project #${projectId}`);
   const [projectLoading, setProjectLoading] = useState(true);
   const [projectLoadError, setProjectLoadError] = useState<string | null>(null);
   const [connectedChains, setConnectedChains] = useState<ConnectedChain[]>([]);
@@ -240,6 +247,14 @@ export default function ProjectDashboard({
 
   // Modal state
   const [activeModal, setActiveModal] = useState<ModalType>(null);
+  // Which stage the splits editor targets (start-order index). Splits are stored
+  // per ruleset, so browsing a stage and editing must write THAT stage's ruleset;
+  // null = the current ruleset (the Rulesets/Back office entry points).
+  const [splitsStageIndex, setSplitsStageIndex] = useState<number | null>(null);
+  const openSplitsEditor = useCallback((stageIndex?: number) => {
+    setSplitsStageIndex(stageIndex ?? null);
+    setActiveModal("setSplits");
+  }, []);
 
   // Owner actions menu state
   const [showOwnerMenu, setShowOwnerMenu] = useState(false);
@@ -318,6 +333,13 @@ export default function ProjectDashboard({
       ? project!.volume
       : suckerGroupBalance.totalVolume
     : "";
+  // Time-of-payment USD volume from the indexer (1e18-scaled). Preferred by
+  // the summary over converting displayVolume at today's spot price.
+  const displayVolumeUsd = volumeAvailable
+    ? suckerGroupBalance.dataScope === "project"
+      ? project?.volumeUsd
+      : suckerGroupBalance.totalVolumeUsd
+    : undefined;
 
   // Load project data
   useEffect(() => {
@@ -535,6 +557,7 @@ export default function ProjectDashboard({
               projectName={project.name}
               balance={displayBalance}
               volume={displayVolume}
+              volumeUsd={displayVolumeUsd}
               paymentsCount={displayPaymentsCount}
               balanceAvailable={balanceAvailable}
               volumeAvailable={volumeAvailable}
@@ -603,7 +626,7 @@ export default function ProjectDashboard({
         onUseAllowance={() => setActiveModal("surplusAllowance")}
         onEditMetadata={() => setActiveModal("setUri")}
         onEditToken={() => setActiveModal("deployErc20")}
-        onEditSplits={() => setActiveModal("setSplits")}
+        onEditSplits={openSplitsEditor}
         onDeployErc20={() => setActiveModal("deployErc20")}
         onCashOut={() => setActiveModal("cashout")}
       />
@@ -1066,6 +1089,11 @@ export default function ProjectDashboard({
                     <Form
                       projectId={String(projectId)}
                       chainId={String(chainId)}
+                      stageIndex={
+                        type === "setSplits"
+                          ? (splitsStageIndex ?? undefined)
+                          : undefined
+                      }
                     />
                   )}
                 </div>

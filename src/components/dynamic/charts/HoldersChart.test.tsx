@@ -202,7 +202,7 @@ describe('HoldersChart', () => {
 
       await waitFor(() => {
         expect(bendystraw.fetchMultiChainParticipants).toHaveBeenCalledWith(
-          [{ chainId: 1, projectId: 1 }], // connectedChainsArray
+          [{ chainId: 11155111, projectId: 1 }], // connectedChainsArray (env default = Sepolia in tests)
           5, // limit
         )
       })
@@ -213,7 +213,7 @@ describe('HoldersChart', () => {
 
       await waitFor(() => {
         expect(bendystraw.fetchMultiChainParticipants).toHaveBeenCalledWith(
-          [{ chainId: 1, projectId: 1 }], // connectedChainsArray
+          [{ chainId: 11155111, projectId: 1 }], // connectedChainsArray (env default = Sepolia in tests)
           10, // default limit
         )
       })
@@ -261,11 +261,11 @@ describe('HoldersChart', () => {
       })
     })
 
-    it('defaults to chainId 1', async () => {
+    it('defaults to the environment default chain (Sepolia under the test setup)', async () => {
       render(<HoldersChart projectId="1" />)
 
       await waitFor(() => {
-        expect(bendystraw.fetchConnectedChains).toHaveBeenCalledWith('1', 1)
+        expect(bendystraw.fetchConnectedChains).toHaveBeenCalledWith('1', 11155111)
       })
     })
   })

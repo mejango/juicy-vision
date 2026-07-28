@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { defaultChainId } from '../../../config/environment'
 import {
   LineChart,
   Line,
@@ -159,7 +160,7 @@ function explainCashOutChange(
 
 export default function TokenPriceChart({
   projectId,
-  chainId = '1',
+  chainId = defaultChainId(),
   range: initialRange = '1y',
 }: TokenPriceChartProps) {
   const { theme } = useThemeStore()

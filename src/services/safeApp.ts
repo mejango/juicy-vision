@@ -51,6 +51,12 @@ const pending: Record<string, Pending> = {};
 let idCounter = 0;
 let listening = false;
 
+// The Safe interface origins this bridge will talk to. The concrete origin is
+// captured from the first validated handshake response and pinned for the
+// rest of the session; requests are always posted to it — never to '*'.
+const SAFE_ORIGIN_ALLOWLIST: readonly string[] = ["https://app.safe.global"];
+let safeParentOrigin: string | null = null;
+
 // Cross-origin parent access throws — that itself means we're framed (a top
 // window can always read window.parent).
 export function inIframe(): boolean {
@@ -69,10 +75,23 @@ function ensureListener(): void {
   if (listening || typeof window === "undefined") return;
   listening = true;
   window.addEventListener("message", (event) => {
+    // Only the framing Safe interface may answer: the message must come from
+    // the parent window AND from the pinned (or allowlisted) origin. Anything
+    // else — other frames, opened windows, extensions — is dropped unread.
+    if (event.source !== window.parent) return;
+    if (
+      safeParentOrigin
+        ? event.origin !== safeParentOrigin
+        : !SAFE_ORIGIN_ALLOWLIST.includes(event.origin)
+    ) {
+      return;
+    }
     const msg = (event as MessageEvent)?.data as
       | { id?: string; success?: boolean; error?: unknown; data?: unknown }
       | undefined;
     if (!msg || !msg.id || !pending[msg.id]) return;
+    // First validated response pins the origin for the rest of the session.
+    if (!safeParentOrigin) safeParentOrigin = event.origin;
     const p = pending[msg.id];
     delete pending[msg.id];
     if (msg.success === false || msg.error) {
@@ -101,7 +120,12 @@ function safeRpc<T = unknown>(method: string, params?: unknown): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     pending[id] = { resolve: resolve as (value: unknown) => void, reject };
     try {
-      window.parent.postMessage(message, "*");
+      // Address only the Safe interface. If the embedder is anything else the
+      // browser drops the message and detection simply times out.
+      window.parent.postMessage(
+        message,
+        safeParentOrigin ?? SAFE_ORIGIN_ALLOWLIST[0],
+      );
     } catch (e) {
       delete pending[id];
       reject(e);

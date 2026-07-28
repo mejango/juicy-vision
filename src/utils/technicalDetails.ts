@@ -114,8 +114,39 @@ export function formatParamName(key: string): string {
     .trim()
 }
 
+// Payout-split group ids ARE token addresses (uint256(uint160(token))). Derive
+// the per-chain USDC group ids from the canonical table — never hardcode one
+// chain's id and label every chain's groups with it.
+const USDC_GROUP_IDS: ReadonlySet<string> = new Set(
+  Object.values(CANONICAL_USDC_BY_CHAIN).map(address => BigInt(address).toString()),
+)
+
+// Fields whose raw 18-decimal values are known to be denominated in the native
+// token. Everything else (amounts, payout limits, …) follows the surrounding
+// currency and must not be auto-labeled ETH.
+function isNativeDenominatedKey(keyLower: string): boolean {
+  return (
+    keyLower === 'value' ||
+    keyLower === 'msgvalue' ||
+    keyLower === 'txvalue' ||
+    keyLower.includes('eth') ||
+    keyLower.includes('native')
+  )
+}
+
+/** Ruleset context the caller resolved for the value being rendered. */
+export interface SimpleValueContext {
+  /** The ruleset's baseCurrency (1 = ETH, 2 = USD) when known. */
+  baseCurrency?: number
+}
+
 // Helper to format simple parameter values with context-aware descriptions
-export function formatSimpleValue(value: unknown, key?: string, chainId?: string | number): string {
+export function formatSimpleValue(
+  value: unknown,
+  key?: string,
+  chainId?: string | number,
+  context?: SimpleValueContext,
+): string {
   if (value === null || value === undefined) return 'null'
 
   const keyLower = (key || '').toLowerCase().replace(/\s+/g, '')
@@ -150,10 +181,13 @@ export function formatSimpleValue(value: unknown, key?: string, chainId?: string
       return String(value)
     }
 
-    if (rawWeight >= 1e9) return `${(rawWeight / 1e9).toFixed(1)}B tokens/USD`
-    if (rawWeight >= 1e6) return `${(rawWeight / 1e6).toFixed(1)}M tokens/USD`
-    if (rawWeight >= 1e3) return `${(rawWeight / 1e3).toFixed(1)}K tokens/USD`
-    return `${rawWeight.toLocaleString()} tokens/USD`
+    // Weight mints tokens per unit of the ruleset's BASE CURRENCY. Only a
+    // base-USD ruleset is tokens/USD; the default launch is base ETH.
+    const perUnit = context?.baseCurrency === 2 ? 'tokens/USD' : 'tokens/ETH'
+    if (rawWeight >= 1e9) return `${(rawWeight / 1e9).toFixed(1)}B ${perUnit}`
+    if (rawWeight >= 1e6) return `${(rawWeight / 1e6).toFixed(1)}M ${perUnit}`
+    if (rawWeight >= 1e3) return `${(rawWeight / 1e3).toFixed(1)}K ${perUnit}`
+    return `${rawWeight.toLocaleString()} ${perUnit}`
   }
 
   // Unix timestamps
@@ -219,25 +253,27 @@ export function formatSimpleValue(value: unknown, key?: string, chainId?: string
     return value
   }
 
-  // Handle groupId
+  // Handle groupId — label only the real per-chain USDC group ids; an unknown
+  // id renders raw rather than getting a guessed label.
   if (keyLower.includes('groupid')) {
-    const groupIdLabels: Record<string, string> = {
-      '918640019851866092946544831648579639063834485832': 'USDC payouts',
-    }
-    const label = groupIdLabels[value]
-    return label || value
+    return USDC_GROUP_IDS.has(value) ? 'USDC payouts' : value
   }
 
   // Handle large numbers (likely wei)
-  if (/^\d{18,}$/.test(value) && !keyLower.includes('groupid')) {
+  if (/^\d{18,}$/.test(value)) {
     // Check for uint224.max - this represents "unlimited" in JB fund access limits
     // uint224.max = 26959946667150639794667015087019630673637144422540572481103610249215
     const UINT224_MAX = '26959946667150639794667015087019630673637144422540572481103610249215'
     if (value === UINT224_MAX) {
       return `UNLIMITED_MARKER:${value}` // Special marker for UI to render with tooltip
     }
-    const eth = parseFloat(value) / 1e18
-    return `${eth.toFixed(4)} ETH (${value})`
+    // Only fields that are provably native-denominated get an ETH reading;
+    // amounts and limits follow the surrounding currency, so render them raw.
+    if (isNativeDenominatedKey(keyLower)) {
+      const eth = parseFloat(value) / 1e18
+      return `${eth.toFixed(4)} ETH (${value})`
+    }
+    return value
   }
 
   return value

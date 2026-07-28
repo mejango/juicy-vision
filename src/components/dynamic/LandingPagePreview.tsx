@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { defaultChainId } from '../../config/environment'
 import { useThemeStore, useSettingsStore } from '../../stores'
 import { fetchProject, fetchSuckerGroupBalance, type Project, type SuckerGroupBalance } from '../../services/bendystraw'
 import { ipfsGatewayUrls, pinFile, type IpfsProjectMetadata } from '../../utils/ipfs'
@@ -31,7 +32,7 @@ const DEFAULT_COMPONENTS: Record<LayoutType, ComponentType[]> = {
 
 export default function LandingPagePreview({
   projectId,
-  chainId = '1',
+  chainId = defaultChainId(),
   layout = 'hero',
   showComponents,
   title,

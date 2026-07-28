@@ -31,6 +31,8 @@ interface ProjectFormState {
   name: string;
   description: string;
   logoUrl: string;
+  /** Notice shown to payers before they pay. Omitted from the pinned JSON when blank. */
+  payDisclosure: string;
 
   // Ruleset settings
   duration: string; // Days (0 = ongoing)
@@ -63,6 +65,7 @@ const DEFAULT_FORM_STATE: ProjectFormState = {
   name: "",
   description: "",
   logoUrl: "",
+  payDisclosure: "",
   duration: "0",
   weight: "1000000",
   weightCutPercent: "0",
@@ -275,6 +278,10 @@ export default function CreateProjectForm({
           name: formState.name,
           description: formState.description,
           logoUri: formState.logoUrl,
+          // Set/clear semantics: a blank notice leaves the key out entirely.
+          ...(formState.payDisclosure.trim()
+            ? { payDisclosure: formState.payDisclosure.trim() }
+            : {}),
         },
         `project-${formState.name}`,
       );
@@ -298,6 +305,7 @@ export default function CreateProjectForm({
     formState.name,
     formState.description,
     formState.logoUrl,
+    formState.payDisclosure,
   ]);
 
   // Build config for modal
@@ -458,6 +466,27 @@ export default function CreateProjectForm({
                 onChange={(e) => updateFormState("logoUrl", e.target.value)}
                 placeholder="https://... or ipfs://..."
                 className={`w-full px-3 py-2 text-sm outline-none ${
+                  isDark
+                    ? "bg-juice-dark border border-white/10 text-white placeholder-gray-500"
+                    : "bg-white border border-gray-200 text-gray-900 placeholder-gray-400"
+                }`}
+              />
+            </div>
+
+            <div>
+              <label
+                className={`block text-xs mb-1 ${isDark ? "text-gray-400" : "text-gray-500"}`}
+              >
+                Payment notice (optional)
+              </label>
+              <textarea
+                value={formState.payDisclosure}
+                onChange={(e) =>
+                  updateFormState("payDisclosure", e.target.value)
+                }
+                placeholder="Shown to payers before they pay."
+                rows={2}
+                className={`w-full px-3 py-2 text-sm outline-none resize-none ${
                   isDark
                     ? "bg-juice-dark border border-white/10 text-white placeholder-gray-500"
                     : "bg-white border border-gray-200 text-gray-900 placeholder-gray-400"

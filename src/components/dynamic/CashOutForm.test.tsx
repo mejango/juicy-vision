@@ -168,7 +168,7 @@ describe('CashOutForm', () => {
       renderForm(<CashOutForm projectId="1" />)
 
       await waitFor(() => {
-        expect(bendystraw.fetchUserTokenBalance).toHaveBeenCalledWith('1', 1, holder)
+        expect(bendystraw.fetchUserTokenBalance).toHaveBeenCalledWith('1', 11155111, holder)
       })
       fireEvent.change(document.querySelector('input[type="number"]')!, { target: { value: '10' } })
 
@@ -183,7 +183,7 @@ describe('CashOutForm', () => {
       renderForm(<CashOutForm projectId="1" />)
 
       await waitFor(() => {
-        expect(bendystraw.fetchUserTokenBalance).toHaveBeenCalledWith('1', 1, holder)
+        expect(bendystraw.fetchUserTokenBalance).toHaveBeenCalledWith('1', 11155111, holder)
       })
       const input = document.querySelector('input[type="number"]')!
       fireEvent.change(input, { target: { value: '10' } })
@@ -195,7 +195,7 @@ describe('CashOutForm', () => {
       fireEvent.click(await screen.findByRole('button', { name: 'Confirm cash out' }))
 
       await waitFor(() => expect(invalidated).toHaveBeenCalledTimes(1))
-      expect((invalidated.mock.calls[0][0] as CustomEvent).detail).toEqual({ chainId: 1, projectId: 1 })
+      expect((invalidated.mock.calls[0][0] as CustomEvent).detail).toEqual({ chainId: 11155111, projectId: 1 })
       await waitFor(() => expect(screen.queryByTestId('cash-out-modal')).not.toBeInTheDocument())
       expect(input).toHaveValue(null)
       // The confirmed transaction locks the form and reloads the live balance.

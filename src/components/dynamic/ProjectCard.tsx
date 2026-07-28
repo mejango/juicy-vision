@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import { defaultChainId } from '../../config/environment'
 import { createPortal } from "react-dom";
 import { useAccount } from "wagmi";
 import {
@@ -421,7 +422,7 @@ function PaymentProgress({
         <p
           className={`text-xs mt-1 ml-6 ${isDark ? "text-gray-400" : "text-gray-500"}`}
         >
-          Your Pay Credits have been deducted. The on-chain payment will be
+          Your Juice balance has been deducted. The on-chain payment will be
           processed shortly.
         </p>
       </div>
@@ -557,7 +558,7 @@ function PaymentProgress({
 
 export default function ProjectCard({
   projectId,
-  chainId: initialChainId = "1",
+  chainId: initialChainId = defaultChainId(),
   messageId,
   embedded = false,
   children,
@@ -1203,7 +1204,7 @@ export default function ProjectCard({
                 {
                   symbol: "PAY_CREDITS" as const,
                   label: "Credits",
-                  name: "Pay Credits",
+                  name: "Juice",
                   tokenAddress: NATIVE_TOKEN,
                   decimals: nativeRoute.decimals,
                   currency: nativeRoute.currency,

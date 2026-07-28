@@ -3,7 +3,9 @@ import {
   isUsdcCurrency,
   getCurrencyLabel,
   USDC_CURRENCIES,
+  formatSimpleValue,
 } from './technicalDetails'
+import { CANONICAL_USDC_BY_CHAIN } from '../../shared/chains'
 
 describe('isUsdcCurrency', () => {
   describe('testnet USDC currency codes', () => {
@@ -163,6 +165,59 @@ describe('tier price display helpers', () => {
 
     it('handles zero', () => {
       expect(calculateUsdPrice(0n)).toBe(0)
+    })
+  })
+})
+
+describe('formatSimpleValue', () => {
+  const WEIGHT = '1000000000000000000000000' // 1M tokens (18 decimals)
+
+  describe('weight denomination follows the ruleset baseCurrency', () => {
+    it('labels tokens/USD only for base-USD rulesets', () => {
+      expect(formatSimpleValue(WEIGHT, 'weight', undefined, { baseCurrency: 2 })).toBe('1.0M tokens/USD')
+    })
+
+    it('labels tokens/ETH for base-ETH rulesets', () => {
+      expect(formatSimpleValue(WEIGHT, 'weight', undefined, { baseCurrency: 1 })).toBe('1.0M tokens/ETH')
+    })
+
+    it('defaults to tokens/ETH when no baseCurrency is resolvable (default launch)', () => {
+      expect(formatSimpleValue(WEIGHT, 'weight')).toBe('1.0M tokens/ETH')
+    })
+  })
+
+  describe('groupId labels derive from the canonical per-chain USDC table', () => {
+    it('labels every real per-chain USDC group id', () => {
+      for (const address of Object.values(CANONICAL_USDC_BY_CHAIN)) {
+        const groupId = BigInt(address).toString()
+        expect(formatSimpleValue(groupId, 'groupId')).toBe('USDC payouts')
+      }
+    })
+
+    it('never labels an unknown group id — renders the raw id', () => {
+      // The previously hardcoded id does not match any canonical USDC address.
+      const bogus = '918640019851866092946544831648579639063834485832'
+      expect(formatSimpleValue(bogus, 'groupId')).toBe(bogus)
+    })
+  })
+
+  describe('large values are only labeled ETH when the field is native-denominated', () => {
+    const ONE_ETH = '1000000000000000000'
+
+    it('labels known native fields', () => {
+      expect(formatSimpleValue(ONE_ETH, 'ethAmount')).toContain('ETH')
+      expect(formatSimpleValue(ONE_ETH, 'value')).toContain('ETH')
+      expect(formatSimpleValue(ONE_ETH, 'nativeAmount')).toContain('ETH')
+    })
+
+    it('renders raw values for currency-dependent fields (amount, payout limits)', () => {
+      expect(formatSimpleValue(ONE_ETH, 'amount')).toBe(ONE_ETH)
+      expect(formatSimpleValue(ONE_ETH, 'payoutLimit')).toBe(ONE_ETH)
+    })
+
+    it('keeps the uint224 max unlimited marker', () => {
+      const UINT224_MAX = '26959946667150639794667015087019630673637144422540572481103610249215'
+      expect(formatSimpleValue(UINT224_MAX, 'amount')).toBe(`UNLIMITED_MARKER:${UINT224_MAX}`)
     })
   })
 })

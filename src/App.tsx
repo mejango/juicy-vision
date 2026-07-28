@@ -16,7 +16,8 @@ import { useTranslation } from 'react-i18next'
 import { wagmiConfig } from './config/wagmi'
 import { EnvironmentBadge } from './components/common/EnvironmentBadge'
 import { QueryErrorPanel } from './components/debug/QueryErrorPanel'
-import { ChatContainer, ProtocolActivity, TrendingProjects, MascotPanel, ProjectSearch } from './components/chat'
+import { ChatContainer, MascotPanel } from './components/chat'
+import MobileActivityFab, { ActivitySidebar } from './components/activity/MobileActivityFab'
 import ParticipantAvatars from './components/chat/ParticipantAvatars'
 import { SettingsPanel } from './components/settings'
 import ErrorBoundary from './components/ui/ErrorBoundary'
@@ -29,7 +30,6 @@ import { resolveEnsToAddress } from './utils/ens'
 import { PaymentReviewModal } from './components/payment'
 import TransactionReviewModal from './components/payment/TransactionReviewModal'
 import TransactionStatusCenter from './components/payment/TransactionStatusCenter'
-import NetworkModeSelect from './components/common/NetworkModeSelect'
 import ViewAsBanner from './components/common/ViewAsBanner'
 
 const queryClient = new QueryClient({
@@ -454,7 +454,12 @@ function ProjectRouteHandler() {
     )
   }
 
-  return <ProjectDashboard chainId={chainId} projectId={projectId} />
+  return (
+    <>
+      <ProjectDashboard chainId={chainId} projectId={projectId} />
+      <MobileActivityFab />
+    </>
+  )
 }
 
 const ACCOUNT_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
@@ -519,7 +524,12 @@ function AccountRouteHandler() {
     )
   }
 
-  return <AccountView address={resolved} />
+  return (
+    <>
+      <AccountView address={resolved} />
+      <MobileActivityFab />
+    </>
+  )
 }
 
 // Component to handle /chat/:chatId routes - sets activeChatId and renders AppContent
@@ -574,77 +584,6 @@ function AppProviders({ children }: { children: React.ReactNode }) {
         {children}
       </QueryClientProvider>
     </WagmiProvider>
-  )
-}
-
-function ActivitySidebar({ onProjectClick }: { onProjectClick: (query: string) => void }) {
-  const { theme } = useThemeStore()
-  const { t } = useTranslation()
-
-  const handleAddNote = () => {
-    window.dispatchEvent(new CustomEvent('juice:send-message', {
-      detail: { message: 'Write a juicy note with a ~0 payment onto NANA' }
-    }))
-  }
-
-  return (
-    <div className={`w-full flex flex-col h-full ${
-      theme === 'dark'
-        ? 'bg-juice-dark'
-        : 'bg-white'
-    }`}>
-      {/* Header */}
-      <div className={`px-3 py-2 border-b flex items-center justify-between ${
-        theme === 'dark' ? 'border-white/10' : 'border-gray-200'
-      }`}>
-        <div className="flex items-baseline gap-2.5 min-w-0">
-          <h2 className={`text-sm font-semibold whitespace-nowrap ${
-            theme === 'dark' ? 'text-white' : 'text-gray-900'
-          }`}>
-            {t('ui.liveActivity', 'Live juicy activity')}
-          </h2>
-          <NetworkModeSelect />
-        </div>
-        <button
-          onClick={handleAddNote}
-          className={`p-1 rounded transition-colors ${
-            theme === 'dark'
-              ? 'text-gray-400 hover:text-juice-cyan'
-              : 'text-gray-500 hover:text-teal-600'
-          }`}
-          title={t('ui.addNote', 'Add a juicy note')}
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-        </button>
-      </div>
-
-      {/* Activity list — top half */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 hide-scrollbar">
-        <ProtocolActivity onProjectClick={onProjectClick} />
-      </div>
-
-      {/* Trending projects — bottom half (V6 only) */}
-      <div className={`px-3 py-2 border-t border-b flex items-center ${
-        theme === 'dark' ? 'border-white/10' : 'border-gray-200'
-      }`}>
-        <h2 className={`text-sm font-semibold whitespace-nowrap ${
-          theme === 'dark' ? 'text-white' : 'text-gray-900'
-        }`}>
-          {t('ui.trendingProjects', 'Trending projects')}
-        </h2>
-      </div>
-      {/* Project/account search — results overlay the trending list below */}
-      <div className={`px-3 py-2 border-b ${
-        theme === 'dark' ? 'border-white/10' : 'border-gray-200'
-      }`}>
-        <ProjectSearch />
-      </div>
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 hide-scrollbar">
-        <TrendingProjects onProjectClick={onProjectClick} />
-      </div>
-    </div>
   )
 }
 
@@ -816,7 +755,6 @@ export function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }
   const { theme } = useThemeStore()
   const { activeChatId: storeActiveChatId, pendingNewChat } = useChatStore()
   const isMobile = useIsMobile()
-  const [showMobileActivity, setShowMobileActivity] = useState(false)
 
   // Use forced value if provided, otherwise read from store
   const activeChatId = forceActiveChatId || storeActiveChatId
@@ -838,10 +776,9 @@ export function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }
   const handleActivityProjectClick = (query: string) => {
     // Always start a new chat when clicking activity items
     window.dispatchEvent(new CustomEvent('juice:send-message', { detail: { message: query, newChat: true } }))
-    if (isMobile) setShowMobileActivity(false) // Close activity on mobile after click
   }
 
-  // Mobile layout: chat-first, activity toggleable
+  // Mobile layout: chat-first, discovery behind the shared FAB overlay
   if (isMobile) {
     return (
       <div className={`h-screen overflow-hidden flex flex-col ${theme === 'dark' ? 'bg-juice-dark' : 'bg-white'}`}>
@@ -853,41 +790,10 @@ export function AppContent({ forceActiveChatId }: { forceActiveChatId?: string }
         )}
         {/* Main content */}
         <div className="flex-1 overflow-hidden relative">
-          {showMobileActivity ? (
-            <div className="h-full">
-              <div className="flex items-center justify-between px-4 py-2 border-b border-juice-orange">
-                <span className={`text-sm font-medium ${theme === 'dark' ? 'text-white' : 'text-gray-900'}`}>
-                  Live Activity
-                </span>
-                <button
-                  onClick={() => setShowMobileActivity(false)}
-                  aria-label="Close live activity"
-                  className={`p-2 rounded-lg ${theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'}`}
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <ActivitySidebar onProjectClick={handleActivityProjectClick} />
-            </div>
-          ) : (
-            <MainContent forceActiveChatId={forceActiveChatId} />
-          )}
+          <MainContent forceActiveChatId={forceActiveChatId} />
         </div>
         {/* Mobile activity toggle - the only sub-md entry point to search/trending/activity */}
-        {!showMobileActivity && (
-          <button
-            onClick={() => setShowMobileActivity(true)}
-            aria-label="Open live activity"
-            title="Live activity, trending projects + search"
-            className="fixed bottom-24 right-4 z-50 w-12 h-12 rounded-full bg-juice-orange text-juice-dark shadow-lg flex items-center justify-center"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-          </button>
-        )}
+        <MobileActivityFab onProjectClick={handleActivityProjectClick} />
       </div>
     )
   }

@@ -63,6 +63,46 @@ export const CHAIN_IDS = IS_TESTNET
 export const SUPPORTED_CHAIN_IDS = Object.values(CHAIN_IDS)
 
 /**
+ * Default chain id for components rendered without an explicit chainId prop,
+ * as the string those props carry. Resolves to the current environment's
+ * Ethereum flavor — Sepolia in testnet mode — so a hardcoded '1' can never
+ * point a testnet session at mainnet.
+ */
+export function defaultChainId(): string {
+  return String(CHAIN_IDS.ethereum)
+}
+
+/** The four supported testnet chain ids, independent of the current mode. */
+const TESTNET_CHAIN_ID_SET: ReadonlySet<number> = new Set([
+  11155111, 11155420, 84532, 421614,
+])
+
+/**
+ * Whether a chain id belongs to the currently selected environment (testnet
+ * ids in testnet mode, everything else in mainnet mode).
+ */
+export function chainMatchesEnvironment(chainId: number | string): boolean {
+  const id = Number(chainId)
+  if (!Number.isInteger(id)) return false
+  return TESTNET_CHAIN_ID_SET.has(id) === IS_TESTNET
+}
+
+/**
+ * Runtime write-path guard: refuse to send a transaction whose target chain
+ * belongs to the other environment. Prompt-side chain selection is advisory;
+ * this is the enforcement.
+ */
+export function assertChainMatchesEnvironment(chainId: number | string): void {
+  if (chainMatchesEnvironment(chainId)) return
+  const id = Number(chainId)
+  const targetKind = TESTNET_CHAIN_ID_SET.has(id) ? 'testnet' : 'mainnet'
+  const mode = IS_TESTNET ? 'testnet' : 'mainnet'
+  throw new Error(
+    `Blocked: this transaction targets a ${targetKind} chain (${chainId}) but the app is in ${mode} mode. Switch the network mode to proceed.`,
+  )
+}
+
+/**
  * Default Relayr endpoint based on environment.
  * Staging uses the Relayr staging API.
  */

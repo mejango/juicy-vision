@@ -61,7 +61,7 @@ vi.mock('../../hooks', () => ({
   executeManagedTransaction: vi.fn(),
   useManagedWallet: () => ({ address: null }),
   useWalletBalances: () => ({
-    perChain: [{ chainId: 1, eth: 1n }],
+    perChain: [{ chainId: 11155111, eth: 1n }],
     loading: false,
     available: true,
   }),
@@ -152,7 +152,7 @@ function renderPayout(overrides: Partial<ComponentProps<typeof FundAccessModal>>
     onClose: vi.fn(),
     projectId: '1',
     projectName: 'Test Project',
-    chainId: 1,
+    chainId: 11155111,
     amount: '1',
     context,
     access,
@@ -169,7 +169,7 @@ describe('FundAccessModal live transaction guard', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined)
     mocks.prepare.mockResolvedValue(prepared())
     mocks.fetchSplits.mockResolvedValue({ configurationComplete: true, splitGroups: [] })
-    mocks.getChainId.mockResolvedValue(1)
+    mocks.getChainId.mockResolvedValue(11155111)
     mocks.switchChain.mockResolvedValue(undefined)
     mocks.sendTransaction.mockResolvedValue('0xbeef')
     mocks.waitForReceipt.mockResolvedValue(undefined)
@@ -189,7 +189,7 @@ describe('FundAccessModal live transaction guard', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Distribute' }))
     await waitFor(() => expect(mocks.sendTransaction).toHaveBeenCalledTimes(1))
     expect(mocks.prepare).toHaveBeenCalledTimes(3)
-    expect(mocks.waitForReceipt).toHaveBeenCalledWith(1, '0xbeef')
+    expect(mocks.waitForReceipt).toHaveBeenCalledWith(11155111, '0xbeef')
     expect(onSubmitted).toHaveBeenCalledWith('0xbeef')
     expect(onConfirmed).not.toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
@@ -239,7 +239,7 @@ describe('FundAccessModal live transaction guard', () => {
     expect(mocks.prepare).toHaveBeenCalledTimes(1)
     expect(mocks.sendTransaction).not.toHaveBeenCalled()
     expect(parseTxLinkUrl(writeText.mock.calls[0][0] as string)).toEqual({
-      chainId: 1,
+      chainId: 11155111,
       to: TERMINAL,
       data: '0x1234',
       value: 0n,

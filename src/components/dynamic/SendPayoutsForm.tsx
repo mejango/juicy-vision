@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { defaultChainId } from '../../config/environment'
 import { useAccount } from 'wagmi'
 import { useThemeStore } from '../../stores'
 import { useSendPayoutsFormState } from '../../hooks/useComponentState'
@@ -48,7 +49,7 @@ interface ChainPayoutData {
   configurationError?: string
 }
 
-export default function SendPayoutsForm({ projectId, chainId = '1', messageId }: SendPayoutsFormProps) {
+export default function SendPayoutsForm({ projectId, chainId = defaultChainId(), messageId }: SendPayoutsFormProps) {
   const { state: persistedState, updateState: updatePersistedState } = useSendPayoutsFormState(messageId)
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'

@@ -1,5 +1,5 @@
 import { type Address, decodeEventLog, type Hex, isAddressEqual } from 'viem';
-import { CONTRACTS } from '@shared/chains.ts';
+import { CONTRACTS, KNOWN_BUYBACK_HOOKS } from '@shared/chains.ts';
 
 const PAY_EVENT_ABI = [{
   name: 'Pay',
@@ -116,7 +116,9 @@ export function verifyProtectedPaymentReceipt(params: {
         isAddressEqual(event.args.beneficiary, params.beneficiary) &&
         (
           isAddressEqual(event.args.caller, CONTRACTS.JBMultiTerminal as Address) ||
-          isAddressEqual(event.args.caller, CONTRACTS.JBBuybackHook as Address)
+          // Any known-good buyback hook counts: projects can be registry-pinned
+          // to the pre-upgrade instance, which mints through the same path.
+          KNOWN_BUYBACK_HOOKS.some(hook => isAddressEqual(event.args.caller, hook as Address))
         )
       ) {
         controllerIssued += event.args.beneficiaryTokenCount;

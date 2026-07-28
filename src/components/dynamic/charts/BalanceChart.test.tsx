@@ -282,11 +282,11 @@ describe('BalanceChart', () => {
       })
     })
 
-    it('defaults to chainId 1', async () => {
+    it('defaults to the environment default chain (Sepolia under the test setup)', async () => {
       render(<BalanceChart projectId="1" />)
 
       await waitFor(() => {
-        expect(bendystraw.fetchProject).toHaveBeenCalledWith('1', 1)
+        expect(bendystraw.fetchProject).toHaveBeenCalledWith('1', 11155111)
       })
     })
   })

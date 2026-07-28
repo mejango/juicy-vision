@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import { defaultChainId } from '../../config/environment'
 import { formatEther } from 'viem'
 import { useThemeStore } from '../../stores'
 import {
@@ -77,7 +78,7 @@ function formatIndexedUsd(scaledUsd?: string): string {
 
 export default function ActivityFeed({
   projectId,
-  chainId = '1',
+  chainId = defaultChainId(),
   compact = false
 }: ActivityFeedProps) {
   const { theme } = useThemeStore()

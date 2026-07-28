@@ -151,7 +151,7 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }:
         {/* Header */}
         <div className={`px-4 py-3 border-b flex items-center justify-between ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
           <h2 className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-            {step === 'amount' && t('wallet.buyPayCredits', 'Buy Pay Credits')}
+            {step === 'amount' && t('wallet.buyPayCredits', 'Buy Juice')}
             {step === 'checkout' && t('wallet.completePayment', 'Complete Payment')}
             {step === 'success' && t('wallet.purchaseComplete', 'Purchase Complete')}
           </h2>
@@ -234,7 +234,7 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }:
                 <div className="flex justify-between items-center mb-1">
                   <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{t('wallet.youllReceive', "You'll receive")}</span>
                   <span className={`text-sm font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {amount.toLocaleString()} {t('wallet.payCredits', 'Pay Credits')}
+                    {amount.toLocaleString()} {t('wallet.juice', 'Juice')}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
@@ -246,7 +246,7 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }:
               </div>
 
               <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                Pay Credits become usable after payment verification. Verification can be immediate or take up to 120 days, depending on payment risk.
+                Juice becomes usable after payment verification. Verification can be immediate or take up to 120 days, depending on payment risk.
               </p>
 
               {error && (
@@ -303,7 +303,7 @@ export default function BuyJuiceModal({ isOpen, onClose, onSuccess, anchorRef }:
               </div>
               <div>
                 <h3 className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                  {amount} {t('wallet.payCredits', 'Pay Credits')} {t('wallet.purchased', 'purchased')}
+                  {amount} {t('wallet.juice', 'Juice')} {t('wallet.purchased', 'purchased')}
                 </h3>
                 <p className={`text-xs mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                   {t('wallet.creditsAvailableAfterVerification', 'Credits available once payment is verified.')}

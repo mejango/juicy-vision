@@ -2,6 +2,7 @@ import { mainnet, optimism, base, arbitrum, sepolia, optimismSepolia, baseSepoli
 import { IS_TESTNET, IS_LOCAL_ONLY_BROWSER_TEST, CHAIN_IDS } from '../config/environment'
 import {
   CONTRACTS,
+  KNOWN_BUYBACK_HOOKS,
   MAINNET_CHAINS as SHARED_MAINNET_CHAINS,
   TESTNET_CHAINS as SHARED_TESTNET_CHAINS,
 } from '../../shared/chains'
@@ -155,6 +156,11 @@ export const JB_ROUTER_TERMINAL_REGISTRY = CONTRACTS.JBRouterTerminalRegistry as
 
 export const JB_BUYBACK_HOOK = CONTRACTS.JBBuybackHook as `0x${string}`
 export const JB_BUYBACK_HOOK_REGISTRY = CONTRACTS.JBBuybackHookRegistry as `0x${string}`
+
+// Known-good buyback hook SET (current + pre-upgrade instance the registry can
+// pin projects to). Use for recognition/receipt checks; new routing always
+// targets JB_BUYBACK_HOOK, the chain's canonical hook.
+export const JB_BUYBACK_HOOKS = KNOWN_BUYBACK_HOOKS as readonly `0x${string}`[]
 
 // =============================================================================
 // SUCKER CONTRACTS (Cross-Chain Token Bridging)

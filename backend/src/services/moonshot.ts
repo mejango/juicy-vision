@@ -205,7 +205,9 @@ function buildSystemPrompt(customSystem?: string, includeOmnichain = true): stri
 
   parts.push(customSystem || SYSTEM_PROMPT);
 
-  if (includeOmnichain) {
+  // The chat pipeline's enhanced prompt already embeds the knowledge base
+  // (contextManager is the canonical injection site) — never append it twice.
+  if (includeOmnichain && !(customSystem && customSystem.includes(OMNICHAIN_CONTEXT))) {
     parts.push('\n\n---\n\n# Knowledge Base\n');
     parts.push(OMNICHAIN_CONTEXT);
   }

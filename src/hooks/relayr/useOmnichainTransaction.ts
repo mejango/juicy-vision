@@ -115,8 +115,6 @@ export function useOmnichainTransaction(
   const isManagedMode = mode === 'managed' && isAuthenticated()
 
   const { address: managedAddress } = useManagedWallet()
-  const latestManagedAddress = useRef(managedAddress)
-  latestManagedAddress.current = managedAddress
 
   // Bundle state management
   const bundle = useRelayrBundle() as ReturnType<typeof useRelayrBundle> & {
@@ -139,7 +137,13 @@ export function useOmnichainTransaction(
     _setExpired: () => void
   }
   const { bundleState, reset, updateFromStatus } = bundle
-  const { run: runGuardedTx } = useGuardedTx()
+  const { run: runGuardedTx, activeAddress: guardedActiveAddress } = useGuardedTx()
+
+  // The address transactions execute from in the CURRENT custody mode
+  // (managed smart account, Safe, or self-custody wallet), tracked in a ref
+  // so post-await re-verification always compares against the live value.
+  const latestActiveAddress = useRef<string | null>(null)
+  latestActiveAddress.current = isManagedMode ? managedAddress : guardedActiveAddress
 
   // Status polling
   const { data: statusData } = useRelayrStatus({
@@ -199,12 +203,24 @@ export function useOmnichainTransaction(
       return
     }
 
-    // Validate wallet
-    if (!isManagedMode || !managedAddress) {
-      bundle._setError('Omnichain execution requires an active managed account')
+    // Validate wallet. Multichain bundles are sponsored through the managed
+    // smart account only; a single-chain operation also has a direct-send
+    // path (below) that works for self-custody and Safe wallets, so those
+    // are allowed through when exactly one chain is targeted.
+    const isSingleChain = chainIds.length === 1
+    if (!isManagedMode && !isSingleChain) {
+      bundle._setError(
+        'Multichain execution requires an active managed account. Run the operation one chain at a time, or sign in with a managed account.',
+      )
       return
     }
-    const activeAddress = managedAddress
+    const activeAddress = isManagedMode ? managedAddress : guardedActiveAddress
+    if (!activeAddress) {
+      bundle._setError(
+        isManagedMode ? 'Managed wallet not ready' : 'Connect a wallet first',
+      )
+      return
+    }
 
     try {
       // Transactions are wrapped through SmartAccount.execute() so that
@@ -272,7 +288,7 @@ export function useOmnichainTransaction(
         operation: rulesetConfig ? 'rulesetQueue' : 'controller',
       })
 
-      assertTransactionAccountUnchanged(activeAddress, latestManagedAddress.current)
+      assertTransactionAccountUnchanged(activeAddress, latestActiveAddress.current)
       bundle._setCreating()
 
       if (chainIds.length === 1) {
@@ -307,7 +323,7 @@ export function useOmnichainTransaction(
           data: transaction.data as Hex,
           value: BigInt(transaction.value),
           reverify: async () => {
-            assertTransactionAccountUnchanged(activeAddress, latestManagedAddress.current)
+            assertTransactionAccountUnchanged(activeAddress, latestActiveAddress.current)
             await preflightControllerTransactions({
               transactions: [transaction],
               chainIds: [transaction.chainId],
@@ -322,10 +338,15 @@ export function useOmnichainTransaction(
         return
       }
 
+      // Multichain reaches here only in managed mode (guarded above), so the
+      // managed address is the active address.
+      if (!isManagedMode || !managedAddress) {
+        throw new Error('Multichain execution requires an active managed account')
+      }
       console.log('=== SERVER SIGNING MODE (omnichain transaction) ===')
       console.log(`Smart account routing: ${managedAddress}`)
 
-      assertTransactionAccountUnchanged(activeAddress, latestManagedAddress.current)
+      assertTransactionAccountUnchanged(activeAddress, latestActiveAddress.current)
       const result = await submitManagedControllerBundle(
         transactions,
         activeAddress,
@@ -348,6 +369,7 @@ export function useOmnichainTransaction(
   }, [
     isManagedMode,
     managedAddress,
+    guardedActiveAddress,
     bundle,
     runGuardedTx,
   ])
