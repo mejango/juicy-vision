@@ -2054,10 +2054,20 @@ export default function ProjectCard({
             </div>
           ) : null}
           {breakdown.restrictedCost > 0n && (
-            <div className="flex justify-between gap-4">
-              <span className={muted}>Fresh payment required</span>
-              <span className={muted}>{fmt(breakdown.restrictedCost)}</span>
-            </div>
+            <>
+              <div className="flex justify-between gap-4">
+                <span className={muted}>
+                  {breakdown.restrictedCost === breakdown.subtotal
+                    ? "Shop credit not accepted"
+                    : "Shop credit not accepted by some items"}
+                </span>
+                <span className={muted}>{fmt(breakdown.restrictedCost)}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className={muted}>Fresh payment required</span>
+                <span className={muted}>{fmt(breakdown.restrictedCost)}</span>
+              </div>
+            </>
           )}
           <div
             className={`flex justify-between gap-4 font-medium ${isDark ? "text-white" : "text-gray-900"}`}
