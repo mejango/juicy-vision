@@ -52,6 +52,16 @@
   ::-webkit-scrollbar-thumb:hover {
     background-color: rgba(245, 166, 35, 0.5);
   }
+
+  /* Tailwind 4 preflight dropped `cursor: pointer` on buttons; restore it so
+     every interactive control reads as clickable. Disabled states keep the
+     default arrow. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary,
+  select:not(:disabled) {
+    cursor: pointer;
+  }
 }
 
 @layer components {

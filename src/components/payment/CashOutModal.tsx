@@ -51,7 +51,15 @@ const FEE_FREE_SURPLUS_ABI = [
 // viem chain objects for wallet operations
 const CHAINS: Record<number, Chain> = ALL_VIEM_CHAINS
 
-async function readCashOutPreviewOutcome(params: { client: PublicClient; terminal: Address; holder: Address; projectId: bigint; cashOutCount: bigint; reclaimToken: Address }) {
+// Max-slippage presets for the preview floor (basis points), juicescan-style.
+const SLIPPAGE_PRESETS: { label: string; bps: bigint }[] = [
+  { label: '0.5%', bps: 50n },
+  { label: '1%', bps: 100n },
+  { label: '3%', bps: 300n },
+]
+const DEFAULT_SLIPPAGE_BPS = 100n
+
+async function readCashOutPreviewOutcome(params: { client: PublicClient; terminal: Address; holder: Address; projectId: bigint; cashOutCount: bigint; reclaimToken: Address; slippageBps: bigint }) {
   const readPreview = (metadata: Hex) =>
     params.client.readContract({
       address: params.terminal,
@@ -93,6 +101,7 @@ async function readCashOutPreviewOutcome(params: { client: PublicClient; termina
       hookSpecifications: preview[3],
       beneficiaryIsFeeless,
       feeFreeSurplus,
+      slippageBps: params.slippageBps,
     })
 
   await validateHooks(initialPreview)
@@ -180,6 +189,10 @@ export default function CashOutModal({
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
   const [previewRevision, setPreviewRevision] = useState(0)
+  // User-selected max slippage for the preview floor. Changing it re-runs the
+  // preview (same invalidation path as changing the amount), so the quote the
+  // user reviews and the locked-in re-preview always share one tolerance.
+  const [slippageBps, setSlippageBps] = useState(DEFAULT_SLIPPAGE_BPS)
   // Ref-based in-flight lock: a state flag alone can't stop two same-tick
   // clicks (both read the stale `false` before the first re-render). The ref
   // is the mutex; `submitting` only mirrors it into the button's disabled UI.
@@ -239,6 +252,7 @@ export default function CashOutModal({
       setPreviewOutcome(null)
       setPreviewTaxRate(null)
       setPreviewError(null)
+      setSlippageBps(DEFAULT_SLIPPAGE_BPS)
       inFlightRef.current = false
       setSubmitting(false)
     }
@@ -322,6 +336,7 @@ export default function CashOutModal({
           projectId: BigInt(projectId),
           cashOutCount,
           reclaimToken,
+          slippageBps,
         })
         if (cancelled) return
         setPreviewOutcome(result.outcome)
@@ -340,7 +355,7 @@ export default function CashOutModal({
     return () => {
       cancelled = true
     }
-  }, [isOpen, terminalAddress, activeAddress, cashOutCount, chainId, projectId, reclaimToken, previewRevision])
+  }, [isOpen, terminalAddress, activeAddress, cashOutCount, chainId, projectId, reclaimToken, slippageBps, previewRevision])
 
   const handleConfirm = useCallback(async () => {
     // Check wallet connection based on mode
@@ -409,6 +424,7 @@ export default function CashOutModal({
           projectId: BigInt(projectId),
           cashOutCount,
           reclaimToken,
+          slippageBps,
         })
         const cashOutTx = buildCashOutTx({
           chainId: chainId as JBChainId,
@@ -524,6 +540,7 @@ export default function CashOutModal({
     onSubmitted,
     assertCurrentAccount,
     previewOutcome,
+    slippageBps,
     guarded,
   ])
 
@@ -637,6 +654,27 @@ export default function CashOutModal({
                     </span>
                   </div>
                 )}
+                <div className="flex justify-between items-center">
+                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Max slippage</span>
+                  <div className="flex gap-1">
+                    {SLIPPAGE_PRESETS.map((preset) => (
+                      <button
+                        key={preset.label}
+                        onClick={() => setSlippageBps(preset.bps)}
+                        disabled={submitting}
+                        className={`px-2 py-1 text-xs font-mono border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                          slippageBps === preset.bps
+                            ? 'bg-juice-cyan border-juice-cyan text-black font-bold'
+                            : isDark
+                              ? 'border-white/20 text-gray-300 hover:bg-white/10'
+                              : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 {minimumReturnFloat != null && minimumReturnFloat > 0 && (
                   <div className="flex justify-between items-center">
                     <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Transaction minimum</span>
