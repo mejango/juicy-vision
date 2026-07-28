@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { encodeFunctionData, type Abi } from 'viem'
+import { useViewAsStore } from '../stores/viewAsStore'
 import {
   registerTransactionReviewHandler,
   requestTransactionReview,
@@ -43,6 +44,7 @@ function handle(handler: Parameters<typeof registerTransactionReviewHandler>[0])
 afterEach(() => {
   unregister?.()
   unregister = undefined
+  useViewAsStore.setState({ viewAs: null })
 })
 
 describe('transaction review boundary', () => {
@@ -84,6 +86,20 @@ describe('transaction review boundary', () => {
       }],
     })
     expect(observed?.calls[0].args).not.toBe(args)
+  })
+
+  it('refuses every reviewed write while view-as mode is active, before the handler runs', async () => {
+    let handlerRan = false
+    handle(async () => {
+      handlerRan = true
+      return true
+    })
+    useViewAsStore.setState({ viewAs: ACCOUNT })
+
+    await expect(requestTransactionReview({
+      calls: [{ chainId: 1, from: ACCOUNT, to: TARGET, data: DATA }],
+    })).rejects.toThrow("You're viewing the site as another account — exit View as to transact.")
+    expect(handlerRan).toBe(false)
   })
 
   it('fails closed when the reviewer cancels', async () => {

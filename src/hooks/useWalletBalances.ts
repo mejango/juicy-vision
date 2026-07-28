@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAccount } from 'wagmi'
 import { createPublicClient, http, formatEther, erc20Abi } from 'viem'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, type SupportedChainId } from '../constants'
+import { useViewAsStore } from '../stores/viewAsStore'
 
 const CHAIN_IDS = Object.keys(VIEM_CHAINS).map(Number) as SupportedChainId[]
 
@@ -19,7 +20,10 @@ export interface WalletBalances {
 
 export function useWalletBalances(overrideAddress?: string): WalletBalances {
   const { address: connectedAddress } = useAccount()
-  const address = overrideAddress || connectedAddress
+  // An explicit override always wins (the caller asked for a specific
+  // wallet); otherwise "your balances" follow the view-as impersonation.
+  const viewAs = useViewAsStore(s => s.viewAs)
+  const address = overrideAddress || viewAs || connectedAddress
   const [totalEth, setTotalEth] = useState<bigint>(0n)
   const [totalUsdc, setTotalUsdc] = useState<bigint>(0n)
   const [perChain, setPerChain] = useState<WalletBalances['perChain']>([])

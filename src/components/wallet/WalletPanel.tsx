@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { useAccount, useConnect, useConnectors, useDisconnect, useSignMessage } from 'wagmi'
 import { useThemeStore, useAuthStore, useSettingsStore } from '../../stores'
-import { useManagedWallet, useEnsNameResolved, useJuiceBalance, useSafeApp } from '../../hooks'
+import { useManagedWallet, useEnsNameResolved, useJuiceBalance, useSafeApp, useViewedAccount } from '../../hooks'
 import { hasValidWalletSession, signInWithWalletClient, clearWalletSession } from '../../services/siwe'
 import {
   EmbeddedCheckoutProvider,
@@ -734,7 +734,9 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsuff
   const { address, chainId } = useAccount()
   const { signMessageAsync } = useSignMessage()
   const { ensName } = useEnsNameResolved(address)
-  const { balances, loading } = useAllChainBalances(address)
+  // Balance display follows view-as; sign-in/identity stay on the real wallet.
+  const { address: viewedAddress } = useViewedAccount()
+  const { balances, loading } = useAllChainBalances(viewedAddress ?? address)
   const [signingIn, setSigningIn] = useState(false)
   const [signInError, setSignInError] = useState<string | null>(null)
   const [justSignedIn, setJustSignedIn] = useState(false)

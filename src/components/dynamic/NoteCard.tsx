@@ -9,7 +9,7 @@ import {
   type ConnectedChain,
 } from '../../services/bendystraw'
 import { resolveIpfsUri } from '../../utils/ipfs'
-import { useThemeStore, useTransactionStore } from '../../stores'
+import { useThemeStore, useTransactionStore, useViewAsStore } from '../../stores'
 import { VIEM_CHAINS, USDC_ADDRESSES, RPC_ENDPOINTS, MAINNET_CHAINS, type SupportedChainId } from '../../constants'
 import { ProjectLink } from './ProjectLink'
 import { getPaymentTerminal, getPaymentTokenAddress } from '../../utils/paymentTerminal'
@@ -48,7 +48,11 @@ export default function NoteCard({ projectId, chainId: initialChainId = '1', def
   const { addTransaction, transactions } = useTransactionStore()
   const [activeTransactionId, setActiveTransactionId] = useState<string | null>(null)
   const isDark = theme === 'dark'
-  const { address, isConnected } = useAccount()
+  const { address: connectedAddress, isConnected } = useAccount()
+  // Balance display follows view-as; the pay write itself runs through the
+  // executor's own wallet context and is refused while view-as is active.
+  const viewAs = useViewAsStore(s => s.viewAs)
+  const address = viewAs ?? connectedAddress
 
   const openWalletPanel = () => {
     window.dispatchEvent(new CustomEvent('juice:open-wallet-panel'))

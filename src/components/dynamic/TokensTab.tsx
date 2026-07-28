@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useAccount } from 'wagmi'
 import { formatEther } from 'viem'
-import { useThemeStore } from '../../stores'
+import { useThemeStore, useViewAsStore } from '../../stores'
 import {
   fetchProject,
   fetchProjectWithRuleset,
@@ -65,7 +65,10 @@ function formatTokenAmount(wei: string): string {
 export default function TokensTab({ projectId, chainId, isOwner, onDeployErc20 }: TokensTabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
-  const { address, isConnected } = useAccount()
+  const { address: connectedAddress, isConnected } = useAccount()
+  // "Your balance" reads follow view-as; this tab performs no writes itself.
+  const viewAs = useViewAsStore(s => s.viewAs)
+  const address = viewAs ?? connectedAddress
 
   const [loading, setLoading] = useState(true)
   const [project, setProject] = useState<Project | null>(null)

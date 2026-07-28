@@ -19,3 +19,4 @@ export { useAuthStore, PRIVACY_MODES, type UserMode, type PrivacyMode, type Mana
 export { useActivityStore } from './activityStore'
 export { useProjectDraftStore, type DraftTier, type DraftSplit } from './projectDraftStore'
 export { useDebugStore, type QueryError } from './debugStore'
+export { useViewAsStore, VIEW_AS_WRITE_REFUSAL } from './viewAsStore'

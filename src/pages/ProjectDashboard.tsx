@@ -11,7 +11,7 @@ import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAccount } from "wagmi";
 import { createPortal } from "react-dom";
-import { useThemeStore, useChatStore } from "../stores";
+import { useThemeStore, useChatStore, useViewAsStore } from "../stores";
 import { useManagedWallet, useIsMobile } from "../hooks";
 import { CHAINS, MAINNET_CHAINS } from "../constants";
 import {
@@ -271,12 +271,15 @@ export default function ProjectDashboard({
   const walletSession = getWalletSession();
 
   // Select the identity from the active custody mode; cached managed state is
-  // not evidence that the managed account is currently active.
+  // not evidence that the managed account is currently active. View-as wins
+  // for these display/gating reads; writes are refused at the review seams.
+  const viewAs = useViewAsStore((s) => s.viewAs);
   const currentUserAddress = useMemo(() => {
-    return isManagedMode
-      ? managedAddress
-      : walletSession?.address || wagmiAddress;
-  }, [isManagedMode, walletSession?.address, managedAddress, wagmiAddress]);
+    return (
+      viewAs ??
+      (isManagedMode ? managedAddress : walletSession?.address || wagmiAddress)
+    );
+  }, [viewAs, isManagedMode, walletSession?.address, managedAddress, wagmiAddress]);
 
   // Check if current user is the project owner
   const isOwner = useMemo(() => {
