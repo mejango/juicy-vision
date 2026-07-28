@@ -424,6 +424,110 @@ export const REVNET_OPERATOR_QUERY = `
   }
 `
 
+// Everything an account has done across projects: same selection set as
+// ACTIVITY_EVENTS_QUERY, filtered by the event's top-level `from` address.
+export const ACCOUNT_ACTIVITY_EVENTS_QUERY = `
+  query AccountActivityEvents($address: String!, $limit: Int, $offset: Int, $orderBy: String, $orderDirection: String) {
+    activityEvents(
+      where: { version: 6, from: $address }
+      limit: $limit
+      offset: $offset
+      orderBy: $orderBy
+      orderDirection: $orderDirection
+    ) {
+      items {
+        id
+        chainId
+        timestamp
+        from
+        txHash
+        project {
+          projectId
+          name
+          handle
+          logoUri
+          decimals
+          currency
+        }
+        payEvent {
+          amount
+          amountUsd
+          from
+          txHash
+        }
+        projectCreateEvent {
+          from
+          txHash
+        }
+        cashOutTokensEvent {
+          reclaimAmount
+          from
+          txHash
+        }
+        addToBalanceEvent {
+          amount
+          from
+          txHash
+        }
+        mintTokensEvent {
+          tokenCount
+          beneficiary
+          from
+          txHash
+        }
+        burnEvent {
+          amount
+          from
+          txHash
+        }
+        deployErc20Event {
+          symbol
+          from
+          txHash
+        }
+        sendPayoutsEvent {
+          amount
+          from
+          txHash
+        }
+        sendReservedTokensToSplitsEvent {
+          from
+          txHash
+        }
+        useAllowanceEvent {
+          amount
+          from
+          txHash
+        }
+        mintNftEvent {
+          from
+          txHash
+        }
+      }
+    }
+  }
+`
+
+// Every project an account can operate on someone's behalf: permissionHolders
+// filtered by operator. Grouping by (chainId, projectId) happens client-side.
+export const ACCOUNT_PERMISSION_HOLDERS_QUERY = `
+  query AccountPermissionHolders($operator: String!, $version: Int!, $limit: Int) {
+    permissionHolders(
+      where: { operator: $operator, version: $version }
+      limit: $limit
+    ) {
+      items {
+        chainId
+        projectId
+        account
+        operator
+        permissions
+        isRevnetOperator
+      }
+    }
+  }
+`
+
 export const ACTIVITY_EVENTS_QUERY = `
   query ActivityEvents($limit: Int, $offset: Int, $orderBy: String, $orderDirection: String) {
     activityEvents(
