@@ -80,10 +80,6 @@ vi.mock('./components/common/EnvironmentBadge', () => ({
   EnvironmentBadge: () => null,
 }))
 
-vi.mock('./components/common/ViewAsBanner', () => ({
-  default: () => null,
-}))
-
 vi.mock('./components/debug/QueryErrorPanel', () => ({
   QueryErrorPanel: () => null,
 }))

@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent, ClipboardEvent, DragEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAccount, useSignMessage, useChainId } from 'wagmi'
-import { useThemeStore, useAuthStore } from '../../stores'
+import { useThemeStore, useAuthStore, useViewAsStore } from '../../stores'
 import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
 import { hasValidWalletSession, signInWithWalletClient, getWalletSession } from '../../services/siwe'
 import { getPasskeyWallet } from '../../services/passkeyWallet'
 import { JuicyIdPopover, type AnchorPosition } from './WalletInfo'
 import { useJuicyIdentityDisplay } from './hooks/useJuicyIdentityDisplay'
 import type { Attachment } from '../../stores'
+import ViewAsWalletState from '../common/ViewAsWalletState'
 
 const DEFAULT_PLACEHOLDER_KEY = 'chat.typeMessage'
 
@@ -74,6 +75,7 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
   const { t } = useTranslation()
   const { theme, toggleTheme } = useThemeStore()
   const { token: authToken, _hasHydrated, isAuthenticated } = useAuthStore()
+  const viewAs = useViewAsStore(s => s.viewAs)
   const { address, isConnected } = useAccount()
   const { ensName } = useEnsNameResolved(address)
   const { signMessageAsync } = useSignMessage()
@@ -530,7 +532,19 @@ export default function ChatInput({ onSend, disabled, placeholder, hideBorder, h
           }`}>
             <div className="flex items-center justify-between">
               <div>
-            {isConnected && address ? (
+            {viewAs ? (
+              <>
+                <ViewAsWalletState hasConnectedWallet={!!(isConnected || hasAnyAuth)} />
+                {!balancesLoading && (totalEth > 0n || totalUsdc > 0n) && (
+                  <span className="ml-2">
+                    · {formatUsdcBalance(totalUsdc)} USDC · {formatEthBalance(totalEth)} ETH
+                  </span>
+                )}
+                {!balancesLoading && !balancesAvailable && (
+                  <span className="ml-2 opacity-60">· Balance unavailable</span>
+                )}
+              </>
+            ) : isConnected && address ? (
               <>
                 <button
                   onClick={onConnectedAsClick}

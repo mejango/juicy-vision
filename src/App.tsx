@@ -30,7 +30,6 @@ import { resolveEnsToAddress } from './utils/ens'
 import { PaymentReviewModal } from './components/payment'
 import TransactionReviewModal from './components/payment/TransactionReviewModal'
 import TransactionStatusCenter from './components/payment/TransactionStatusCenter'
-import ViewAsBanner from './components/common/ViewAsBanner'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -868,7 +867,6 @@ function MainApp() {
       <QueryErrorPanel />
       <AppProviders>
         <BrowserRouter>
-          <ViewAsBanner />
           <TransactionExecutor />
           <Suspense fallback={<RouteFallback />}>
             <Routes>

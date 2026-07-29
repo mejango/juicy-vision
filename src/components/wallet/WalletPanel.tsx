@@ -19,6 +19,7 @@ import { AccountLinkingBanner } from './AccountLinkingBanner'
 import { useAllChainBalances } from './useAllChainBalances'
 import ChainLogo from '../ui/ChainLogo'
 import { walletDappUrl, mobileWalletLinks, isMobileDevice } from '../../utils/walletLinks'
+import ViewAsMenuAction from '../common/ViewAsMenuAction'
 
 export interface AnchorPosition {
   top: number
@@ -2887,6 +2888,11 @@ export default function WalletPanel({ isOpen, onClose, paymentContext, anchorPos
         {currentView === 'buy_juice' && (
           <BuyJuiceView onBack={() => setView(previousView)} />
         )}
+
+        {!paymentContext &&
+          ['select', 'wallet', 'managed', 'passkey'].includes(currentView) && (
+            <ViewAsMenuAction onActivate={onClose} />
+          )}
 
         {/* Settings gear icon - bottom left (only show when connected, not during connection flow) */}
         {currentView !== 'settings' && currentView !== 'buy_juice' && currentView !== 'juicy_id' && currentView !== 'select' && currentView !== 'self_custody' && currentView !== 'auth_method' && currentView !== 'email_auth' && (

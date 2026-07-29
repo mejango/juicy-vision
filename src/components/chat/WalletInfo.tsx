@@ -12,7 +12,7 @@ import { useAnchoredPopoverStyle } from '../ui/useAnchoredPopoverStyle'
 import { getPasskeyWallet, forgetPasskeyWallet, type PasskeyWallet } from '../../services/passkeyWallet'
 import { useAuthStore, useViewAsStore } from '../../stores'
 import { storage } from '../../services/storage'
-import { resolveEnsToAddress } from '../../utils/ens'
+import ViewAsWalletState from '../common/ViewAsWalletState'
 
 export interface JuicyIdentity {
   emoji: string
@@ -501,109 +501,6 @@ export function JuicyIdPopover({
   )
 }
 
-const VIEW_AS_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
-
-// Inline "View as…" entry: accepts an address or ENS name and activates the
-// site-wide impersonation mode. Rendered in both the connected and the
-// disconnected WalletInfo rows so anyone can browse as any account.
-export function ViewAsControl() {
-  const { theme } = useThemeStore()
-  const isDark = theme === 'dark'
-  const { t } = useTranslation()
-  const setViewAs = useViewAsStore(s => s.setViewAs)
-  const [open, setOpen] = useState(false)
-  const [value, setValue] = useState('')
-  const [resolving, setResolving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const activate = async () => {
-    const input = value.trim()
-    if (!input) return
-    setError(null)
-    if (VIEW_AS_ADDRESS_REGEX.test(input)) {
-      setViewAs(input)
-      setOpen(false)
-      setValue('')
-      return
-    }
-    if (input.includes('.')) {
-      setResolving(true)
-      try {
-        const resolved = await resolveEnsToAddress(input)
-        if (resolved) {
-          setViewAs(resolved)
-          setOpen(false)
-          setValue('')
-        } else {
-          setError(t('viewAs.notFound', 'Could not resolve that name'))
-        }
-      } finally {
-        setResolving(false)
-      }
-      return
-    }
-    setError(t('viewAs.invalid', 'Enter a 0x address or ENS name'))
-  }
-
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className={`ml-1 transition-colors ${
-          isDark ? 'text-gray-500 hover:text-amber-300' : 'text-gray-400 hover:text-amber-600'
-        }`}
-      >
-        · {t('viewAs.action', 'View as…')}
-      </button>
-    )
-  }
-
-  return (
-    <span className="ml-2 inline-flex items-center gap-1">
-      <input
-        autoFocus
-        value={value}
-        onChange={e => {
-          setValue(e.target.value)
-          setError(null)
-        }}
-        onKeyDown={e => {
-          if (e.key === 'Enter') void activate()
-          if (e.key === 'Escape') {
-            setOpen(false)
-            setValue('')
-            setError(null)
-          }
-        }}
-        placeholder={t('viewAs.placeholder', 'Address or ENS…')}
-        className={`w-40 px-1.5 py-0.5 text-xs border bg-transparent outline-none focus:border-amber-500 ${
-          isDark ? 'border-white/20 placeholder-gray-500 text-white' : 'border-gray-300 placeholder-gray-400 text-gray-900'
-        }`}
-      />
-      <button
-        onClick={() => void activate()}
-        disabled={resolving}
-        className={`px-1.5 py-0.5 border transition-colors disabled:opacity-50 ${
-          isDark ? 'border-amber-500/60 text-amber-300 hover:bg-amber-500/20' : 'border-amber-500 text-amber-700 hover:bg-amber-100'
-        }`}
-      >
-        {resolving ? '…' : t('viewAs.go', 'View')}
-      </button>
-      <button
-        onClick={() => {
-          setOpen(false)
-          setValue('')
-          setError(null)
-        }}
-        className={isDark ? 'text-gray-500 hover:text-white' : 'text-gray-400 hover:text-gray-900'}
-      >
-        ✕
-      </button>
-      {error && <span className="text-red-400">{error}</span>}
-    </span>
-  )
-}
-
 // Dispatch event to open wallet panel with anchor position
 function openWalletPanel(e: React.MouseEvent<HTMLButtonElement>) {
   const rect = e.currentTarget.getBoundingClientRect()
@@ -824,13 +721,42 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
     return null // Don't show emoji - will show "Set Juicy ID" prompt instead
   }
 
-  const isAccountConnected = isConnected || address || passkeyWallet || isAuthenticated()
+  const isAccountConnected = !!(isConnected || address || passkeyWallet || isAuthenticated())
 
   const content = (
     <div className={`flex items-center text-xs ${
       theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
     }`}>
-      {isSessionStale ? (
+      {viewAs ? (
+        <>
+          <ViewAsWalletState hasConnectedWallet={isAccountConnected} />
+          <span>
+            {balancesLoading ? (
+              <span className="ml-2 opacity-50 hidden sm:inline">Loading...</span>
+            ) : !balancesAvailable ? (
+              <span className="ml-2 opacity-50 hidden sm:inline">Balance unavailable</span>
+            ) : (
+              <span className="hidden sm:inline">
+                <span className="mx-1">·</span>
+                {formatUsdcBalance(totalUsdc)} USDC
+                <span className="mx-1">·</span>
+                {formatEthBalance(totalEth)} ETH
+              </span>
+            )}
+          </span>
+          <button
+            onClick={() => navigate(`/account/${viewAs}`)}
+            className={`transition-colors ${
+              theme === 'dark'
+                ? 'text-gray-400 hover:text-gray-200'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            <span className="mx-1">·</span>
+            {t('wallet.account', 'Account')}
+          </button>
+        </>
+      ) : isSessionStale ? (
         // Stale session - show reset option
         <button
           onClick={resetConnection}
@@ -922,7 +848,6 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
               {t('wallet.account', 'Account')}
             </button>
           )}
-          <ViewAsControl />
         </>
       ) : (
         // Not connected - invite user to connect
@@ -970,7 +895,6 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
               {t('wallet.account', 'Account')}
             </button>
           )}
-          <ViewAsControl />
         </>
       )}
     </div>

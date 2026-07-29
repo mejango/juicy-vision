@@ -5,6 +5,7 @@ import { useThemeStore, useAuthStore } from '../../stores'
 import { forgetPasskeyWallet } from '../../services/passkeyWallet'
 import type { DeviceHint } from '../../services/passkey'
 import { useAnchoredPopoverStyle } from '../ui/useAnchoredPopoverStyle'
+import ViewAsMenuAction from '../common/ViewAsMenuAction'
 
 export interface AnchorPosition {
   top: number
@@ -366,6 +367,7 @@ export default function AuthOptionsModal({
             {t('auth.wallet', 'Wallet')}
           </button>
         </div>
+        <ViewAsMenuAction onActivate={handleClose} />
       </div>
     </div>
     </>,

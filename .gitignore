@@ -16,6 +16,7 @@ dist/
 .env.*.local
 .env.bak
 *.env.bak
+.env.development
 .env.staging
 
 # Private keys and encrypted key stores (public .crt/.cer/.pub files remain allowed)
