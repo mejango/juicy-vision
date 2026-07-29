@@ -2,7 +2,15 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { formatUnits } from 'viem'
 import { useThemeStore } from '../../stores'
-import { fetchProjectNFTTiers, getProjectDataHook, hasTokenUriResolver, fetchShopPayCredits, type ResolvedNFTTier } from '../../services/nft'
+import {
+  fetchHookFlags,
+  fetchProjectNFTTiers,
+  getProjectDataHook,
+  hasTokenUriResolver,
+  fetchShopPayCredits,
+  type JB721HookFlags,
+  type ResolvedNFTTier,
+} from '../../services/nft'
 import { fetchEthPrice, fetchProject } from '../../services/bendystraw'
 import { rulesetKeys, getShopStaleTime } from '../../hooks/useRulesetCache'
 import { useGuardedTx } from '../../hooks/useGuardedTx'
@@ -14,6 +22,14 @@ import ChainLogo from '../ui/ChainLogo'
 import { CustomersSubtab } from '../project/shop/CustomersSubtab'
 
 type ShopSubtab = 'inventory' | 'customers'
+
+const SHOP_CONFIG_ROWS: [keyof JB721HookFlags, string][] = [
+  ['preventOverspending', 'Require exact payment'],
+  ['noNewTiersWithReserves', 'Lock reserved items after launch'],
+  ['noNewTiersWithVotes', 'Lock voting items after launch'],
+  ['noNewTiersWithOwnerMinting', 'Lock owner minting after launch'],
+  ['issueTokensForSplits', 'Give split recipients project tokens'],
+]
 
 // The shop subtab isn't part of the dashboard's owners-subtab hash scheme
 // (parseProjectHash only knows owners subtabs), so read/write the `#shop/…`
@@ -98,12 +114,18 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
         fetchProject(selectedProjectId, selectedChainIdNum),
       ])
       // Check if hook has tokenUriResolver (if hook exists)
-      const hasResolver = hook ? await hasTokenUriResolver(hook, selectedChainIdNum) : false
+      const [hasResolver, hookFlags] = hook
+        ? await Promise.all([
+            hasTokenUriResolver(hook, selectedChainIdNum),
+            fetchHookFlags(hook, selectedChainIdNum).catch(() => null),
+          ])
+        : [false, null]
       return {
         tiers: tiersData,
         ethPrice: price,
         hookAddress: hook,
         hasTokenUriResolver: hasResolver,
+        hookFlags,
         storedCategoryNames: project.metadata?.storeCategories || project.metadata?.['721Categories'] || {},
       }
     },
@@ -113,6 +135,7 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
   const tiers = useMemo(() => shopData?.tiers ?? [], [shopData?.tiers])
   const ethPrice = shopData?.ethPrice
   const hookAddress = shopData?.hookAddress ?? null
+  const hookFlags = shopData?.hookFlags ?? null
   const hookHasTokenUriResolver = shopData?.hasTokenUriResolver ?? false
   const storedCategoryNames = useMemo(
     () => shopData?.storedCategoryNames ?? {},
@@ -337,6 +360,9 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
       )}
     </div>
   ) : null
+  const configDetails = hookAddress ? (
+    <ShopConfigDetails flags={hookFlags} isDark={isDark} />
+  ) : null
 
   // Compact renderer for one tier card — used by both the grouped and flat layouts.
   const renderTierCard = (tier: ResolvedNFTTier) => (
@@ -373,6 +399,7 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
           )}
         </div>
         {collectionFooter}
+        {configDetails}
       </div>
     )
   }
@@ -488,6 +515,7 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
       )}
 
       {collectionFooter}
+      {configDetails}
     </div>
   )
   }
@@ -518,5 +546,53 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
         <CustomersSubtab projectId={projectId} chainId={chainIdNum} chains={availableChains} isRevnet={isRevnet} />
       )}
     </div>
+  )
+}
+
+function ShopConfigDetails({
+  flags,
+  isDark,
+}: {
+  flags: JB721HookFlags | null
+  isDark: boolean
+}) {
+  return (
+    <details
+      className={`group mt-4 border-t pt-3 ${
+        isDark ? 'border-white/10' : 'border-gray-200'
+      }`}
+    >
+      <summary
+        className={`flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium ${
+          isDark ? 'text-gray-200' : 'text-gray-700'
+        }`}
+      >
+        <span>Shop config</span>
+        <span
+          aria-hidden="true"
+          className={`inline-block transition-transform group-open:rotate-90 ${
+            isDark ? 'text-gray-500' : 'text-gray-400'
+          }`}
+        >
+          ▸
+        </span>
+      </summary>
+      {flags ? (
+        <dl className="mt-3 space-y-2 text-sm">
+          {SHOP_CONFIG_ROWS.map(([key, label]) => (
+            <div key={key} className="flex items-baseline justify-between gap-4">
+              <dt className={isDark ? 'text-gray-400' : 'text-gray-500'}>{label}</dt>
+              <dd className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                {flags[key] ? 'On' : 'Off'}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      ) : (
+        <p className={`mt-3 text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+          Couldn&apos;t read the current shop config.
+        </p>
+      )}
+    </details>
   )
 }

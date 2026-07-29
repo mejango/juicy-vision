@@ -17,6 +17,9 @@ export const EDITABLE_STRING_KEYS = [
 
 type EditableStringKey = (typeof EDITABLE_STRING_KEYS)[number]
 
+/** Known metadata fields this editor preserves but does not expose as custom properties. */
+const RETAINED_METADATA_KEYS = ['version'] as const
+
 export interface ProjectMetadataEdits {
   name: string
   tagline: string
@@ -84,6 +87,7 @@ export function mergeProjectMetadataEdits(
 /** Keys in the current JSON the form doesn't edit (unknown keys + uneditable shapes), kept as-is. */
 export function preservedMetadataKeys(current: Record<string, unknown>): string[] {
   return Object.keys(current).filter(key => {
+    if ((RETAINED_METADATA_KEYS as readonly string[]).includes(key)) return false
     const value = current[key]
     if (key === 'tags') return !isStringArray(value)
     if ((EDITABLE_STRING_KEYS as readonly string[]).includes(key)) return typeof value !== 'string'
@@ -98,6 +102,7 @@ export function customPropertiesOf(current: Record<string, unknown>): Record<str
 
 /** True when the form's own inputs own this key (so it wins over the Advanced JSON on collision). */
 function isManagedKey(key: string, edits: ProjectMetadataEdits): boolean {
+  if ((RETAINED_METADATA_KEYS as readonly string[]).includes(key)) return true
   if ((EDITABLE_STRING_KEYS as readonly string[]).includes(key)) return true
   return key === 'tags' && edits.tagsEditable
 }

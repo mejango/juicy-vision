@@ -145,7 +145,7 @@ describe('preservedMetadataKeys', () => {
 
 describe('customPropertiesOf', () => {
   it('returns exactly the unmanaged keys with their values', () => {
-    const current = { name: 'N', leagueID: 42, stats: { a: 1 }, tags: ['x'] }
+    const current = { name: 'N', leagueID: 42, stats: { a: 1 }, tags: ['x'], version: 1 }
     expect(customPropertiesOf(current)).toEqual({ leagueID: 42, stats: { a: 1 } })
   })
 
@@ -161,6 +161,7 @@ describe('mergeWithCustomProperties', () => {
     leagueID: 42,
     stats: { wins: 3 },
     tags: ['football'],
+    version: 1,
   }
 
   it('round-trips untouched custom properties', () => {
@@ -177,6 +178,7 @@ describe('mergeWithCustomProperties', () => {
     expect('stats' in merged).toBe(false)
     expect(merged.name).toBe('Old')
     expect(merged.tags).toEqual(['football'])
+    expect(merged.version).toBe(1)
   })
 
   it('lets managed form fields win when a custom key collides', () => {
@@ -184,10 +186,11 @@ describe('mergeWithCustomProperties', () => {
     const merged = mergeWithCustomProperties(
       current,
       { ...prefilled, name: 'Form Name' },
-      { ...customPropertiesOf(current), name: 'JSON Name', tags: ['json-tag'] },
+      { ...customPropertiesOf(current), name: 'JSON Name', tags: ['json-tag'], version: 99 },
     )
     expect(merged.name).toBe('Form Name')
     expect(merged.tags).toEqual(['football'])
+    expect(merged.version).toBe(1)
   })
 
   it('lets the JSON editor own known keys with uneditable shapes', () => {
