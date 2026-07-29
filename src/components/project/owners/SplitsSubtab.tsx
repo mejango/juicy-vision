@@ -463,7 +463,7 @@ export function SplitsSubtab({
         <ExplainerMessage>
           {reserved
             ? `A reserved percentage of newly issued ${symbol} is split between these accounts. The project owner can adjust the recipients at any time, up to the reserved rate set by the ruleset.`
-            : `Newly issued and bought back ${symbol} are split between these accounts. The project operator can adjust the splits at any time within each stage’s permanent split limit.`}
+            : `Newly issued and bought back ${symbol} are split between these accounts. The revnet operator can adjust the splits at any time within each stage’s permanent split limit.`}
         </ExplainerMessage>
       </div>
 
@@ -550,7 +550,7 @@ export function SplitsSubtab({
                 title={
                   stageEnded
                     ? "This stage has ended — its splits can no longer receive distributions"
-                    : `Edit stage ${(shownIndex ?? 0) + 1}’s split recipients (project operator only)`
+                    : `Edit stage ${(shownIndex ?? 0) + 1}’s split recipients (revnet operator only)`
                 }
                 className={`text-sm underline decoration-dotted underline-offset-2 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:no-underline ${
                   isDark

@@ -2867,7 +2867,7 @@ export default function RulesetSchedule({
                     <div
                       className={`text-xs font-medium mb-3 ${isDark ? "text-gray-300" : "text-gray-600"}`}
                     >
-                      Project operator
+                      Revnet operator
                     </div>
                     {operator ? (
                       <div className="space-y-3">
@@ -2882,7 +2882,7 @@ export default function RulesetSchedule({
                             {operatorEns || truncateAddress(operator)}
                           </a>
                           <span className="px-2 py-0.5 text-xs font-medium bg-blue-500/20 text-blue-400">
-                            Project operator
+                            Revnet operator
                           </span>
                         </div>
 
@@ -2893,7 +2893,7 @@ export default function RulesetSchedule({
                           <div
                             className={`text-xs font-medium ${isDark ? "text-gray-300" : "text-gray-600"}`}
                           >
-                            Project operator powers
+                            Revnet operator powers
                           </div>
 
                           <div>
@@ -3004,7 +3004,7 @@ export default function RulesetSchedule({
                         <div
                           className={`text-xs p-2 ${isDark ? "bg-blue-500/10 text-blue-300" : "bg-blue-50 text-blue-700"}`}
                         >
-                          The project operator can configure reserved token
+                          The revnet operator can configure reserved token
                           splits, deploy cross-chain bridges, and manage NFT
                           tiers. They cannot change core tokenomics or access
                           project funds.
@@ -3014,7 +3014,7 @@ export default function RulesetSchedule({
                       <div
                         className={`text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`}
                       >
-                        No project operator set.
+                        No revnet operator set.
                       </div>
                     )}
                   </div>

@@ -897,7 +897,7 @@ export default function ProjectDashboard({
                 {displayAddress && (
                   <>
                     <span>
-                      {projectIsRevnet ? "Project operator" : "Project owner"}:
+                      {projectIsRevnet ? "Revnet operator" : "Project owner"}:
                     </span>
                     <a
                       href={
@@ -1003,7 +1003,7 @@ export default function ProjectDashboard({
                   </>
                 )}
                 {projectIsRevnet && revnetOperatorError && !displayAddress && (
-                  <span className="text-red-400">Project operator unavailable</span>
+                  <span className="text-red-400">Revnet operator unavailable</span>
                 )}
                 {displayAddress && project.metadata?.infoUri && (
                   <span className="opacity-50">|</span>

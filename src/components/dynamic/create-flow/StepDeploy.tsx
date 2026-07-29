@@ -553,7 +553,7 @@ function ReviewSummary({ state }: { state: CreateFlowState }) {
         <ReviewRow k="Token" v={`$${tickerLabel(state)}`} />
         <ReviewRow k="Accounting token" v={surplusTokenLabel(state)} />
         <ReviewRow
-          k="Project operator"
+          k="Revnet operator"
           v={/^0x/.test(opRaw) ? shortAddr(opRaw) : "Project owner"}
         />
         <ReviewRow k="Stages" v={String(state.stages.length)} />
@@ -799,7 +799,7 @@ export default function StepDeploy({
       )}
       {needOperator && (
         <InfoNote>
-          Set a project operator on the Flavor step to deploy your revnet.
+          Set a revnet operator on the Flavor step to deploy your revnet.
         </InfoNote>
       )}
       {needCustomToken && (

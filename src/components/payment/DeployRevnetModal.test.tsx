@@ -233,7 +233,7 @@ describe('DeployRevnetModal', () => {
     it('shows split operator', () => {
       render(<DeployRevnetModal {...defaultProps} />)
 
-      expect(screen.getByText('Project operator')).toBeInTheDocument()
+      expect(screen.getByText('Revnet operator')).toBeInTheDocument()
       expect(screen.getByText('0xabcdef...cdef12')).toBeInTheDocument()
     })
 

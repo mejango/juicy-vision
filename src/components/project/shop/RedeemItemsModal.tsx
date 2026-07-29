@@ -272,13 +272,13 @@ export function RedeemItemsModal({ isOpen, onClose, chains, defaultChainId, onRe
             abi: FEE_FREE_SURPLUS_ABI,
             functionName: 'feeFreeSurplusOf',
             args: [projectId, reclaimToken.address],
-          }).catch(() => 0n),
+          }),
           client.readContract({
             address: JB_CONTRACTS.JBFeelessAddresses,
             abi: FEELESS_FOR_ABI,
             functionName: 'isFeelessFor',
             args: [activeAddress, projectId, activeAddress],
-          }).catch(() => false),
+          }),
         ])
         if (previewSeq.current !== seq) return
         const reclaimAmount = previewResult[1] as bigint
@@ -361,13 +361,13 @@ export function RedeemItemsModal({ isOpen, onClose, chains, defaultChainId, onRe
               abi: FEE_FREE_SURPLUS_ABI,
               functionName: 'feeFreeSurplusOf',
               args: [projectId, reclaimToken.address],
-            }).catch(() => 0n),
+            }),
             client.readContract({
               address: JB_CONTRACTS.JBFeelessAddresses,
               abi: FEELESS_FOR_ABI,
               functionName: 'isFeelessFor',
               args: [activeAddress, projectId, activeAddress],
-            }).catch(() => false),
+            }),
           ])
           const liveNet = (previewResult[1] as bigint) - cashOutProtocolFee({
             reclaimAmount: previewResult[1] as bigint,

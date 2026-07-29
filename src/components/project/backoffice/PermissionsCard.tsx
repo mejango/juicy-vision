@@ -208,7 +208,7 @@ function SetPermissionsModal({
         to: request.to,
         data: request.data,
         review: {
-          title: "Review project operator permissions",
+          title: "Review revnet operator permissions",
           label: `Replace ${shortAddress(operator)}'s project permissions with ${ids.length} selected permission${ids.length === 1 ? "" : "s"}`,
           contractName: "JBPermissions",
           ...request.review,
@@ -252,7 +252,7 @@ function SetPermissionsModal({
 
   return (
     <BackOfficeModal
-      title={editing ? "Edit permissions" : "Add project operator"}
+      title={editing ? "Edit permissions" : "Add revnet operator"}
       onClose={onClose}
       busy={anyRunning}
       isDark={isDark}
@@ -270,14 +270,14 @@ function SetPermissionsModal({
         <label
           className={`block text-sm font-medium ${isDark ? "text-gray-300" : "text-gray-700"}`}
         >
-          Project operator
+          Revnet operator
         </label>
         <input
           type="text"
           value={operatorInput}
           onChange={(event) => setOperatorInput(event.target.value)}
           disabled={editing}
-          placeholder="0x… project operator address"
+          placeholder="0x… revnet operator address"
           spellCheck={false}
           className={`w-full px-3 py-2 text-sm font-mono border bg-transparent outline-none disabled:opacity-60 ${
             isDark
@@ -358,7 +358,7 @@ function SetPermissionsModal({
           >
             {ids.length
               ? `This replaces the operator's set with ${ids.length} permission${ids.length === 1 ? "" : "s"}.`
-              : "No boxes checked — this removes the project operator entirely."}
+              : "No boxes checked — this removes the revnet operator entirely."}
           </p>
         </div>
       ) : null}
@@ -394,8 +394,8 @@ function SetPermissionsModal({
 
       <DangerGate
         isDark={isDark}
-        text="Granting permissions lets the project operator act on the project's behalf for the checked powers. Verify the address — a wrong or malicious project operator can use these powers against the project. You can change or revoke them here at any time."
-        confirmLabel="I've verified the project operator address and the permissions I'm granting."
+        text="Granting permissions lets the revnet operator act on the project's behalf for the checked powers. Verify the address — a wrong or malicious revnet operator can use these powers against the project. You can change or revoke them here at any time."
+        confirmLabel="I've verified the revnet operator address and the permissions I'm granting."
         checked={gateChecked}
         onChange={setGateChecked}
       />
@@ -407,7 +407,7 @@ function SetPermissionsModal({
         disabled={!ready || !gateChecked || rootBlocked || anyRunning}
         disabledReason={
           !operator
-            ? "Enter a valid project operator address first"
+            ? "Enter a valid revnet operator address first"
             : !ready
               ? "Reading current permissions…"
               : rootBlocked
@@ -471,8 +471,8 @@ export function PermissionsCard({
     <BackOfficeCard title="Permissions" isDark={isDark}>
       <ExplainerMessage>
         {isRevnet
-          ? "What this revnet's project operator is allowed to do. These powers come with the project operator role (the default revnet powers plus any NFT powers granted when the revnet was deployed)."
-          : "Project operators the project owner has authorized to act on the project's behalf, and what each one can do. The project owner can grant or revoke permissions at any time."}
+          ? "What this revnet's revnet operator is allowed to do. These powers come with the revnet operator role (the default revnet powers plus any NFT powers granted when the revnet was deployed)."
+          : "Revnet operators the project owner has authorized to act on the project's behalf, and what each one can do. The project owner can grant or revoke permissions at any time."}
       </ExplainerMessage>
 
       {failed ? (
@@ -486,8 +486,8 @@ export function PermissionsCard({
       ) : operators.length === 0 ? (
         <p className={`text-sm ${isDark ? "text-gray-500" : "text-gray-400"}`}>
           {isRevnet
-            ? "No project operator permissions found."
-            : "No project operators authorized yet."}
+            ? "No revnet operator permissions found."
+            : "No revnet operators authorized yet."}
         </p>
       ) : (
         <div className="space-y-3">
@@ -511,7 +511,7 @@ export function PermissionsCard({
                         : "bg-green-100 text-green-700"
                     }`}
                   >
-                    Project operator
+                    Revnet operator
                   </span>
                 ) : null}
                 <span

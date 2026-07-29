@@ -278,7 +278,7 @@ export function AccountCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolveProjectId, isRevnet, chainKey, refreshNonce]);
 
-  const addrLabel = isRevnet ? "Project operator" : "Project owner";
+  const addrLabel = isRevnet ? "Revnet operator" : "Project owner";
 
   // Collapse chains sharing the same authority + type + policy into one row.
   const groups: AuthorityGroup[] = [];
@@ -325,7 +325,7 @@ export function AccountCard({
       <ExplainerMessage>
         The account controlling this project on each chain —{" "}
         {isRevnet
-          ? "the project operator role granted by the revnet."
+          ? "the revnet operator role granted by the revnet."
           : "the project owner recorded by the project NFT."}
       </ExplainerMessage>
 
@@ -457,7 +457,7 @@ export function AccountCard({
                   }`}
                 >
                   {isRevnet
-                    ? "Transfer project operator"
+                    ? "Transfer revnet operator"
                     : "Transfer project ownership"}
                 </button>
               </div>

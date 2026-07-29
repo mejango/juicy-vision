@@ -618,7 +618,7 @@ function OperatorSection({ state, update }: StepProps) {
     [update],
   );
   return (
-    <FieldBlock label="Project operator">
+    <FieldBlock label="Revnet operator">
       {!perChainAddrActive(state, "op") && (
         <EnsAddressInput
           value={state.revOperator}

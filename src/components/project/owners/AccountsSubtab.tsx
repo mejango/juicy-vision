@@ -190,7 +190,7 @@ function HoldersTable({
   if (!data.holders.length) {
     return (
       <p className={`text-sm ${muted}`}>
-        No owners indexed yet — this list trails the chain. Your own balance shows live under You above.
+        No token holders indexed yet — this list trails the chain. Your own balance shows live under You above.
       </p>
     )
   }

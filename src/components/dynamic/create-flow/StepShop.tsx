@@ -334,7 +334,7 @@ function ItemEditor({
     !nft.imageUri || (nft.mediaType || "").indexOf("image") === 0;
 
   const minter =
-    state.projectType === "revnet" ? "project operator" : "project owner";
+    state.projectType === "revnet" ? "revnet operator" : "project owner";
   const minterCap = minter.charAt(0).toUpperCase() + minter.slice(1);
 
   const benefWarn = Number(nft.reserveFrequency) > 0 && !resolvedBenef;
@@ -952,15 +952,15 @@ function StoreConfigSection({ state, update }: StepProps) {
       {state.projectType === "revnet" && (
         <div className="mt-4">
           <div className={labelClass(isDark)}>
-            Project operator store permissions
+            Revnet operator store permissions
           </div>
           <div className="text-xs mb-2 text-gray-500">
-            What the revnet’s project operator can do to the store after launch.
+            What the revnet’s revnet operator can do to the store after launch.
           </div>
           <ToggleRow
-            label="Project operator can add & remove items"
-            on="The project operator can adjust the store’s items."
-            off="The project operator can’t change the store’s items."
+            label="Revnet operator can add & remove items"
+            on="The revnet operator can adjust the store’s items."
+            off="The revnet operator can’t change the store’s items."
             checked={c.opCanAdjustTiers}
             onChange={(v) =>
               update((s) => {
@@ -969,9 +969,9 @@ function StoreConfigSection({ state, update }: StepProps) {
             }
           />
           <ToggleRow
-            label="Project operator can update item metadata"
-            on="The project operator can update the store’s metadata."
-            off="The project operator can’t update the store’s metadata."
+            label="Revnet operator can update item metadata"
+            on="The revnet operator can update the store’s metadata."
+            off="The revnet operator can’t update the store’s metadata."
             checked={c.opCanUpdateMetadata}
             onChange={(v) =>
               update((s) => {
@@ -980,9 +980,9 @@ function StoreConfigSection({ state, update }: StepProps) {
             }
           />
           <ToggleRow
-            label="Project operator can mint items for free"
-            on="The project operator can mint shop items from inventory without paying."
-            off="The project operator pays like everyone else."
+            label="Revnet operator can mint items for free"
+            on="The revnet operator can mint shop items from inventory without paying."
+            off="The revnet operator pays like everyone else."
             checked={c.opCanMint}
             onChange={(v) =>
               update((s) => {
@@ -991,9 +991,9 @@ function StoreConfigSection({ state, update }: StepProps) {
             }
           />
           <ToggleRow
-            label="Project operator can increase discounts"
-            on="The project operator can raise an item’s discount."
-            off="The project operator can’t raise item discounts."
+            label="Revnet operator can increase discounts"
+            on="The revnet operator can raise an item’s discount."
+            off="The revnet operator can’t raise item discounts."
             checked={c.opCanIncreaseDiscount}
             onChange={(v) =>
               update((s) => {

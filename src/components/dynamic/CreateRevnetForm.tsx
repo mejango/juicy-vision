@@ -387,7 +387,7 @@ export default function CreateRevnetForm({ defaultChainIds }: CreateRevnetFormPr
                   {/* Split Percent */}
                   <div>
                     <label className={`block text-[10px] mb-1 ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                      Project operator split (%)
+                      Revnet operator split (%)
                     </label>
                     <input
                       type="number"

@@ -188,7 +188,7 @@ export default function OverviewTab({
     };
   }, [chains, isRevnet]);
 
-  const authorityLabel = isRevnet ? "Project operator" : "Project owner";
+  const authorityLabel = isRevnet ? "Revnet operator" : "Project owner";
   const authorityAddress = isRevnet
     ? (revnetOperator ?? null)
     : project.owner || null;
