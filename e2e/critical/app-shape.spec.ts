@@ -1,6 +1,11 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test } from '../fixtures/local-only'
 
+// The complete axe WCAG scan traverses the animated prompt wall at every
+// viewport. Give that intentional full-page audit the same budget as the
+// responsive suite instead of inheriting Playwright's generic 30s timeout.
+test.setTimeout(120_000)
+
 const VIEWPORTS = [
   { name: 'desktop', width: 1280, height: 900, contrastMax: 0 },
   { name: 'tablet', width: 768, height: 1024, contrastMax: 0 },

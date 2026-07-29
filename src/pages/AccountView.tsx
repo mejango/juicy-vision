@@ -52,7 +52,7 @@ const ACTIVITY_PAGE_SIZE = 25
 // Tab set mirrors the project page's idiom (ProjectTabs + URL hash): the tab
 // row switches panels, and the active tab is written to the location hash so
 // deep links and back/forward keep working.
-export type AccountTabId = 'activity' | 'holdings' | 'projects' | 'roles'
+type AccountTabId = 'activity' | 'holdings' | 'projects' | 'roles'
 
 const ACCOUNT_TABS: Array<{ id: AccountTabId; label: string }> = [
   { id: 'activity', label: 'Activity' },
@@ -61,7 +61,7 @@ const ACCOUNT_TABS: Array<{ id: AccountTabId; label: string }> = [
   { id: 'roles', label: 'Roles' },
 ]
 
-export function parseAccountHash(hash: string): AccountTabId | null {
+function parseAccountHash(hash: string): AccountTabId | null {
   const slug = hash.replace(/^#/, '').toLowerCase()
   return ACCOUNT_TABS.some(tab => tab.id === slug) ? (slug as AccountTabId) : null
 }
