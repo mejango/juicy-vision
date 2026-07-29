@@ -127,6 +127,26 @@
      caret that sits within bounds. Mirrors website/ .component-wrapper select.field.
      Pair with `pl-2 pr-6` (or similar) so the text clears the caret — this class
      intentionally sets no padding to avoid conflicting with Tailwind px-* utilities. */
+  /* Native <dialog> modals (see components/ui/DialogShell.tsx). The top layer
+     handles stacking, so these carry no z-index at all — the dimming that used
+     to be a `fixed inset-0 bg-black/80` sibling is now the real ::backdrop.
+     The display toggle has to live here rather than in a Tailwind `flex` class:
+     a display utility on the element would override the UA's
+     `dialog:not([open]) { display: none }` rule and leak a closed dialog. */
+  .dialog-shell {
+    display: none;
+  }
+
+  .dialog-shell[open] {
+    display: flex;
+  }
+
+  .dialog-shell::backdrop {
+    background-color: rgb(0 0 0 / 0.8);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+
   .select-caret {
     appearance: none;
     -webkit-appearance: none;

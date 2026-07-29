@@ -1,4 +1,5 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import CashOutModal from './CashOutModal'
@@ -179,5 +180,69 @@ describe('CashOutModal double-submit guard', () => {
     // A second concurrent flow would have opened its own transaction record.
     expect(mocks.addTransaction).toHaveBeenCalledTimes(1)
     expect(mocks.sendTransaction).toHaveBeenCalledTimes(1)
+  })
+
+  // The modal is a native <dialog>. Escape now arrives as the UA `cancel` event
+  // and a backdrop click is a click on the dialog element itself, so both
+  // dismissal paths have to respect the same in-flight guard the close button
+  // uses. Before the migration neither path existed for this modal at all.
+  describe('dismissal guards', () => {
+    async function startCashOut() {
+      const button = await screen.findByRole('button', { name: 'Confirm Cash Out' })
+      await waitFor(() => expect(button).toBeEnabled())
+      await act(async () => {
+        button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+      })
+      await waitFor(() => expect(mocks.sendTransaction).toHaveBeenCalledTimes(1))
+    }
+
+    function dialog(): HTMLDialogElement {
+      const element = document.querySelector('dialog')
+      if (!element) throw new Error('cash out dialog is not open')
+      return element as HTMLDialogElement
+    }
+
+    it('closes on Escape while the cash out is still a preview', async () => {
+      const props = renderModal()
+      await screen.findByRole('button', { name: 'Confirm Cash Out' })
+
+      fireEvent.keyDown(document, { key: 'Escape' })
+
+      expect(props.onClose).toHaveBeenCalledTimes(1)
+    })
+
+    it('closes on a backdrop click while the cash out is still a preview', async () => {
+      const user = userEvent.setup()
+      const props = renderModal()
+      await screen.findByRole('button', { name: 'Confirm Cash Out' })
+
+      await user.click(dialog())
+
+      expect(props.onClose).toHaveBeenCalledTimes(1)
+    })
+
+    it('blocks Escape once the transaction is in flight', async () => {
+      // A signature that never settles keeps the modal out of the preview,
+      // confirmed and failed states for the whole test.
+      mocks.sendTransaction.mockReturnValue(new Promise(() => {}))
+      const props = renderModal()
+      await startCashOut()
+
+      fireEvent.keyDown(document, { key: 'Escape' })
+
+      expect(props.onClose).not.toHaveBeenCalled()
+      expect(dialog().open).toBe(true)
+    })
+
+    it('blocks a backdrop click once the transaction is in flight', async () => {
+      const user = userEvent.setup()
+      mocks.sendTransaction.mockReturnValue(new Promise(() => {}))
+      const props = renderModal()
+      await startCashOut()
+
+      await user.click(dialog())
+
+      expect(props.onClose).not.toHaveBeenCalled()
+    })
   })
 })

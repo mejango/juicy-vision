@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { erc20Abi, formatUnits } from "viem";
 import { jbMultiTerminalAbi } from "@bananapus/nana-sdk-core";
 import { useThemeStore } from "../../stores";
+import DialogShell from "../ui/DialogShell";
 import {
   PAYMENT_REVIEW_EVENT,
   type PaymentReview,
@@ -148,26 +148,17 @@ export default function PaymentReviewModal() {
   const minimumTokens = formatUnits(BigInt(review.minimumProjectTokens), 18);
   const exactReview = exactPaymentReview(review, safeInfo?.safeAddress);
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[80] flex items-center justify-center p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="payment-review-title"
+  return (
+    <DialogShell
+      isOpen
+      onClose={() => respond(false)}
+      labelledBy="payment-review-title"
+      contentClassName={`relative flex max-h-[90vh] w-full max-w-lg flex-col border ${
+        isDark
+          ? "border-white/15 bg-juice-dark text-white"
+          : "border-gray-200 bg-white text-gray-900"
+      }`}
     >
-      <button
-        type="button"
-        aria-label="Cancel payment review"
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={() => respond(false)}
-      />
-      <div
-        className={`relative flex max-h-[90vh] w-full max-w-lg flex-col border ${
-          isDark
-            ? "border-white/15 bg-juice-dark text-white"
-            : "border-gray-200 bg-white text-gray-900"
-        }`}
-      >
         <div
           className={`border-b px-5 py-4 ${isDark ? "border-white/10" : "border-gray-100"}`}
         >
@@ -434,8 +425,6 @@ export default function PaymentReviewModal() {
             </button>
           </div>
         </div>
-      </div>
-    </div>,
-    document.body,
+    </DialogShell>
   );
 }

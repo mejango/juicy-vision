@@ -148,7 +148,7 @@ test.describe('Payment Flow', () => {
           await page.waitForTimeout(500)
 
           // Should show confirmation or transaction preview
-          const confirmation = page.locator('[role="dialog"], [data-testid="tx-preview"]')
+          const confirmation = page.locator('dialog, [role="dialog"], [data-testid="tx-preview"]')
           // Confirmation may appear
         }
       }
@@ -312,7 +312,7 @@ test.describe('Payment - Unauthenticated', () => {
       await page.waitForTimeout(500)
 
       // Should prompt to connect or show auth modal
-      const authPrompt = page.locator('[role="dialog"], text=/connect|sign in/i')
+      const authPrompt = page.locator('dialog, [role="dialog"], text=/connect|sign in/i')
       // Auth prompt should appear
     }
   })

@@ -16,7 +16,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { erc20Abi, formatUnits, parseUnits } from 'viem'
 import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
@@ -41,6 +40,7 @@ import {
   type AddLiquidityPlan,
   type PoolState,
 } from '../../../services/ammMarket'
+import DialogShell from '../../ui/DialogShell'
 
 export interface AddLiquidityModalProps {
   isOpen: boolean
@@ -370,16 +370,15 @@ export function AddLiquidityModal({ isOpen, onClose, project, chainIds, chainPro
   const planPairMax = reviewPlan ? (reviewPlan.pairIsC0 ? reviewPlan.amount0Max : reviewPlan.amount1Max) : 0n
   const planTokenMax = reviewPlan ? (reviewPlan.pairIsC0 ? reviewPlan.amount1Max : reviewPlan.amount0Max) : 0n
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={running ? undefined : onClose} />
+  return (
+    <DialogShell isOpen onClose={onClose} dismissible={!running} labelledBy="add-liquidity-modal-title">
       <div
         className={`relative w-full max-w-lg max-h-[90vh] overflow-y-auto border ${
           isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
         }`}
       >
         <div className={`px-5 py-4 border-b flex items-center justify-between ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
-          <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Add market liquidity</h2>
+          <h2 id="add-liquidity-modal-title" className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Add market liquidity</h2>
           {!running ? (
             <button
               onClick={onClose}
@@ -637,7 +636,6 @@ export function AddLiquidityModal({ isOpen, onClose, project, chainIds, chainPro
           )}
         </div>
       </div>
-    </div>,
-    document.body,
+    </DialogShell>
   )
 }

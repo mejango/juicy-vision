@@ -80,7 +80,7 @@ for (const viewport of VIEWPORTS) {
     await expect(dialog.getByText(/approve\(0x130f5d/)).toBeVisible();
 
     const axe = await new AxeBuilder({ page })
-      .include('[role="dialog"]')
+      .include('dialog')
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
       .analyze();
     const blockingA11y = axe.violations.filter(

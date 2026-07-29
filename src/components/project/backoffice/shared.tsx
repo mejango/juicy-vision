@@ -5,11 +5,11 @@
  * Relayr bundling here).
  */
 
-import { useEffect, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
+import { type ReactNode } from 'react'
 import { CHAINS } from '../../../constants'
 import type { GuardedTxPhase } from '../../../services/projectTx'
 import { isSafeAppActive } from '../../../services/safeApp'
+import DialogShell from '../../ui/DialogShell'
 
 export const PHASE_LABELS: Record<GuardedTxPhase, string> = {
   reverifying: 'Re-checking on-chain state…',
@@ -88,17 +88,10 @@ export function BackOfficeModal({
   isDark: boolean
   children: ReactNode
 }) {
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !busy) onClose()
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [busy, onClose])
-
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={busy ? undefined : onClose} />
+  // Escape is handled natively by the <dialog>'s `cancel` event; DialogShell
+  // suppresses it while `busy`.
+  return (
+    <DialogShell isOpen onClose={onClose} dismissible={!busy} labelledBy="back-office-modal-title">
       <div
         className={`relative w-full max-w-lg max-h-[85vh] overflow-y-auto border ${
           isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
@@ -109,7 +102,7 @@ export function BackOfficeModal({
             isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-100'
           }`}
         >
-          <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>{title}</h2>
+          <h2 id="back-office-modal-title" className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>{title}</h2>
           {!busy ? (
             <button
               onClick={onClose}
@@ -128,8 +121,7 @@ export function BackOfficeModal({
         </div>
         <div className="p-5 space-y-4">{children}</div>
       </div>
-    </div>,
-    document.body,
+    </DialogShell>
   )
 }
 

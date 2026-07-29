@@ -267,7 +267,7 @@ test.describe('Owner: Payout Distribution', () => {
         await page.waitForTimeout(300)
 
         // Confirmation dialog should appear
-        const confirmation = page.locator('[role="dialog"]')
+        const confirmation = page.locator('dialog, [role="dialog"]')
         // Confirmation may be visible
       }
     })

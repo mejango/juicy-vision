@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient } from 'wagmi'
 import { decodeFunctionData, formatUnits, type Chain, createPublicClient, http } from 'viem'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
@@ -25,6 +24,7 @@ import { isUsdcCurrency } from '../../utils/technicalDetails'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 import { txErrorMessage } from '../../utils/txErrors'
 import { JB_721_TIERS_HOOK_ABI } from '../../constants/abis'
+import DialogShell from '../ui/DialogShell'
 
 const CHAINS: Record<number, Chain> = ALL_VIEM_CHAINS
 
@@ -316,15 +316,8 @@ export default function ManageTiersModal({
 
   if (!isOpen) return null
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={!isStarted || allCompleted ? onClose : undefined}
-      />
-
-      {/* Modal */}
+  return (
+    <DialogShell isOpen onClose={onClose} dismissible={!isStarted || allCompleted} labelledBy="manage-tiers-modal-title">
       <div className={`relative w-full max-w-md border ${
         isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
       }`}>
@@ -343,7 +336,7 @@ export default function ManageTiersModal({
               {allSucceeded ? 'ok' : anyFailed ? '!' : 'NFT'}
             </div>
             <div>
-              <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              <h2 id="manage-tiers-modal-title" className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 {allSucceeded
                   ? 'Items Updated'
                   : anyFailed && allCompleted
@@ -558,7 +551,6 @@ export default function ManageTiersModal({
           )}
         </div>
       </div>
-    </div>,
-    document.body
+    </DialogShell>
   )
 }

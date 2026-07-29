@@ -82,6 +82,17 @@ vi.mock('react-dom', async () => {
   }
 })
 
+/**
+ * The modal is a native <dialog>: the dimming layer is the ::backdrop
+ * pseudo-element, so a "backdrop click" is a click whose target is the dialog
+ * element itself, outside the content wrapper.
+ */
+async function clickBackdrop(user: ReturnType<typeof userEvent.setup>) {
+  const dialog = document.querySelector('dialog')
+  if (!dialog) throw new Error('modal dialog is not open')
+  await user.click(dialog)
+}
+
 describe('LaunchProjectModal', () => {
   const user = userEvent.setup()
 
@@ -436,10 +447,7 @@ describe('LaunchProjectModal', () => {
     it('closes modal when clicking backdrop before launch', async () => {
       render(<LaunchProjectModal {...defaultProps} />)
 
-      const backdrop = document.querySelector('.bg-black\\/80')
-      if (backdrop) {
-        await user.click(backdrop)
-      }
+      await clickBackdrop(user)
 
       expect(defaultProps.onClose).toHaveBeenCalled()
     })
@@ -455,11 +463,7 @@ describe('LaunchProjectModal', () => {
       // Reset the onClose mock to track only backdrop clicks
       defaultProps.onClose.mockClear()
 
-      // Try clicking backdrop - should not close because hasStarted is true and not complete
-      const backdrop = document.querySelector('.bg-black\\/80')
-      if (backdrop) {
-        await user.click(backdrop)
-      }
+      await clickBackdrop(user)
 
       expect(defaultProps.onClose).not.toHaveBeenCalled()
     })
@@ -471,10 +475,7 @@ describe('LaunchProjectModal', () => {
 
       render(<LaunchProjectModal {...defaultProps} />)
 
-      const backdrop = document.querySelector('.bg-black\\/80')
-      if (backdrop) {
-        await user.click(backdrop)
-      }
+      await clickBackdrop(user)
 
       expect(defaultProps.onClose).toHaveBeenCalled()
     })

@@ -340,7 +340,7 @@ test.describe('External Wallet Connection (Self-Custody)', () => {
 
       // Should trigger RainbowKit/Wagmi modal
       // Look for wallet connection modal or wallet list
-      const walletModal = page.locator('[data-testid="rk-connect-button"], [role="dialog"], [aria-modal="true"]').first()
+      const walletModal = page.locator('[data-testid="rk-connect-button"], dialog, [role="dialog"], [aria-modal="true"]').first()
       const isModalVisible = await walletModal.isVisible().catch(() => false)
 
       // Either modal appears or we see wallet connection state change

@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react'
-import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient } from 'wagmi'
 import { encodeFunctionData, createPublicClient, http, fallback, isAddress, type Address, type PublicClient } from 'viem'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
@@ -20,6 +19,7 @@ import TechnicalDetails from '../shared/TechnicalDetails'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 import { txErrorMessage } from '../../utils/txErrors'
 import ChainStatusRow from './ChainStatusRow'
+import DialogShell from '../ui/DialogShell'
 
 // Data passed from the form
 interface ChainSplitsData {
@@ -458,15 +458,8 @@ export default function SetSplitsModal({
   const payoutCount = payoutSplits.filter(s => parseFloat(s.percent) > 0).length
   const reservedCount = reservedSplits.filter(s => parseFloat(s.percent) > 0).length
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={!isStarted || allCompleted ? handleClose : undefined}
-      />
-
-      {/* Modal */}
+  return (
+    <DialogShell isOpen onClose={handleClose} dismissible={!isStarted || allCompleted} labelledBy="set-splits-modal-title">
       <div className={`relative w-full max-w-md border ${
         isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
       }`}>
@@ -485,7 +478,7 @@ export default function SetSplitsModal({
               {allSucceeded ? '✓' : anyFailed ? '!' : '📊'}
             </div>
             <div>
-              <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              <h2 id="set-splits-modal-title" className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 {allSucceeded
                   ? 'Splits Updated'
                   : anyFailed && allCompleted
@@ -670,7 +663,6 @@ export default function SetSplitsModal({
           )}
         </div>
       </div>
-    </div>,
-    document.body
+    </DialogShell>
   )
 }

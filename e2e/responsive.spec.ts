@@ -240,7 +240,7 @@ test.describe('Responsive - Tablet Experience', () => {
       await modalTriggers.first().click()
       await page.waitForTimeout(500)
 
-      const modal = page.locator('[role="dialog"], .modal, [class*="modal"]')
+      const modal = page.locator('dialog, [role="dialog"], .modal, [class*="modal"]')
       if (await modal.count() > 0) {
         const box = await modal.first().boundingBox()
         if (box) {

@@ -15,7 +15,6 @@
  */
 
 import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { encodeFunctionData, formatUnits } from 'viem'
 import { type JBChainId } from '@bananapus/nana-sdk-core'
 import { buildRepayLoanTx } from '@bananapus/nana-sdk-core/v6'
@@ -34,6 +33,7 @@ import {
   type IndexedLoan,
   type OnChainLoan,
 } from '../../../services/revLoans'
+import DialogShell from '../../ui/DialogShell'
 
 export interface RepayLoanModalProps {
   isOpen: boolean
@@ -212,13 +212,12 @@ export function RepayLoanModal({ isOpen, onClose, project, loan, onRepaid }: Rep
     </div>
   )
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={running ? undefined : onClose} />
+  return (
+    <DialogShell isOpen onClose={onClose} dismissible={!running} labelledBy="repay-loan-modal-title">
       <div className={`relative w-full max-w-md border ${isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'}`}>
         {/* Header */}
         <div className={`px-5 py-4 border-b flex items-center justify-between ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
-          <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Repay loan</h2>
+          <h2 id="repay-loan-modal-title" className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Repay loan</h2>
           {!running ? (
             <button
               onClick={onClose}
@@ -314,7 +313,6 @@ export function RepayLoanModal({ isOpen, onClose, project, loan, onRepaid }: Rep
           </div>
         )}
       </div>
-    </div>,
-    document.body,
+    </DialogShell>
   )
 }

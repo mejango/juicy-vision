@@ -6,7 +6,6 @@
  */
 
 import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { encodeFunctionData, formatUnits } from 'viem'
 import { type JBChainId } from '@bananapus/nana-sdk-core'
 import { buildClaimTokensTx, getCreditBalance } from '@bananapus/nana-sdk-core/v6'
@@ -14,6 +13,7 @@ import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import { publicClientFor, type GuardedTxPhase } from '../../../services/projectTx'
+import DialogShell from '../../ui/DialogShell'
 
 export interface ClaimCreditsRow {
   chainId: number
@@ -142,12 +142,8 @@ export function ClaimCreditsModal({
 
   const anyRunning = Object.values(statuses).some(status => status.kind === 'running')
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={anyRunning ? undefined : onClose}
-      />
+  return (
+    <DialogShell isOpen onClose={onClose} dismissible={!anyRunning} labelledBy="claim-credits-modal-title">
       <div
         className={`relative w-full max-w-lg border ${
           isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
@@ -155,7 +151,7 @@ export function ClaimCreditsModal({
       >
         {/* Header */}
         <div className={`px-5 py-4 border-b flex items-center justify-between ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
-          <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Claim credits</h2>
+          <h2 id="claim-credits-modal-title" className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Claim credits</h2>
           {!anyRunning ? (
             <button
               onClick={onClose}
@@ -307,7 +303,6 @@ export function ClaimCreditsModal({
           )}
         </div>
       </div>
-    </div>,
-    document.body,
+    </DialogShell>
   )
 }

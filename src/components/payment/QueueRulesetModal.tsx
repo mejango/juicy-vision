@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient } from 'wagmi'
 import { encodeFunctionData, createPublicClient, http, isAddress, type Address } from 'viem'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
@@ -29,6 +28,7 @@ import { txErrorMessage } from '../../utils/txErrors'
 import CopyTxButton from './CopyTxButton'
 import ChainStatusRow from './ChainStatusRow'
 import { buildTxLinkEntries } from '../../utils/txlink'
+import DialogShell from '../ui/DialogShell'
 
 interface ChainRulesetData {
   chainId: number
@@ -553,15 +553,8 @@ export default function QueueRulesetModal({
 
   if (!isOpen) return null
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={!isStarted || allCompleted || Boolean(controllerError) ? handleClose : undefined}
-      />
-
-      {/* Modal */}
+  return (
+    <DialogShell isOpen onClose={handleClose} dismissible={!isStarted || allCompleted || Boolean(controllerError)} labelledBy="queue-ruleset-modal-title">
       <div className={`relative w-full max-w-md border ${
         isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
       }`}>
@@ -580,7 +573,7 @@ export default function QueueRulesetModal({
               {allSucceeded ? '✓' : anyFailed ? '!' : '⚙️'}
             </div>
             <div>
-              <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              <h2 id="queue-ruleset-modal-title" className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 {allSucceeded
                   ? 'Ruleset Queued'
                   : anyFailed && allCompleted
@@ -825,7 +818,6 @@ export default function QueueRulesetModal({
           )}
         </div>
       </div>
-    </div>,
-    document.body
+    </DialogShell>
   )
 }

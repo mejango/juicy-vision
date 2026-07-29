@@ -202,7 +202,7 @@ test.describe('Cash Out Flow', () => {
           await page.waitForTimeout(500)
 
           // Should show confirmation dialog
-          const confirmation = page.locator('[role="dialog"], [role="alertdialog"]')
+          const confirmation = page.locator('dialog, [role="dialog"], [role="alertdialog"]')
           // Confirmation may appear
         }
       }
@@ -345,7 +345,7 @@ test.describe('Cash Out - Unauthenticated', () => {
       await page.waitForTimeout(500)
 
       // Should prompt authentication
-      const authPrompt = page.locator('[role="dialog"], text=/connect|sign in/i')
+      const authPrompt = page.locator('dialog, [role="dialog"], text=/connect|sign in/i')
       // Auth prompt should appear
     }
   })

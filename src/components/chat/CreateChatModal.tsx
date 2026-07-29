@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore, useChatStore, useSettingsStore } from '../../stores'
 import * as chatApi from '../../services/chat'
+import DialogShell from '../ui/DialogShell'
 
 interface CreateChatModalProps {
   isOpen: boolean
@@ -63,14 +64,13 @@ export default function CreateChatModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-        onClick={handleClose}
-      />
-
-      {/* Modal */}
+    <DialogShell
+      isOpen
+      onClose={handleClose}
+      dismissible={!isSubmitting}
+      labelledBy="create-chat-modal-title"
+      className="items-center justify-center p-0"
+    >
       <div
         className={`relative w-full max-w-md mx-4 shadow-xl border ${
           theme === 'dark' ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
@@ -83,6 +83,7 @@ export default function CreateChatModal({
           }`}
         >
           <h2
+            id="create-chat-modal-title"
             className={`text-lg font-semibold ${
               theme === 'dark' ? 'text-white' : 'text-gray-900'
             }`}
@@ -265,6 +266,6 @@ export default function CreateChatModal({
           </div>
         </form>
       </div>
-    </div>
+    </DialogShell>
   )
 }

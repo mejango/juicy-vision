@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
-import { createPortal } from "react-dom";
+import { useState, useEffect } from "react";
 import { formatUnits } from "viem";
 import { useThemeStore } from "../../stores";
 import {
@@ -11,6 +10,7 @@ import {
   type MultiChainTierSupply,
 } from "../../services/nft/multichain";
 import { isUsdcCurrency } from "../../utils/technicalDetails";
+import DialogShell from "../ui/DialogShell";
 import { IpfsMedia } from "../ui/IpfsMedia";
 
 interface TierDetailModalProps {
@@ -59,24 +59,10 @@ export default function TierDetailModal({
     }
   }, [isOpen]);
 
-  // Escape key to close
-  const handleEscape = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    },
-    [onClose],
-  );
-
-  useEffect(() => {
-    if (isOpen) {
-      document.addEventListener("keydown", handleEscape);
-      document.body.style.overflow = "hidden";
-    }
-    return () => {
-      document.removeEventListener("keydown", handleEscape);
-      document.body.style.overflow = "";
-    };
-  }, [isOpen, handleEscape]);
+  // Escape and the body scroll lock now both belong to DialogShell: the native
+  // `cancel` event replaces the keydown listener, and the shell's
+  // reference-counted lock replaces the unconditional `body.style.overflow = ""`
+  // restore here, which used to clobber an outer modal's lock on close.
 
   if (!isOpen) return null;
 
@@ -119,22 +105,17 @@ export default function TierDetailModal({
       ? (remainingSupply / initialSupply) * 100
       : 0;
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      onClick={onClose}
+  return (
+    <DialogShell
+      labelledBy="tier-detail-modal-title"
+      isOpen
+      onClose={onClose}
+      className="items-center justify-center p-0"
     >
-      {/* Backdrop */}
-      <div
-        className={`absolute inset-0 ${isDark ? "bg-black/90" : "bg-black/80"}`}
-      />
-
-      {/* Content */}
       <div
         className={`relative w-full max-w-4xl mx-4 max-h-[90vh] overflow-y-auto hide-scrollbar border-4 border-juice-orange ${
           isDark ? "bg-juice-dark" : "bg-white"
         }`}
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Close button */}
         <button
@@ -189,6 +170,7 @@ export default function TierDetailModal({
         <div className="p-6">
           {/* Name */}
           <h2
+            id="tier-detail-modal-title"
             className={`text-2xl font-bold mb-2 ${isDark ? "text-white" : "text-gray-900"}`}
           >
             {displayName}
@@ -488,8 +470,7 @@ export default function TierDetailModal({
           </div>
         </div>
       </div>
-    </div>,
-    document.body,
+    </DialogShell>
   );
 }
 

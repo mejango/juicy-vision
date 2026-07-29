@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { useThemeStore } from '../../stores'
 import { useAuthStore } from '../../stores/authStore'
+import DialogShell from '../../components/ui/DialogShell'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
@@ -111,14 +112,12 @@ export default function EscalationViewer({ escalation, onClose, onResolved }: Es
   const isPending = escalation.status === 'pending'
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={onClose}
-      />
-
-      {/* Slide-over panel */}
+    <DialogShell
+      isOpen
+      onClose={onClose}
+      labelledBy="escalation-viewer-title"
+      className="justify-end p-0"
+    >
       <div className={`relative w-full max-w-2xl h-full overflow-y-auto ${
         isDark ? 'bg-zinc-900' : 'bg-white'
       }`}>
@@ -128,7 +127,7 @@ export default function EscalationViewer({ escalation, onClose, onResolved }: Es
         }`}>
           <div className="flex items-center justify-between">
             <div>
-              <h2 className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              <h2 id="escalation-viewer-title" className={`text-lg font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 Escalation Review
               </h2>
               <div className="flex items-center gap-2 mt-1">
@@ -346,6 +345,6 @@ export default function EscalationViewer({ escalation, onClose, onResolved }: Es
           </div>
         )}
       </div>
-    </div>
+    </DialogShell>
   )
 }

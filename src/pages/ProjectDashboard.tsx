@@ -10,7 +10,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAccount } from "wagmi";
-import { createPortal } from "react-dom";
+import DialogShell from "../components/ui/DialogShell";
 import { useThemeStore, useChatStore, useViewAsStore } from "../stores";
 import { useManagedWallet, useIsMobile } from "../hooks";
 import { CHAINS, MAINNET_CHAINS } from "../constants";
@@ -101,29 +101,65 @@ const MODAL_SPECS: Array<{
   maxWidth: string;
   textClose?: boolean;
   title?: boolean;
+  /** Accessible name for the <dialog>; most of these forms carry no heading. */
+  label: string;
 }> = [
   {
     type: "payouts",
     Form: SendPayoutsForm,
     maxWidth: "max-w-2xl",
     textClose: true,
+    label: "Send payouts",
   },
-  { type: "cashout", Form: CashOutForm, maxWidth: "max-w-md", title: true },
-  { type: "ruleset", Form: QueueRulesetForm, maxWidth: "max-w-2xl" },
+  {
+    type: "cashout",
+    Form: CashOutForm,
+    maxWidth: "max-w-md",
+    title: true,
+    label: "Cash out tokens",
+  },
+  {
+    type: "ruleset",
+    Form: QueueRulesetForm,
+    maxWidth: "max-w-2xl",
+    label: "Queue a ruleset",
+  },
   {
     type: "reservedTokens",
     Form: SendReservedTokensForm,
     maxWidth: "max-w-2xl",
+    label: "Send reserved tokens",
   },
-  { type: "deployErc20", Form: DeployERC20Form, maxWidth: "max-w-2xl" },
+  {
+    type: "deployErc20",
+    Form: DeployERC20Form,
+    maxWidth: "max-w-2xl",
+    label: "Deploy an ERC-20",
+  },
   {
     type: "surplusAllowance",
     Form: UseSurplusAllowanceForm,
     maxWidth: "max-w-2xl",
+    label: "Use surplus allowance",
   },
-  { type: "setSplits", Form: SetSplitsForm, maxWidth: "max-w-2xl" },
-  { type: "setUri", Form: SetUriForm, maxWidth: "max-w-2xl" },
-  { type: "manageTiers", Form: ManageTiersForm, maxWidth: "max-w-2xl" },
+  {
+    type: "setSplits",
+    Form: SetSplitsForm,
+    maxWidth: "max-w-2xl",
+    label: "Edit splits",
+  },
+  {
+    type: "setUri",
+    Form: SetUriForm,
+    maxWidth: "max-w-2xl",
+    label: "Edit project metadata",
+  },
+  {
+    type: "manageTiers",
+    Form: ManageTiersForm,
+    maxWidth: "max-w-2xl",
+    label: "Manage NFT tiers",
+  },
 ];
 
 export default function ProjectDashboard({
@@ -1025,16 +1061,19 @@ export default function ProjectDashboard({
     return (
       <>
         {MODAL_SPECS.map(
-          ({ type, Form, maxWidth, textClose, title }) =>
-            activeModal === type &&
-            createPortal(
-              <div
-                className={`fixed inset-0 z-50 flex ${mobile ? "items-end justify-center" : "items-center justify-center p-4"}`}
+          ({ type, Form, maxWidth, textClose, title, label }) =>
+            activeModal === type && (
+              <DialogShell
+                key={type}
+                isOpen
+                onClose={() => setActiveModal(null)}
+                label={label}
+                className={
+                  mobile
+                    ? "items-end justify-center"
+                    : "items-center justify-center p-4"
+                }
               >
-                <div
-                  className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-                  onClick={() => setActiveModal(null)}
-                />
                 <div
                   className={`relative w-full ${mobile ? "" : `${maxWidth} `}max-h-[90vh] overflow-y-auto${title ? "" : " p-4"} ${
                     mobile
@@ -1097,9 +1136,7 @@ export default function ProjectDashboard({
                     />
                   )}
                 </div>
-              </div>,
-              document.body,
-              type,
+              </DialogShell>
             ),
         )}
       </>

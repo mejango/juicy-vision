@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient } from 'wagmi'
 import { encodeFunctionData, keccak256, toBytes, createPublicClient, http, type Chain } from 'viem'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
@@ -19,6 +18,7 @@ import { simulateTransaction } from '../../utils/transactionSafety'
 import { assertSafeErc20TokenMetadata } from '../../utils/erc20Safety'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 import { txErrorMessage } from '../../utils/txErrors'
+import DialogShell from '../ui/DialogShell'
 
 const CHAINS: Record<number, Chain> = ALL_VIEM_CHAINS
 
@@ -319,15 +319,8 @@ export default function DeployERC20Modal({
   const showConfirmed = status === 'confirmed' || omnichainComplete
   const showFailed = status === 'failed' || omnichainError
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={status === 'preview' || showConfirmed || showFailed ? handleClose : undefined}
-      />
-
-      {/* Modal */}
+  return (
+    <DialogShell isOpen onClose={handleClose} dismissible={status === 'preview' || showConfirmed || showFailed} labelledBy="deploy-erc20-modal-title">
       <div className={`relative w-full max-w-md border ${
         isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
       }`}>
@@ -342,7 +335,7 @@ export default function DeployERC20Modal({
               🪙
             </div>
             <div>
-              <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              <h2 id="deploy-erc20-modal-title" className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 {showConfirmed ? 'Token Deployed' : showFailed ? 'Deployment Failed' : 'Confirm Deployment'}
               </h2>
               <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -622,7 +615,6 @@ export default function DeployERC20Modal({
           )}
         </div>
       </div>
-    </div>,
-    document.body
+    </DialogShell>
   )
 }

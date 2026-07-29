@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo, lazy, Suspense } from 'react'
 import { createPortal } from 'react-dom'
+import DialogShell from '../ui/DialogShell'
 import { useTranslation } from 'react-i18next'
 import { useNavigate } from 'react-router-dom'
 import { useChatStore, useSettingsStore, useThemeStore, LANGUAGES, type Message, type Attachment, type ChatMessage, type ChatMember } from '../../stores'
@@ -1663,38 +1664,36 @@ export default function ChatContainer({ topOnly, bottomOnly, forceActiveChatId }
             )}
 
             {/* Standalone create-flow wizard - same component the AI renders in chat */}
-            {showCreateFlow && createPortal(
-              <div className="fixed inset-0 z-50 overflow-y-auto">
-                <div className="fixed inset-0 bg-black/60" />
-                <div
-                  className="relative z-10 flex justify-center min-h-full p-4"
-                  onClick={(e) => { if (e.target === e.currentTarget) setShowCreateFlow(false) }}
-                >
-                  <div className="w-full max-w-lg my-8">
-                    <div className="flex justify-end mb-1">
-                      <button
-                        onClick={() => setShowCreateFlow(false)}
-                        className={`p-1 transition-colors ${
-                          theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
-                        }`}
-                        title={t('common.close', 'Close')}
-                      >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
-                    <Suspense fallback={
-                      <div className={`p-8 text-center text-sm ${theme === 'dark' ? 'text-gray-400 bg-juice-dark-lighter' : 'text-gray-500 bg-white'}`}>
-                        {t('common.loading', 'Loading...')}
-                      </div>
-                    }>
-                      <CreateFlowWizard onClose={() => setShowCreateFlow(false)} />
-                    </Suspense>
+            {showCreateFlow && (
+              <DialogShell
+                isOpen
+                onClose={() => setShowCreateFlow(false)}
+                label={t('create.wizardDialog', 'Create a project')}
+                className="items-start justify-center overflow-y-auto p-4"
+              >
+                <div className="w-full max-w-lg my-8">
+                  <div className="flex justify-end mb-1">
+                    <button
+                      onClick={() => setShowCreateFlow(false)}
+                      className={`p-1 transition-colors ${
+                        theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-900'
+                      }`}
+                      title={t('common.close', 'Close')}
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
+                  <Suspense fallback={
+                    <div className={`p-8 text-center text-sm ${theme === 'dark' ? 'text-gray-400 bg-juice-dark-lighter' : 'text-gray-500 bg-white'}`}>
+                      {t('common.loading', 'Loading...')}
+                    </div>
+                  }>
+                    <CreateFlowWizard onClose={() => setShowCreateFlow(false)} />
+                  </Suspense>
                 </div>
-              </div>,
-              document.body
+              </DialogShell>
             )}
           </>
         ) : (

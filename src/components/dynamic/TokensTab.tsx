@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { createPortal } from 'react-dom'
 import { useAccount } from 'wagmi'
 import { formatEther } from 'viem'
 import { useThemeStore, useViewAsStore } from '../../stores'
@@ -22,6 +21,7 @@ import { resolveSplitEnsNames } from './resolveSplitEnsNames'
 import SendReservedTokensForm from './SendReservedTokensForm'
 import HoldersChart from './charts/HoldersChart'
 import PriceChart from './PriceChart'
+import DialogShell from '../ui/DialogShell'
 import { ExplainerMessage } from '../ui/ExplainerMessage'
 import { resolveProjectChains } from '../../utils/projectChains'
 import { ChainMappingWarning } from './ChainMappingWarning'
@@ -757,12 +757,8 @@ export default function TokensTab({ projectId, chainId, isOwner, onDeployErc20 }
       <HoldersChart projectId={projectId} chainId={chainId} limit={10} />
 
       {/* Send Reserved Tokens Modal */}
-      {showModal && activeChainData && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-            onClick={() => setShowModal(false)}
-          />
+      {showModal && activeChainData && (
+        <DialogShell isOpen onClose={() => setShowModal(false)} label="Send reserved tokens">
           <div className={`relative w-full max-w-2xl max-h-[90vh] overflow-y-auto p-4 ${
             isDark ? 'bg-juice-dark border border-white/10' : 'bg-white border border-gray-200'
           }`}>
@@ -780,8 +776,7 @@ export default function TokensTab({ projectId, chainId, isOwner, onDeployErc20 }
               chainId={String(activeChainData.chainId)}
             />
           </div>
-        </div>,
-        document.body
+        </DialogShell>
       )}
     </div>
   )

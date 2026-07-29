@@ -13,7 +13,6 @@
  */
 
 import { useEffect, useMemo, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { formatUnits } from 'viem'
 import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
@@ -32,6 +31,7 @@ import {
   type RemoveLiquidityPlan,
   type UserLpPosition,
 } from '../../../services/ammMarket'
+import DialogShell from '../../ui/DialogShell'
 
 export interface RemoveLiquidityModalProps {
   isOpen: boolean
@@ -173,16 +173,15 @@ export function RemoveLiquidityModal({ isOpen, onClose, project, chainIds, chain
 
   const reviewing = status.kind === 'review' ? status : null
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={running ? undefined : onClose} />
+  return (
+    <DialogShell isOpen onClose={onClose} dismissible={!running} labelledBy="remove-liquidity-modal-title">
       <div
         className={`relative w-full max-w-lg max-h-[90vh] overflow-y-auto border ${
           isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
         }`}
       >
         <div className={`px-5 py-4 border-b flex items-center justify-between ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
-          <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Remove market liquidity</h2>
+          <h2 id="remove-liquidity-modal-title" className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Remove market liquidity</h2>
           {!running ? (
             <button
               onClick={onClose}
@@ -366,7 +365,6 @@ export function RemoveLiquidityModal({ isOpen, onClose, project, chainIds, chain
           )}
         </div>
       </div>
-    </div>,
-    document.body,
+    </DialogShell>
   )
 }

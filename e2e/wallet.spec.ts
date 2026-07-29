@@ -23,7 +23,7 @@ test.describe('Wallet & Authentication', () => {
       await page.waitForTimeout(500)
 
       // Modal should appear with auth options
-      const authModal = page.locator('[role="dialog"], [data-testid="auth-modal"], .modal')
+      const authModal = page.locator('dialog, [role="dialog"], [data-testid="auth-modal"], .modal')
       await expect(authModal).toBeVisible()
     })
 

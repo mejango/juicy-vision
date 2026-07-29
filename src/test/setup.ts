@@ -1,6 +1,11 @@
 import '@testing-library/jest-dom'
 import { afterEach, beforeEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
+import { installDialogShim, resetDialogShim } from './dialogShim'
+
+// jsdom 29 ships no HTMLDialogElement.showModal/close/cancel. Every modal in
+// the app is a native <dialog>, so install the shim before any component renders.
+installDialogShim()
 
 // Unit fixtures use the deployed Sepolia contract set. Make that test
 // environment explicit so CI does not silently switch to mainnet constants
@@ -40,6 +45,7 @@ installFailClosedNetwork()
 // Cleanup after each test
 afterEach(() => {
   cleanup()
+  resetDialogShim()
 })
 
 // Mock localStorage

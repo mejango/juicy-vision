@@ -115,7 +115,7 @@ test.describe('Store Management', () => {
         await page.waitForTimeout(300)
 
         // A form or modal should appear
-        const formOrModal = page.locator('[data-testid="tier-form"], [role="dialog"], form')
+        const formOrModal = page.locator('[data-testid="tier-form"], dialog, [role="dialog"], form')
         await expect(formOrModal.first()).toBeVisible()
       }
     })
@@ -183,7 +183,7 @@ test.describe('Store Management', () => {
         await page.waitForTimeout(300)
 
         // Edit form should open
-        const formOrModal = page.locator('[data-testid="tier-form"], [role="dialog"]')
+        const formOrModal = page.locator('[data-testid="tier-form"], dialog, [role="dialog"]')
         await expect(formOrModal.first()).toBeVisible()
       }
     })

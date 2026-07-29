@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { createPortal } from 'react-dom'
 import { formatEther, isAddress, keccak256, toBytes } from 'viem'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
@@ -18,6 +17,7 @@ import { verifyDeployRevnetParams } from '../../utils/transactionVerification'
 import { type JBSuckerBridge } from '../../utils/suckerConfig'
 import { isIpfsUri } from '../../utils/ipfs'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
+import DialogShell from '../ui/DialogShell'
 
 function revnetDeploymentKey(value: unknown): string {
   return keccak256(toBytes(JSON.stringify(
@@ -210,15 +210,8 @@ export default function DeployRevnetModal({
 
   const activeBundleState = revnetBundleState
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={!hasStarted || allComplete || hasSlowChains ? handleClose : undefined}
-      />
-
-      {/* Modal */}
+  return (
+    <DialogShell isOpen onClose={handleClose} dismissible={!hasStarted || allComplete || hasSlowChains} labelledBy="deploy-revnet-modal-title">
       <div className={`relative w-full max-w-md border ${
         isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
       }`}>
@@ -237,7 +230,7 @@ export default function DeployRevnetModal({
               {allComplete && !hasError ? '✓' : hasError ? '!' : '🌀'}
             </div>
             <div>
-              <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              <h2 id="deploy-revnet-modal-title" className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 {allComplete && !hasError
                   ? 'Revnet Deployed'
                   : hasError
@@ -608,7 +601,6 @@ export default function DeployRevnetModal({
           )}
         </div>
       </div>
-    </div>,
-    document.body
+    </DialogShell>
   )
 }

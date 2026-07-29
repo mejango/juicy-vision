@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useWalletClient } from 'wagmi'
 import { formatUnits, type Address } from 'viem'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
@@ -29,6 +28,7 @@ import TransactionWarning from '../shared/TransactionWarning'
 import { ProjectSplitRoute } from '../dynamic/ProjectSplitRoute'
 import CopyTxButton from './CopyTxButton'
 import { GasBalanceStatus } from './GasBalanceStatus'
+import DialogShell from '../ui/DialogShell'
 
 export interface FundAccessModalProps {
   kind: FundAccessKind
@@ -297,13 +297,12 @@ export default function FundAccessModal({
     : formatFundAccessAmount(requestedAmount, context.decimals, context.decimals)
   const processing = status === 'preparing' || status === 'signing' || status === 'pending'
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={!processing ? onClose : undefined} />
+  return (
+    <DialogShell isOpen onClose={onClose} dismissible={!processing} className="items-center justify-center p-2 sm:p-4" labelledBy="fund-access-modal-title">
       <div className={`relative flex max-h-[calc(100vh-1rem)] w-full max-w-md min-w-0 flex-col overflow-hidden border ${isDark ? 'border-white/10 bg-juice-dark' : 'border-gray-200 bg-white'}`}>
         <div className={`flex shrink-0 items-center justify-between border-b px-4 py-3 ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
           <div className="min-w-0">
-            <h2 className={`truncate font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+            <h2 id="fund-access-modal-title" className={`truncate font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
               {kind === 'payout' ? 'Confirm payout distribution' : 'Confirm surplus withdrawal'}
             </h2>
             <p className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{chainName}</p>
@@ -421,7 +420,6 @@ export default function FundAccessModal({
           </button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </DialogShell>
   )
 }

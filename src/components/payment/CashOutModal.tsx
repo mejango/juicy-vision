@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient } from 'wagmi'
 import { parseUnits, formatUnits, encodeFunctionData, createPublicClient, http, type Hex, type Address, type Chain, type PublicClient } from 'viem'
 import { buildCashOutTx } from '@bananapus/nana-sdk-core/v6'
@@ -20,6 +19,7 @@ import { getPaymentTerminal } from '../../utils/paymentTerminal'
 import { simulateTransaction } from '../../utils/transactionSafety'
 import { assertCurrentProjectCashOutConfigurationTrusted, requireRecognizedRuntimeHook } from '../../utils/projectTrust'
 import { resolveCashOutPreviewOutcome, TERMINAL_PREVIEW_CASH_OUT_ABI, type CashOutPreviewOutcome } from '../../utils/terminalPreview'
+import DialogShell from '../ui/DialogShell'
 
 const FEELESS_ADDRESSES_ABI = [
   {
@@ -547,19 +547,15 @@ export default function CashOutModal({
 
   if (!isOpen) return null
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={status === 'preview' || status === 'confirmed' || status === 'failed' ? onClose : undefined} />
-
-      {/* Modal */}
+  return (
+    <DialogShell isOpen onClose={onClose} dismissible={status === 'preview' || status === 'confirmed' || status === 'failed'} labelledBy="cash-out-modal-title">
       <div className={`relative w-full max-w-md border ${isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'}`}>
         {/* Header */}
         <div className={`px-5 py-4 border-b flex items-center justify-between ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 flex items-center justify-center text-xl ${isDark ? 'bg-juice-cyan/20' : 'bg-cyan-100'}`}>🔄</div>
             <div>
-              <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              <h2 id="cash-out-modal-title" className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 {status === 'confirmed' ? 'Cash Out Complete' : status === 'failed' ? 'Cash Out Failed' : 'Confirm Cash Out'}
               </h2>
               <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>{chainName}</p>
@@ -797,7 +793,6 @@ export default function CashOutModal({
           )}
         </div>
       </div>
-    </div>,
-    document.body
+    </DialogShell>
   )
 }

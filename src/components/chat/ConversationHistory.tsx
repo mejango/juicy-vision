@@ -30,6 +30,7 @@ import {
   type ProjectConversation,
 } from '../../api/projectConversations'
 import { formatTimeAgo, getChatDisplayTitle } from './chatDisplay'
+import DialogShell from '../ui/DialogShell'
 
 type DashboardTab = 'chats' | 'projects' | 'payments'
 
@@ -241,16 +242,18 @@ function RenameModal({ isOpen, currentName, onClose, onSave, theme }: RenameModa
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <DialogShell isOpen onClose={onClose} labelledBy="rename-conversation-title">
       <div
         className={`p-4 min-w-72 border shadow-xl ${
           theme === 'dark' ? 'bg-juice-dark border-white/20' : 'bg-white border-gray-200'
         }`}
-        onClick={(e) => e.stopPropagation()}
       >
-        <h3 className={`text-sm font-medium mb-3 ${
-          theme === 'dark' ? 'text-gray-200' : 'text-gray-800'
-        }`}>
+        <h3
+          id="rename-conversation-title"
+          className={`text-sm font-medium mb-3 ${
+            theme === 'dark' ? 'text-gray-200' : 'text-gray-800'
+          }`}
+        >
           Rename
         </h3>
         <form onSubmit={handleSubmit}>
@@ -291,7 +294,7 @@ function RenameModal({ isOpen, currentName, onClose, onSave, theme }: RenameModa
           </div>
         </form>
       </div>
-    </div>
+    </DialogShell>
   )
 }
 

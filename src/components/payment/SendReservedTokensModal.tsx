@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { createPortal } from 'react-dom'
 import { useAccount, useWalletClient } from 'wagmi'
 import { encodeFunctionData, createPublicClient, http, type Chain, zeroAddress } from 'viem'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
@@ -23,6 +22,7 @@ import {
 } from '../../services/bendystraw'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 import { txErrorMessage } from '../../utils/txErrors'
+import DialogShell from '../ui/DialogShell'
 
 const CONTROLLER_SEND_RESERVED_ABI = [
   {
@@ -401,15 +401,8 @@ export default function SendReservedTokensModal({
   const showConfirmed = status === 'confirmed' || omnichainComplete
   const showFailed = status === 'failed' || omnichainError
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={status === 'preview' || showConfirmed || showFailed ? handleClose : undefined}
-      />
-
-      {/* Modal */}
+  return (
+    <DialogShell isOpen onClose={handleClose} dismissible={status === 'preview' || showConfirmed || showFailed} labelledBy="send-reserved-tokens-modal-title">
       <div className={`relative w-full max-w-md border ${
         isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
       }`}>
@@ -424,7 +417,7 @@ export default function SendReservedTokensModal({
               🎟️
             </div>
             <div>
-              <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              <h2 id="send-reserved-tokens-modal-title" className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 {showConfirmed ? 'Tokens Distributed' : showFailed ? 'Distribution Failed' : 'Confirm Distribution'}
               </h2>
               <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -667,7 +660,6 @@ export default function SendReservedTokensModal({
           )}
         </div>
       </div>
-    </div>,
-    document.body
+    </DialogShell>
   )
 }

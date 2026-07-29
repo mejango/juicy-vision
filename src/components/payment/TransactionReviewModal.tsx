@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { decodeFunctionData, formatEther, toFunctionSelector, type AbiFunction } from 'viem'
 import { ALL_VIEM_CHAINS } from '../../constants/chains'
+import DialogShell from '../ui/DialogShell'
 import { useThemeStore } from '../../stores'
 import { getAddressLabel } from '../../utils/technicalDetails'
 import {
@@ -114,20 +114,6 @@ export default function TransactionReviewModal() {
     }
   }, [enqueue])
 
-  useEffect(() => {
-    if (!active) return
-    const before = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    const keydown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') finish(false)
-    }
-    document.addEventListener('keydown', keydown)
-    return () => {
-      document.removeEventListener('keydown', keydown)
-      document.body.style.overflow = before
-    }
-  }, [active])
-
   const finish = (approved: boolean) => {
     const current = activeRef.current
     if (!current) return
@@ -142,10 +128,13 @@ export default function TransactionReviewModal() {
   const review = active.review
   const authorization = review.kind === 'authorization'
 
-  return createPortal(
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="transaction-review-title">
-      <button type="button" aria-label="Cancel transaction review" className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => finish(false)} />
-      <div className={`relative flex max-h-[92vh] w-full max-w-3xl flex-col border ${isDark ? 'border-white/15 bg-juice-dark text-white' : 'border-gray-200 bg-white text-gray-900'}`}>
+  return (
+    <DialogShell
+      isOpen
+      onClose={() => finish(false)}
+      labelledBy="transaction-review-title"
+      contentClassName={`relative flex max-h-[92vh] w-full max-w-3xl flex-col border ${isDark ? 'border-white/15 bg-juice-dark text-white' : 'border-gray-200 bg-white text-gray-900'}`}
+    >
         <header className={`flex items-start justify-between border-b px-5 py-4 ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
           <div><p className="text-[11px] font-semibold uppercase text-juice-orange">Transaction safety check</p><h2 id="transaction-review-title" className="mt-1 text-base font-semibold">{review.title ?? (authorization ? 'Review authorization' : 'Review transaction')}</h2></div>
           <button type="button" className={`border px-3 py-1 text-xs ${isDark ? 'border-white/20' : 'border-gray-300'}`} onClick={() => finish(false)}>Close</button>
@@ -175,8 +164,6 @@ export default function TransactionReviewModal() {
           <label className={`flex items-start gap-3 border p-3 text-xs leading-relaxed ${isDark ? 'border-white/15 bg-white/5' : 'border-gray-200 bg-gray-50'}`}><input className="mt-0.5" type="checkbox" checked={agreed} onChange={event => setAgreed(event.target.checked)} /><span>I reviewed the chain, destination, native value, calldata{authorization ? ', and exact authorization' : ''}. I agree to this exact payload.</span></label>
           <div className="mt-4 flex gap-3"><button type="button" className={`flex-1 border-2 py-3 font-medium ${isDark ? 'border-white/20' : 'border-gray-200'}`} onClick={() => finish(false)}>Cancel</button><button type="button" disabled={!agreed} className="flex-1 bg-green-500 py-3 font-bold text-black disabled:cursor-not-allowed disabled:opacity-40" onClick={() => finish(true)}>{review.confirmLabel ?? (authorization ? 'Agree & authorize' : 'Agree & continue')}</button></div>
         </footer>
-      </div>
-    </div>,
-    document.body,
+    </DialogShell>
   )
 }

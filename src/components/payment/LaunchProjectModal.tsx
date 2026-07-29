@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { createPortal } from 'react-dom'
 import { useAccount } from 'wagmi'
 import { formatEther, isAddress } from 'viem'
 import { useThemeStore, useAuthStore } from '../../stores'
@@ -19,6 +18,7 @@ import TransactionSummary from '../shared/TransactionSummary'
 import TransactionWarning from '../shared/TransactionWarning'
 import { verifyLaunchProjectParams } from '../../utils/transactionVerification'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
+import DialogShell from '../ui/DialogShell'
 
 interface LaunchProjectModalProps {
   isOpen: boolean
@@ -220,15 +220,8 @@ export default function LaunchProjectModal({
 
   if (!isOpen) return null
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={!hasStarted || allCompleted || hasSlowChains ? handleClose : undefined}
-      />
-
-      {/* Modal */}
+  return (
+    <DialogShell isOpen onClose={handleClose} dismissible={!hasStarted || allCompleted || hasSlowChains} labelledBy="launch-project-modal-title">
       <div className={`relative w-full max-w-md border ${
         isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
       }`}>
@@ -247,7 +240,7 @@ export default function LaunchProjectModal({
               {isComplete ? '✓' : hasError ? '!' : '+'}
             </div>
             <div>
-              <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              <h2 id="launch-project-modal-title" className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 {isComplete
                   ? 'Projects Created'
                   : hasError
@@ -596,7 +589,6 @@ export default function LaunchProjectModal({
           )}
         </div>
       </div>
-    </div>,
-    document.body
+    </DialogShell>
   )
 }

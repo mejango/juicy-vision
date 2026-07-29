@@ -111,6 +111,17 @@ vi.mock('react-dom', async () => {
   }
 })
 
+/**
+ * The modal is a native <dialog>: the dimming layer is the ::backdrop
+ * pseudo-element, so a "backdrop click" is a click whose target is the dialog
+ * element itself, outside the content wrapper.
+ */
+async function clickBackdrop(user: ReturnType<typeof userEvent.setup>) {
+  const dialog = document.querySelector('dialog')
+  if (!dialog) throw new Error('modal dialog is not open')
+  await user.click(dialog)
+}
+
 describe('DeployRevnetModal', () => {
   const user = userEvent.setup()
 
@@ -555,10 +566,7 @@ describe('DeployRevnetModal', () => {
     it('closes modal when clicking backdrop before deployment', async () => {
       render(<DeployRevnetModal {...defaultProps} />)
 
-      const backdrop = document.querySelector('.bg-black\\/80')
-      if (backdrop) {
-        await user.click(backdrop)
-      }
+      await clickBackdrop(user)
 
       expect(defaultProps.onClose).toHaveBeenCalled()
     })
@@ -573,11 +581,7 @@ describe('DeployRevnetModal', () => {
       // Reset onClose to track only backdrop clicks
       defaultProps.onClose.mockClear()
 
-      // Try clicking backdrop
-      const backdrop = document.querySelector('.bg-black\\/80')
-      if (backdrop) {
-        await user.click(backdrop)
-      }
+      await clickBackdrop(user)
 
       expect(defaultProps.onClose).not.toHaveBeenCalled()
     })
@@ -589,10 +593,7 @@ describe('DeployRevnetModal', () => {
 
       render(<DeployRevnetModal {...defaultProps} />)
 
-      const backdrop = document.querySelector('.bg-black\\/80')
-      if (backdrop) {
-        await user.click(backdrop)
-      }
+      await clickBackdrop(user)
 
       expect(defaultProps.onClose).toHaveBeenCalled()
     })

@@ -801,11 +801,14 @@ describe('ConversationHistory', () => {
         expect(screen.getByRole('textbox')).toBeInTheDocument()
       })
 
-      // The backdrop is the fixed overlay div. Click directly on it (the first .fixed element)
-      const backdrop = document.querySelector('.fixed.inset-0')
-      if (backdrop) {
-        fireEvent.click(backdrop)
-      }
+      // The modal is a native <dialog>, so its dimming layer is the ::backdrop
+      // pseudo-element: a backdrop press is a press whose target is the dialog
+      // itself. Both mousedown and click are required — a click alone is how a
+      // text selection dragged out of the content ends, which must not dismiss.
+      const dialog = document.querySelector('dialog')
+      expect(dialog).not.toBeNull()
+      fireEvent.mouseDown(dialog!)
+      fireEvent.click(dialog!)
 
       await waitFor(() => {
         expect(screen.queryByRole('textbox')).not.toBeInTheDocument()

@@ -14,7 +14,6 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { encodeFunctionData, formatUnits, parseUnits } from 'viem'
 import { jbContractAddress, jbMultiTerminalAbi, jbTokensAbi, type JBChainId } from '@bananapus/nana-sdk-core'
 import {
@@ -42,6 +41,7 @@ import {
   quoteBorrowable,
   revLoansAddress,
 } from '../../../services/revLoans'
+import DialogShell from '../../ui/DialogShell'
 
 export interface OpenLoanModalProps {
   isOpen: boolean
@@ -461,13 +461,12 @@ export function OpenLoanModal({ isOpen, onClose, project, chainIds, chainProject
     </div>
   )
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={running ? undefined : onClose} />
+  return (
+    <DialogShell isOpen onClose={onClose} dismissible={!running} labelledBy="open-loan-modal-title">
       <div className={`relative w-full max-w-lg max-h-[90vh] overflow-y-auto border ${isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'}`}>
         {/* Header */}
         <div className={`px-5 py-4 border-b flex items-center justify-between ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
-          <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Get a loan</h2>
+          <h2 id="open-loan-modal-title" className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Get a loan</h2>
           {!running ? (
             <button
               onClick={onClose}
@@ -689,7 +688,6 @@ export function OpenLoanModal({ isOpen, onClose, project, chainIds, chainProject
           </div>
         )}
       </div>
-    </div>,
-    document.body,
+    </DialogShell>
   )
 }

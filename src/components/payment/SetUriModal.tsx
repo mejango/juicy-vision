@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { createPortal } from 'react-dom'
 import { useAccount } from 'wagmi'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { useManagedWallet } from '../../hooks'
@@ -8,6 +7,7 @@ import TechnicalDetails from '../shared/TechnicalDetails'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 import { CHAINS as CHAIN_INFO } from '../../constants'
 import ChainStatusRow from './ChainStatusRow'
+import DialogShell from '../ui/DialogShell'
 
 interface ChainProjectData {
   chainId: number
@@ -202,15 +202,8 @@ export default function SetUriModal({
 
   if (!isOpen) return null
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
-        onClick={!isStarted || allCompleted ? handleClose : undefined}
-      />
-
-      {/* Modal */}
+  return (
+    <DialogShell isOpen onClose={handleClose} dismissible={!isStarted || allCompleted} labelledBy="set-uri-modal-title">
       <div className={`relative w-full max-w-md border ${
         isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'
       }`}>
@@ -229,7 +222,7 @@ export default function SetUriModal({
               {allSucceeded ? '✓' : anyFailed ? '!' : '📝'}
             </div>
             <div>
-              <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
+              <h2 id="set-uri-modal-title" className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>
                 {allSucceeded
                   ? 'Metadata Updated'
                   : anyFailed && allCompleted
@@ -401,7 +394,6 @@ export default function SetUriModal({
           )}
         </div>
       </div>
-    </div>,
-    document.body
+    </DialogShell>
   )
 }

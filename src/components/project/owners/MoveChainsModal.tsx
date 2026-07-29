@@ -15,7 +15,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { encodeFunctionData, formatUnits, parseUnits } from 'viem'
 import { type JBChainId } from '@bananapus/nana-sdk-core'
 import { buildBridgePrepareTx, buildToRemoteTx } from '@bananapus/nana-sdk-core/v6'
@@ -39,6 +38,7 @@ import {
   type SuckerInfra,
   type SuckerPair,
 } from '../../../services/suckerBridge'
+import DialogShell from '../../ui/DialogShell'
 
 export interface MoveChainsModalProps {
   isOpen: boolean
@@ -364,13 +364,12 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds, chainProje
   }`
   const labelClass = `text-xs font-medium uppercase tracking-wide ${isDark ? 'text-gray-500' : 'text-gray-400'}`
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={busy ? undefined : onClose} />
+  return (
+    <DialogShell isOpen onClose={onClose} dismissible={!busy} labelledBy="move-chains-modal-title">
       <div className={`relative w-full max-w-lg border ${isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'}`}>
         {/* Header */}
         <div className={`px-5 py-4 border-b flex items-center justify-between ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
-          <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Move between chains</h2>
+          <h2 id="move-chains-modal-title" className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Move between chains</h2>
           {!busy ? (
             <button
               onClick={onClose}
@@ -607,8 +606,7 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds, chainProje
           )}
         </div>
       </div>
-    </div>,
-    document.body,
+    </DialogShell>
   )
 }
 

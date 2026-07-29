@@ -10,7 +10,6 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { createPublicClient, http, encodeFunctionData, formatUnits, type Address, type Chain, type Hex } from 'viem'
 import { type JBChainId } from '@bananapus/nana-sdk-core'
 import { getAccountingContexts } from '@bananapus/nana-sdk-core/v6'
@@ -32,6 +31,7 @@ import {
   type ItemNames,
   type ShopChain,
 } from '../../../services/shopCustomers'
+import DialogShell from '../../ui/DialogShell'
 
 const METADATA_ID_TARGET_ABI = [{
   name: 'METADATA_ID_TARGET',
@@ -408,13 +408,12 @@ export function RedeemItemsModal({ isOpen, onClose, chains, defaultChainId, onRe
     setSelected(next)
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={running ? undefined : onClose} />
+  return (
+    <DialogShell isOpen onClose={onClose} dismissible={!running} labelledBy="redeem-items-modal-title">
       <div className={`relative w-full max-w-md max-h-[90vh] overflow-y-auto border ${isDark ? 'bg-juice-dark border-white/10' : 'bg-white border-gray-200'}`}>
         {/* Header */}
         <div className={`px-5 py-4 border-b flex items-center justify-between ${cardBorder}`}>
-          <h2 className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Redeem items</h2>
+          <h2 id="redeem-items-modal-title" className={`font-semibold ${isDark ? 'text-white' : 'text-gray-900'}`}>Redeem items</h2>
           {!running ? (
             <button
               onClick={onClose}
@@ -544,7 +543,6 @@ export function RedeemItemsModal({ isOpen, onClose, chains, defaultChainId, onRe
           )}
         </div>
       </div>
-    </div>,
-    document.body,
+    </DialogShell>
   )
 }

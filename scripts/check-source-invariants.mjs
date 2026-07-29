@@ -226,6 +226,111 @@ for (const path of [...sourceFiles('src'), ...sourceFiles('backend/src'), ...sou
   }
 }
 
+/*
+ * Modals are native <dialog> elements opened with showModal(), so the browser
+ * puts them in the top layer and makes everything outside the topmost dialog
+ * INERT — including elements portaled to document.body, and including top-layer
+ * popovers. A dropdown, tooltip or toast that portals to document.body is
+ * therefore dead and invisible while a modal is open, with no error to notice.
+ *
+ * Today nothing rendered inside a DialogShell reaches such a portal: every
+ * in-modal picker is either a native <select> (a UA popup, not DOM, so immune)
+ * or plain in-tree markup. This guard keeps it that way, because the failure is
+ * silent — a portaled popover placed in a modal simply never appears.
+ *
+ * If this fires, do not move the portal target by hand: render the overlay
+ * inside the dialog's own subtree, or give it its own showModal() dialog.
+ */
+{
+  const componentFiles = sourceFiles('src').filter(
+    path => /\.(ts|tsx)$/.test(path) && !/\.(test|spec)\./.test(path),
+  )
+
+  const resolveImport = (fromPath, specifier) => {
+    if (!specifier.startsWith('.')) return null
+    const base = join(fromPath, '..', specifier)
+    for (const candidate of [
+      `${base}.tsx`,
+      `${base}.ts`,
+      join(base, 'index.tsx'),
+      join(base, 'index.ts'),
+    ]) {
+      if (componentFiles.includes(candidate)) return candidate
+    }
+    return null
+  }
+
+  const sources = new Map(componentFiles.map(path => [path, read(path)]))
+
+  // A file "owns a body portal" if it hands a portal straight to document.body.
+  const bodyPortalOwners = new Set(
+    componentFiles.filter(path => {
+      const source = sources.get(path)
+      return source.includes('createPortal(') && source.includes('document.body')
+    }),
+  )
+
+  const importsOf = new Map(
+    componentFiles.map(path => {
+      const source = sources.get(path)
+      const specifiers = [
+        ...source.matchAll(/from\s+['"]([^'"]+)['"]/g),
+        ...source.matchAll(/import\(\s*['"]([^'"]+)['"]/g),
+      ].map(match => match[1])
+      return [path, new Set(specifiers.map(s => resolveImport(path, s)).filter(Boolean))]
+    }),
+  )
+
+  const reachesBodyPortal = start => {
+    const seen = new Set()
+    const stack = [start]
+    while (stack.length > 0) {
+      const current = stack.pop()
+      if (seen.has(current)) continue
+      seen.add(current)
+      if (bodyPortalOwners.has(current)) return current
+      stack.push(...(importsOf.get(current) ?? []))
+    }
+    return null
+  }
+
+  for (const path of componentFiles) {
+    const source = sources.get(path)
+    if (!source.includes('<DialogShell')) continue
+
+    // Collect only the JSX between <DialogShell ...> and </DialogShell>; the
+    // rest of the file renders outside the dialog and is not inert.
+    for (const opening of source.matchAll(/<DialogShell[\s>]/g)) {
+      const start = source.indexOf('>', opening.index)
+      const end = source.indexOf('</DialogShell>', start)
+      if (start === -1 || end === -1) continue
+      const subtree = source.slice(start, end)
+
+      const rendered = new Set(
+        [...subtree.matchAll(/<([A-Z][A-Za-z0-9_]*)/g)].map(match => match[1]),
+      )
+      for (const component of rendered) {
+        // Resolve the component back to the module this file imports it from.
+        const importMatch = source.match(
+          new RegExp(
+            `import\\s+(?:${component}\\b|\\{[^}]*\\b${component}\\b[^}]*\\})[^\\n]*from\\s+['"]([^'"]+)['"]`,
+          ),
+        )
+        if (!importMatch) continue
+        const resolved = resolveImport(path, importMatch[1])
+        if (!resolved) continue
+        const owner = reachesBodyPortal(resolved)
+        if (owner) {
+          failures.push(
+            `${path}: <${component}> is rendered inside a DialogShell but reaches a document.body portal (${owner}); ` +
+              'body-level portals are inert under an open modal dialog',
+          )
+        }
+      }
+    }
+  }
+}
+
 if (failures.length > 0) {
   console.error(`Source invariant check failed:\n- ${failures.join('\n- ')}`)
   process.exit(1)

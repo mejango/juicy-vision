@@ -148,7 +148,7 @@ test.describe('Accessibility: Keyboard Navigation', () => {
         await page.waitForTimeout(200)
 
         // Modal should close
-        const modal = page.locator('[role="dialog"]')
+        const modal = page.locator('dialog, [role="dialog"]')
         // Modal visibility should change
       }
     })
@@ -374,7 +374,7 @@ test.describe('Accessibility: Focus Management', () => {
         await modalTrigger.click()
         await page.waitForTimeout(300)
 
-        const modal = page.locator('[role="dialog"]').first()
+        const modal = page.locator('dialog, [role="dialog"]').first()
 
         if (await modal.isVisible()) {
           // Focus should be within modal
@@ -414,7 +414,7 @@ test.describe('Accessibility: Focus Management', () => {
         await modalTrigger.click()
         await page.waitForTimeout(300)
 
-        const modal = page.locator('[role="dialog"]').first()
+        const modal = page.locator('dialog, [role="dialog"]').first()
 
         if (await modal.isVisible()) {
           // Tab should cycle within modal
