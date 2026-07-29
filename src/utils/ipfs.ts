@@ -12,7 +12,6 @@ const IPFS_PATH_GATEWAYS = [
   'https://dweb.link/ipfs/',
   'https://ipfs.io/ipfs/',
 ] as const
-const PINATA_API_URL = 'https://api.pinata.cloud'
 
 /**
  * Project location metadata - Juicebox Ecosystem Standard
@@ -225,101 +224,6 @@ export async function fetchIpfsJson<T>(uri: string): Promise<T | null> {
     }
   }
   return null
-}
-
-// ============================================
-// IPFS Pinning Functions (requires Pinata API key)
-// ============================================
-
-interface PinataResponse {
-  IpfsHash: string
-  PinSize: number
-  Timestamp: string
-}
-
-interface PinataError {
-  error: {
-    reason: string
-    details: string
-  }
-}
-
-/**
- * Pin JSON data to IPFS via Pinata
- * @param data - JSON-serializable object to pin
- * @param jwt - Pinata JWT token
- * @param name - Optional name for the pinned content
- * @returns IPFS CID (hash)
- */
-export async function pinJson(
-  data: object,
-  jwt: string,
-  name?: string
-): Promise<string> {
-  const body: {
-    pinataContent: object
-    pinataMetadata?: { name: string }
-  } = {
-    pinataContent: data,
-  }
-
-  if (name) {
-    body.pinataMetadata = { name }
-  }
-
-  const response = await fetch(`${PINATA_API_URL}/pinning/pinJSONToIPFS`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${jwt}`,
-    },
-    body: JSON.stringify(body),
-  })
-
-  if (!response.ok) {
-    const error = (await response.json()) as PinataError
-    throw new Error(error.error?.details || error.error?.reason || 'Failed to pin JSON')
-  }
-
-  const result = (await response.json()) as PinataResponse
-  encodeIpfsUri(result.IpfsHash)
-  return result.IpfsHash
-}
-
-/**
- * Pin a file to IPFS via Pinata
- * @param file - File or Blob to pin
- * @param jwt - Pinata JWT token
- * @param name - Optional name for the pinned content
- * @returns IPFS CID (hash)
- */
-export async function pinFile(
-  file: File | Blob,
-  jwt: string,
-  name?: string
-): Promise<string> {
-  const formData = new FormData()
-  formData.append('file', file)
-
-  if (name) {
-    formData.append('pinataMetadata', JSON.stringify({ name }))
-  }
-
-  const response = await fetch(`${PINATA_API_URL}/pinning/pinFileToIPFS`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${jwt}`,
-    },
-    body: formData,
-  })
-
-  if (!response.ok) {
-    const error = (await response.json()) as PinataError
-    throw new Error(error.error?.details || error.error?.reason || 'Failed to pin file')
-  }
-
-  const result = (await response.json()) as PinataResponse
-  return result.IpfsHash
 }
 
 /**

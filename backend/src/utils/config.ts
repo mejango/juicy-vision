@@ -118,10 +118,10 @@ export function loadConfig(): EnvConfig {
     theGraphApiKey: getEnv('THEGRAPH_API_KEY', ''),
     ankrApiKey: getEnv('ANKR_API_KEY', ''),
 
-    // IPFS (Pinata)
-    ipfsApiUrl: getEnv('IPFS_API_URL', 'https://api.pinata.cloud'),
-    ipfsApiKey: getEnv('IPFS_API_KEY', ''),
-    ipfsApiSecret: getEnv('IPFS_API_SECRET', ''),
+    // Redundant IPFS pinning (Filebase canonical upload + Pinata replication)
+    ipfsPinningEnabled: getEnvBoolean('IPFS_PINNING_ENABLED', false),
+    filebaseIpfsRpcToken: getEnv('FILEBASE_IPFS_RPC_TOKEN', ''),
+    pinataJwt: getEnv('PINATA_JWT', ''),
 
     // Forge (Hook Development)
     forgeDockerEnabled: getEnv('FORGE_DOCKER_ENABLED', 'false') === 'true',
@@ -274,6 +274,18 @@ export function validateConfigForCors(config: EnvConfig): void {
   }
 }
 
+export function validateConfigForIpfs(config: EnvConfig): void {
+  if (!config.ipfsPinningEnabled) return;
+  if (config.filebaseIpfsRpcToken.trim().length < 8) {
+    throw new Error(
+      'FILEBASE_IPFS_RPC_TOKEN is required when IPFS pinning is enabled',
+    );
+  }
+  if (config.pinataJwt.trim().length < 8) {
+    throw new Error('PINATA_JWT is required when IPFS pinning is enabled');
+  }
+}
+
 export function isAllowedOrigin(config: EnvConfig, origin: string): boolean {
   return config.allowedOrigins.includes(origin);
 }
@@ -293,6 +305,7 @@ export function validateProductionConfig(config: EnvConfig): void {
   validateConfigForDatabase(config);
   validateConfigForCron(config);
   validateConfigForCors(config);
+  validateConfigForIpfs(config);
   if (config.forgeDockerEnabled) {
     throw new Error(
       'FORGE_DOCKER_ENABLED is not supported in the production API process',

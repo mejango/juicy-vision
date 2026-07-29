@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { defaultChainId } from '../../config/environment'
-import { useThemeStore, useSettingsStore } from '../../stores'
+import { useThemeStore } from '../../stores'
 import { fetchProject, fetchSuckerGroupBalance, type Project, type SuckerGroupBalance } from '../../services/bendystraw'
-import { ipfsGatewayUrls, pinFile, type IpfsProjectMetadata } from '../../utils/ipfs'
+import { pinFileToBackend } from '../../services/ipfsPinning'
+import { cidFromIpfsUri, ipfsGatewayUrls, type IpfsProjectMetadata } from '../../utils/ipfs'
 import { CHAINS, MAINNET_CHAINS } from '../../constants'
 import { IpfsImage } from '../ui/IpfsMedia'
 
@@ -39,7 +40,6 @@ export default function LandingPagePreview({
   subtitle,
 }: LandingPagePreviewProps) {
   const { theme } = useThemeStore()
-  const { pinataJwt } = useSettingsStore()
   const isDark = theme === 'dark'
   const previewRef = useRef<HTMLDivElement>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
@@ -111,11 +111,6 @@ export default function LandingPagePreview({
   }, [previewMode, staticHtml])
 
   const handleExport = async () => {
-    if (!pinataJwt) {
-      setExportError('Configure Pinata API key in settings to export')
-      return
-    }
-
     setExporting(true)
     setExportError(null)
 
@@ -125,17 +120,18 @@ export default function LandingPagePreview({
       const htmlFile = new File([htmlBlob], `${project?.name || 'landing-page'}.html`, { type: 'text/html' })
 
       // Pin the HTML file to IPFS
-      const cid = await pinFile(
+      const uri = await pinFileToBackend(
         htmlFile,
-        pinataJwt,
-        `landing-page-${project?.name || projectId}`
+        `landing-page-${project?.name || projectId}`,
       )
+      const cid = cidFromIpfsUri(uri)
+      if (!cid) throw new Error('Pinning returned an invalid IPFS URI')
 
       setExportedCid(cid)
       setExportedUrl(`https://gateway.pinata.cloud/ipfs/${cid}`)
     } catch (err) {
       console.error('Failed to export landing page:', err)
-      setExportError('Failed to export. Check your Pinata API key.')
+      setExportError('Failed to publish the landing page.')
     } finally {
       setExporting(false)
     }
@@ -202,10 +198,9 @@ export default function LandingPagePreview({
         <div className="flex gap-2">
           <button
             onClick={handleExport}
-            disabled={exporting || !pinataJwt}
-            title={!pinataJwt ? 'Configure Pinata API key in settings' : undefined}
+            disabled={exporting}
             className={`px-3 py-1.5 text-sm font-medium transition-colors ${
-              exporting || !pinataJwt
+              exporting
                 ? 'bg-gray-500/50 text-gray-400 cursor-not-allowed'
                 : 'bg-juice-orange hover:bg-juice-orange/90 text-black'
             }`}

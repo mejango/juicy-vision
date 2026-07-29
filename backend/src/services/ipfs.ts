@@ -6,7 +6,7 @@
  * - Retrieving archived content
  * - CID management
  *
- * Uses IPFS HTTP API (Pinata, web3.storage, or local node)
+ * Filebase creates canonical DAG-PB CIDs and Pinata redundantly pins them.
  */
 
 import { execute, query, queryOne } from '../db/index.ts';
@@ -18,6 +18,9 @@ import { getConfig } from '../utils/config.ts';
 
 const DEFAULT_TIMEOUT_MS = 15000; // 15 seconds for IPFS operations
 const BASE32_ALPHABET = 'abcdefghijklmnopqrstuvwxyz234567';
+const FILEBASE_IPFS_API_BASE = 'https://rpc.filebase.io';
+const PINATA_PIN_BY_CID_URL = 'https://api.pinata.cloud/v3/files/public/pin_by_cid';
+const PINATA_UNPIN_BASE_URL = 'https://api.pinata.cloud/pinning/unpin';
 
 function decodeBase32Cid(cid: string): Uint8Array {
   const normalized = cid.trim().toLowerCase();
@@ -96,9 +99,9 @@ async function fetchWithTimeout(
 // ============================================================================
 
 export interface IpfsConfig {
-  apiUrl: string;
-  apiKey?: string;
-  apiSecret?: string;
+  enabled: boolean;
+  filebaseToken: string;
+  pinataJwt: string;
 }
 
 export interface ArchivedChat {
@@ -145,20 +148,23 @@ export interface PinResponse {
 // IPFS Client
 // ============================================================================
 
-class IpfsClient {
-  private apiUrl: string;
-  private headers: Record<string, string>;
+export class IpfsClient {
+  private enabled: boolean;
+  private filebaseToken: string;
+  private pinataJwt: string;
 
   constructor(config: IpfsConfig) {
-    this.apiUrl = config.apiUrl;
-    this.headers = {
-      'Content-Type': 'application/json',
-    };
+    this.enabled = config.enabled;
+    this.filebaseToken = config.filebaseToken;
+    this.pinataJwt = config.pinataJwt;
+  }
 
-    // Pinata auth
-    if (config.apiKey && config.apiSecret) {
-      this.headers['pinata_api_key'] = config.apiKey;
-      this.headers['pinata_secret_api_key'] = config.apiSecret;
+  private assertConfigured(): void {
+    if (!this.enabled) throw new Error('IPFS pinning is disabled');
+    if (!this.filebaseToken || !this.pinataJwt) {
+      throw new Error(
+        'IPFS pinning requires FILEBASE_IPFS_RPC_TOKEN and PINATA_JWT',
+      );
     }
   }
 
@@ -166,62 +172,64 @@ class IpfsClient {
    * Pin JSON data to IPFS
    */
   async pinJson(data: unknown, name?: string): Promise<PinResponse> {
-    const body = {
-      pinataContent: data,
-      pinataMetadata: name ? { name } : undefined,
-    };
-
-    const response = await fetchWithTimeout(`${this.apiUrl}/pinning/pinJSONToIPFS`, {
-      method: 'POST',
-      headers: this.headers,
-      body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`IPFS pin failed: ${error}`);
-    }
-
-    const result = await response.json();
-    assertDagPbCid(result.IpfsHash);
-    return {
-      cid: result.IpfsHash,
-      size: result.PinSize,
-    };
+    const bytes = new TextEncoder().encode(JSON.stringify(data));
+    return this.pinFile(bytes, name ?? 'metadata.json', 'application/json');
   }
 
   /**
    * Pin a file (binary data) to IPFS
    */
   async pinFile(data: Uint8Array, name: string, mimeType: string): Promise<PinResponse> {
+    this.assertConfigured();
     const formData = new FormData();
-    const blob = new Blob([data.buffer as ArrayBuffer], { type: mimeType });
+    const blob = new Blob([data.slice().buffer], { type: mimeType });
     formData.append('file', blob, name);
-    formData.append('pinataMetadata', JSON.stringify({ name }));
 
-    // Don't set Content-Type - let the browser set it with boundary
-    const headers: Record<string, string> = {};
-    if (this.headers['pinata_api_key']) {
-      headers['pinata_api_key'] = this.headers['pinata_api_key'];
-      headers['pinata_secret_api_key'] = this.headers['pinata_secret_api_key'];
+    const filebaseResponse = await fetchWithTimeout(
+      `${FILEBASE_IPFS_API_BASE}/api/v0/add?pin=true&cid-version=0`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.filebaseToken}` },
+        body: formData,
+      },
+      30000,
+    );
+
+    if (!filebaseResponse.ok) {
+      throw new Error(`Filebase IPFS add failed: ${filebaseResponse.status}`);
     }
 
-    // File uploads may take longer, use 30 second timeout
-    const response = await fetchWithTimeout(`${this.apiUrl}/pinning/pinFileToIPFS`, {
+    const filebaseResult = await filebaseResponse.json() as {
+      Hash?: unknown;
+      Size?: unknown;
+    };
+    if (typeof filebaseResult.Hash !== 'string') {
+      throw new Error('Filebase IPFS add returned no CID');
+    }
+    assertDagPbCid(filebaseResult.Hash);
+
+    const pinataResponse = await fetchWithTimeout(PINATA_PIN_BY_CID_URL, {
       method: 'POST',
-      headers,
-      body: formData,
-    }, 30000);
-
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`IPFS file pin failed: ${error}`);
+      headers: {
+        Authorization: `Bearer ${this.pinataJwt}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ cid: filebaseResult.Hash, name }),
+    });
+    if (!pinataResponse.ok) {
+      throw new Error(`Pinata replication failed: ${pinataResponse.status}`);
+    }
+    const pinataResult = await pinataResponse.json() as {
+      data?: { cid?: unknown };
+    };
+    if (pinataResult.data?.cid !== filebaseResult.Hash) {
+      throw new Error('Pinata replication returned a mismatched CID');
     }
 
-    const result = await response.json();
+    const reportedSize = Number(filebaseResult.Size);
     return {
-      cid: result.IpfsHash,
-      size: result.PinSize,
+      cid: filebaseResult.Hash,
+      size: Number.isFinite(reportedSize) && reportedSize >= 0 ? reportedSize : data.byteLength,
     };
   }
 
@@ -241,14 +249,26 @@ class IpfsClient {
    * Unpin content (optional cleanup)
    */
   async unpin(cid: string): Promise<void> {
-    const response = await fetchWithTimeout(`${this.apiUrl}/pinning/unpin/${cid}`, {
-      method: 'DELETE',
-      headers: this.headers,
-    });
-
-    if (!response.ok && response.status !== 404) {
-      const error = await response.text();
-      throw new Error(`IPFS unpin failed: ${error}`);
+    this.assertConfigured();
+    assertDagPbCid(cid);
+    const [filebaseResponse, pinataResponse] = await Promise.all([
+      fetchWithTimeout(
+        `${FILEBASE_IPFS_API_BASE}/api/v0/pin/rm?arg=${encodeURIComponent(cid)}`,
+        {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${this.filebaseToken}` },
+        },
+      ),
+      fetchWithTimeout(`${PINATA_UNPIN_BASE_URL}/${encodeURIComponent(cid)}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${this.pinataJwt}` },
+      }),
+    ]);
+    if (
+      (!filebaseResponse.ok && filebaseResponse.status !== 404) ||
+      (!pinataResponse.ok && pinataResponse.status !== 404)
+    ) {
+      throw new Error('IPFS unpin failed for one or more providers');
     }
   }
 }
@@ -263,9 +283,9 @@ export function getIpfsClient(): IpfsClient {
   if (!ipfsClient) {
     const config = getConfig();
     ipfsClient = new IpfsClient({
-      apiUrl: config.ipfsApiUrl ?? 'https://api.pinata.cloud',
-      apiKey: config.ipfsApiKey,
-      apiSecret: config.ipfsApiSecret,
+      enabled: config.ipfsPinningEnabled,
+      filebaseToken: config.filebaseIpfsRpcToken,
+      pinataJwt: config.pinataJwt,
     });
   }
   return ipfsClient;

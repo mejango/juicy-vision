@@ -83,3 +83,31 @@ Deno.test('configuration rejects ambiguous boolean values', () => {
     else Deno.env.set('TRUST_PROXY', previous);
   }
 });
+
+Deno.test('enabled IPFS pinning requires both redundant provider credentials', () => {
+  const config = {
+    ...validProductionConfig(),
+    ipfsPinningEnabled: true,
+    filebaseIpfsRpcToken: '',
+    pinataJwt: '',
+  };
+  assertThrows(
+    () => validateProductionConfig(config),
+    Error,
+    'FILEBASE_IPFS_RPC_TOKEN',
+  );
+  assertThrows(
+    () =>
+      validateProductionConfig({
+        ...config,
+        filebaseIpfsRpcToken: 'filebase-token',
+      }),
+    Error,
+    'PINATA_JWT',
+  );
+  validateProductionConfig({
+    ...config,
+    filebaseIpfsRpcToken: 'filebase-token',
+    pinataJwt: 'pinata-jwt',
+  });
+});

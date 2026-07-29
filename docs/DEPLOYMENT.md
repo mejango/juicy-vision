@@ -10,6 +10,25 @@ The primary release unit is an OCI digest. Storacha/IPFS remains an optional
 copy of the static frontend, not the control plane for the API or database.
 No workflow in this repository deploys the backend automatically.
 
+## Railway branch environments
+
+Each Railway environment contains two services from this repository: the root
+frontend service uses `railway.json`, and the backend service uses
+`backend/railway.json`.
+
+| Git branch | Railway environment | Frontend origin | API origin |
+| --- | --- | --- | --- |
+| `staging` | staging | `https://staging.juicy.vision` | `https://api.staging.juicy.vision` |
+| `main` | production | `https://juicy.vision` | `https://api.juicy.vision` |
+
+Connect both staging services to `staging` and both production services to `main`.
+Enable automatic deploys only after CI succeeds and disable overlap. The
+frontend gets the matching API origin in `VITE_API_URL`; the backend gets the
+matching frontend origin in `ALLOWED_ORIGINS`. Set `BUILD_SHA` to
+`${{RAILWAY_GIT_COMMIT_SHA}}` for both Docker builds. Keep separate databases
+and secrets in staging and production, run migrations once before each backend
+rollout, and promote by merging `staging` into `main`.
+
 ## Release invariants
 
 Every production release must satisfy all of these:
@@ -73,10 +92,13 @@ npm run check:release-config
 | `RESERVES_PRIVATE_KEY` | 32-byte hex key. Never use a development key. Prefer a constrained signer/HSM before holding meaningful reserves. |
 
 Feature credentials such as Stripe, Anthropic/Moonshot, Relayr, Bendystraw,
-The Graph, Ankr, Pinata, Replicate, and Voyage are conditional. Leave a feature
-disabled until all of its credentials, webhooks, limits, and monitoring are
-configured. `FORGE_DOCKER_ENABLED` and `SEMGREP_ENABLED` must remain `false` in
-the API container.
+The Graph, Ankr, Replicate, and Voyage are conditional. IPFS uses the same
+contract as the other webclients: keep `IPFS_PINNING_ENABLED=false` or provide
+both `FILEBASE_IPFS_RPC_TOKEN` and `PINATA_JWT`. Filebase creates the canonical
+DAG-PB CID and Pinata pins that exact CID. Leave every feature disabled until
+all of its credentials, limits, and monitoring are configured.
+`FORGE_DOCKER_ENABLED` and `SEMGREP_ENABLED` must remain `false` in the API
+container.
 
 Authentication is mandatory for admin, project persistence/mutation, IPFS pin,
 and image-generation routes. Cost-bearing quotas fail closed with `503` when

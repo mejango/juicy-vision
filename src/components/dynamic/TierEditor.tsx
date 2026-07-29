@@ -4,9 +4,9 @@ import { useThemeStore } from '../../stores'
 import type { JB721TierConfigInput } from '../../services/tiersHook'
 import type { JB721HookFlags, TierPermissions } from '../../services/nft'
 import { validateTierChange } from '../../services/nft'
-import { encodeIpfsUri, pinFile } from '../../utils/ipfs'
+import { encodeIpfsUri } from '../../utils/ipfs'
 import { mediaTypeForFile } from '../../utils/ipfsMedia'
-import { pinMetadata } from '../../services/ipfsPinning'
+import { pinFileToBackend, pinMetadata } from '../../services/ipfsPinning'
 import { buildTierMetadata, type StoredTierMetadata } from '../../utils/tierMetadata'
 import { ZERO_ADDRESS } from '../../constants'
 import GenerateImageButton from '../ui/GenerateImageButton'
@@ -31,8 +31,6 @@ interface TierEditorProps {
   onSave: (tier: JB721TierConfigInput, metadata: TierMetadata) => void
   /** Called to cancel editing */
   onCancel: () => void
-  /** Pinata JWT for IPFS uploads (optional - disables image upload if not provided) */
-  pinataJwt?: string
   /** Currency label (ETH or USDC) */
   currencyLabel?: string
   /** Decimals used by the hook's pricing context. */
@@ -67,7 +65,6 @@ export default function TierEditor({
   hookFlags,
   onSave,
   onCancel,
-  pinataJwt,
   currencyLabel = 'ETH',
   pricingDecimals = 18,
 }: TierEditorProps) {
@@ -117,14 +114,14 @@ export default function TierEditor({
   // Handle image upload
   const handleImageUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (!file || !pinataJwt) return
+    if (!file) return
 
     setUploading(true)
     setError(null)
 
     try {
-      const cid = await pinFile(file, pinataJwt, `tier-${formState.name || 'image'}`)
-      updateField('imageUri', `ipfs://${cid}`)
+      const uri = await pinFileToBackend(file, `tier-${formState.name || 'image'}`)
+      updateField('imageUri', uri)
       // Auto-detect the MIME (falling back to the extension when File.type is empty) so a raw CID renders
       // with the right player; the operator can still override it in the Media type field below.
       updateField('mediaType', mediaTypeForFile(file))
@@ -134,7 +131,7 @@ export default function TierEditor({
     } finally {
       setUploading(false)
     }
-  }, [pinataJwt, formState.name, updateField])
+  }, [formState.name, updateField])
 
   // Handle AI image generation
   const handleImageGenerated = useCallback((ipfsUri: string) => {
@@ -308,22 +305,20 @@ export default function TierEditor({
                 }`}
               />
               <div className="flex items-center gap-3 mt-2">
-                {pinataJwt && (
-                  <label className={`${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                    <span className={`text-xs cursor-pointer ${
-                      isDark ? 'text-juice-orange hover:text-juice-orange/80' : 'text-orange-600 hover:text-orange-700'
-                    }`}>
-                      {uploading ? 'Uploading...' : 'Upload'}
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageUpload}
-                      className="hidden"
-                      disabled={uploading}
-                    />
-                  </label>
-                )}
+                <label className={`${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                  <span className={`text-xs cursor-pointer ${
+                    isDark ? 'text-juice-orange hover:text-juice-orange/80' : 'text-orange-600 hover:text-orange-700'
+                  }`}>
+                    {uploading ? 'Uploading...' : 'Upload'}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                    disabled={uploading}
+                  />
+                </label>
                 <GenerateImageButton
                   context={{
                     name: formState.name || 'NFT Item',

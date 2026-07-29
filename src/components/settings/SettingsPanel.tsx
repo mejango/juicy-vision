@@ -36,13 +36,11 @@ interface SettingsPanelProps {
 export default function SettingsPanel({ isOpen, onClose, anchorPosition }: SettingsPanelProps) {
   const {
     claudeApiKey,
-    pinataJwt,
     ankrApiKey,
     theGraphApiKey,
     relayrApiKey,
     selectedFruit,
     setClaudeApiKey,
-    setPinataJwt,
     setAnkrApiKey,
     setTheGraphApiKey,
     setRelayrApiKey,
@@ -51,7 +49,6 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
   } = useSettingsStore()
 
   const [localClaudeKey, setLocalClaudeKey] = useState(claudeApiKey)
-  const [localPinataJwt, setLocalPinataJwt] = useState(pinataJwt)
   const [localAnkrKey, setLocalAnkrKey] = useState(ankrApiKey)
   const [localTheGraphKey, setLocalTheGraphKey] = useState(theGraphApiKey)
   const [localRelayrKey, setLocalRelayrKey] = useState(relayrApiKey)
@@ -313,7 +310,6 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
 
   const handleSave = () => {
     setClaudeApiKey(localClaudeKey)
-    setPinataJwt(localPinataJwt)
     setAnkrApiKey(localAnkrKey)
     setTheGraphApiKey(localTheGraphKey)
     setRelayrApiKey(localRelayrKey)
@@ -322,7 +318,6 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
 
   const handleClear = () => {
     setLocalClaudeKey('')
-    setLocalPinataJwt('')
     setLocalAnkrKey('')
     setLocalTheGraphKey('')
     setLocalRelayrKey('')
@@ -422,7 +417,7 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
 
   if (!isOpen) return null
 
-  const hasCustomKeys = localClaudeKey || localPinataJwt || localAnkrKey || localTheGraphKey || localRelayrKey
+  const hasCustomKeys = localClaudeKey || localAnkrKey || localTheGraphKey || localRelayrKey
 
   return createPortal(
     <>
@@ -1034,24 +1029,6 @@ export default function SettingsPanel({ isOpen, onClose, anchorPosition }: Setti
                   value={localClaudeKey}
                   onChange={(e) => setLocalClaudeKey(e.target.value)}
                   placeholder="sk-ant-..."
-                  className={`w-full mt-1 px-2 py-1.5 text-xs border outline-none ${
-                    isDark
-                      ? 'border-white/10 bg-transparent text-white placeholder-gray-600 focus:border-white/30'
-                      : 'border-gray-200 bg-white text-gray-900 placeholder-gray-400 focus:border-gray-300'
-                  }`}
-                />
-              </div>
-
-              {/* Pinata JWT */}
-              <div>
-                <label className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                  Pinata JWT
-                </label>
-                <input
-                  type="password"
-                  value={localPinataJwt}
-                  onChange={(e) => setLocalPinataJwt(e.target.value)}
-                  placeholder="For IPFS pinning"
                   className={`w-full mt-1 px-2 py-1.5 text-xs border outline-none ${
                     isDark
                       ? 'border-white/10 bg-transparent text-white placeholder-gray-600 focus:border-white/30'

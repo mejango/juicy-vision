@@ -193,9 +193,9 @@ Backend configuration is in `backend/.env`. Create it from the example and fill 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `IPFS_API_URL` | `https://api.pinata.cloud` | Pinata API URL |
-| `IPFS_API_KEY` | - | Pinata API key |
-| `IPFS_API_SECRET` | - | Pinata API secret |
+| `IPFS_PINNING_ENABLED` | `false` | Enables authenticated redundant pinning |
+| `FILEBASE_IPFS_RPC_TOKEN` | - | Server-only Filebase RPC bearer token |
+| `PINATA_JWT` | - | Server-only Pinata JWT used to replicate Filebase CIDs |
 
 #### Stripe Payments
 

@@ -24,6 +24,7 @@ import {
   fetchProjectTokenBalance,
   getProjectOwner,
 } from './chainReader.ts';
+import { getIpfsClient } from './ipfs.ts';
 
 // ============================================================================
 // Chain Configuration
@@ -890,46 +891,15 @@ interface PinToIpfsResult {
 }
 
 async function pinToIpfs(params: PinToIpfsParams): Promise<PinToIpfsResult> {
-  const config = getConfig();
-  const apiUrl = config.ipfsApiUrl ?? 'https://api.pinata.cloud';
-  const apiKey = config.ipfsApiKey;
-  const apiSecret = config.ipfsApiSecret;
-
-  if (!apiKey || !apiSecret) {
-    throw new Error(
-      'IPFS pinning not configured. Set IPFS_API_KEY and IPFS_API_SECRET in environment.',
-    );
-  }
-
-  const body = {
-    pinataContent: params.content,
-    pinataMetadata: params.name ? { name: params.name } : undefined,
-  };
-
-  const response = await fetchWithTimeout(`${apiUrl}/pinning/pinJSONToIPFS`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'pinata_api_key': apiKey,
-      'pinata_secret_api_key': apiSecret,
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`IPFS pin failed: ${error}`);
-  }
-
-  const result = await response.json();
-  const cid = result.IpfsHash;
+  const result = await getIpfsClient().pinJson(params.content, params.name);
+  const cid = result.cid;
 
   logger.info(`[IPFS] Pinned content to CID: ${cid}`);
 
   return {
     cid,
     uri: `ipfs://${cid}`,
-    size: result.PinSize,
+    size: result.size,
   };
 }
 

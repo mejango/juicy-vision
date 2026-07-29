@@ -25,7 +25,6 @@ export const LANGUAGES: { code: Language; label: string; native: string }[] = [
 interface SettingsState {
   claudeApiKey: string
   paraApiKey: string
-  pinataJwt: string
   ankrApiKey: string
   theGraphApiKey: string
   relayrApiKey: string
@@ -37,7 +36,6 @@ interface SettingsState {
 
   setClaudeApiKey: (key: string) => void
   setParaApiKey: (key: string) => void
-  setPinataJwt: (jwt: string) => void
   setAnkrApiKey: (key: string) => void
   setTheGraphApiKey: (key: string) => void
   setRelayrApiKey: (key: string) => void
@@ -48,7 +46,6 @@ interface SettingsState {
   setPrivateMode: (isPrivate: boolean) => void
   clearSettings: () => void
   isConfigured: () => boolean
-  isPinataConfigured: () => boolean
 }
 
 export const useSettingsStore = create<SettingsState>()(
@@ -56,7 +53,6 @@ export const useSettingsStore = create<SettingsState>()(
     (set, get) => ({
       claudeApiKey: '',
       paraApiKey: '',
-      pinataJwt: '',
       ankrApiKey: '',
       theGraphApiKey: DEFAULT_THEGRAPH_API_KEY,
       relayrApiKey: '',
@@ -68,7 +64,6 @@ export const useSettingsStore = create<SettingsState>()(
 
       setClaudeApiKey: (key) => set({ claudeApiKey: key }),
       setParaApiKey: (key) => set({ paraApiKey: key }),
-      setPinataJwt: (jwt) => set({ pinataJwt: jwt }),
       setAnkrApiKey: (key) => set({ ankrApiKey: key }),
       setTheGraphApiKey: (key) => set({ theGraphApiKey: key }),
       setRelayrApiKey: (key) => set({ relayrApiKey: key }),
@@ -84,7 +79,6 @@ export const useSettingsStore = create<SettingsState>()(
       clearSettings: () => set({
         claudeApiKey: '',
         paraApiKey: '',
-        pinataJwt: '',
         ankrApiKey: '',
         theGraphApiKey: '',
         relayrApiKey: '',
@@ -95,14 +89,10 @@ export const useSettingsStore = create<SettingsState>()(
         return Boolean(state.claudeApiKey)
       },
 
-      isPinataConfigured: () => {
-        const state = get()
-        return Boolean(state.pinataJwt)
-      },
     }),
     {
       name: 'juice-settings',
-      version: 10,
+      version: 11,
       onRehydrateStorage: () => (state) => {
         // Sync i18n with persisted language on app start
         if (state?.language) {
@@ -110,7 +100,11 @@ export const useSettingsStore = create<SettingsState>()(
         }
       },
       migrate: (persistedState: unknown, version: number) => {
-        let state = persistedState as SettingsState & { pinataApiKey?: string; pinataApiSecret?: string }
+        let state = persistedState as SettingsState & {
+          pinataApiKey?: string
+          pinataApiSecret?: string
+          pinataJwt?: string
+        }
 
         // Apply migrations cumulatively
         if (version < 2) {
@@ -120,16 +114,20 @@ export const useSettingsStore = create<SettingsState>()(
           }
         }
         if (version < 5) {
-          // Migration: remove old pinataApiKey/Secret, use pinataJwt
           state = {
             ...state,
-            pinataJwt: '',
             ankrApiKey: '',
           }
         }
-        // Versions 6-10 only introduced brand-new keys; zustand persist's
+        // Pinning credentials moved to the authenticated backend in version 11.
+        // Remove every former browser-stored Pinata credential during rehydrate.
+        const sanitized = { ...state } as Record<string, unknown>
+        delete sanitized.pinataApiKey
+        delete sanitized.pinataApiSecret
+        delete sanitized.pinataJwt
+        // Versions 6-11 only introduced brand-new keys; zustand persist's
         // default shallow merge fills those from initial state automatically.
-        return state
+        return sanitized as unknown as SettingsState
       },
     }
   )

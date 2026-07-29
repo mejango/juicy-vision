@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi, Mock } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import ManageTiersForm from './ManageTiersForm'
-import { useThemeStore, useSettingsStore } from '../../stores'
+import { useThemeStore } from '../../stores'
 import * as bendystraw from '../../services/bendystraw'
 import * as nftService from '../../services/nft'
 
@@ -123,7 +123,6 @@ describe('ManageTiersForm', () => {
 
   beforeEach(() => {
     useThemeStore.setState({ theme: 'dark' })
-    useSettingsStore.setState({ pinataJwt: undefined })
     localStorage.clear()
     vi.clearAllMocks()
 

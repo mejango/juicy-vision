@@ -242,10 +242,10 @@ export interface EnvConfig {
   theGraphApiKey: string; // The Graph Uniswap subgraph
   ankrApiKey: string; // Ankr RPC endpoints (optional)
 
-  // IPFS (Pinata)
-  ipfsApiUrl?: string; // Pinata API URL
-  ipfsApiKey?: string; // Pinata API key
-  ipfsApiSecret?: string; // Pinata API secret
+  // Redundant IPFS pinning
+  ipfsPinningEnabled: boolean;
+  filebaseIpfsRpcToken: string;
+  pinataJwt: string;
 
   // Forge (Hook Development)
   forgeDockerEnabled?: boolean; // Development-only, never enabled in the API container

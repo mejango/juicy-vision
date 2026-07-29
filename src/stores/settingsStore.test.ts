@@ -12,7 +12,6 @@ describe('settingsStore', () => {
     useSettingsStore.setState({
       claudeApiKey: '',
       paraApiKey: '',
-      pinataJwt: '',
       ankrApiKey: '',
       theGraphApiKey: '',
       bendystrawEndpoint: 'https://bendystraw.xyz/graphql',
@@ -42,7 +41,6 @@ describe('settingsStore', () => {
       const state = useSettingsStore.getState()
       expect(state.claudeApiKey).toBe('')
       expect(state.paraApiKey).toBe('')
-      expect(state.pinataJwt).toBe('')
       expect(state.ankrApiKey).toBe('')
     })
 
@@ -90,15 +88,6 @@ describe('settingsStore', () => {
       store.setParaApiKey('para-api-key-123')
 
       expect(useSettingsStore.getState().paraApiKey).toBe('para-api-key-123')
-    })
-  })
-
-  describe('setPinataJwt', () => {
-    it('sets the Pinata JWT', () => {
-      const store = useSettingsStore.getState()
-      store.setPinataJwt('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...')
-
-      expect(useSettingsStore.getState().pinataJwt).toBe('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...')
     })
   })
 
@@ -180,7 +169,6 @@ describe('settingsStore', () => {
       useSettingsStore.setState({
         claudeApiKey: 'claude-key',
         paraApiKey: 'para-key',
-        pinataJwt: 'pinata-jwt',
         ankrApiKey: 'ankr-key',
         theGraphApiKey: 'graph-key',
       })
@@ -191,7 +179,6 @@ describe('settingsStore', () => {
       const state = useSettingsStore.getState()
       expect(state.claudeApiKey).toBe('')
       expect(state.paraApiKey).toBe('')
-      expect(state.pinataJwt).toBe('')
       expect(state.ankrApiKey).toBe('')
       expect(state.theGraphApiKey).toBe('')
     })
@@ -232,19 +219,4 @@ describe('settingsStore', () => {
     })
   })
 
-  describe('isPinataConfigured', () => {
-    it('returns false when Pinata JWT is empty', () => {
-      useSettingsStore.setState({ pinataJwt: '' })
-      const store = useSettingsStore.getState()
-
-      expect(store.isPinataConfigured()).toBe(false)
-    })
-
-    it('returns true when Pinata JWT is set', () => {
-      useSettingsStore.setState({ pinataJwt: 'eyJ...' })
-      const store = useSettingsStore.getState()
-
-      expect(store.isPinataConfigured()).toBe(true)
-    })
-  })
 })

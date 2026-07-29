@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { defaultChainId } from '../../config/environment'
 import { formatUnits } from 'viem'
 import { useAccount } from 'wagmi'
-import { useThemeStore, useSettingsStore } from '../../stores'
+import { useThemeStore } from '../../stores'
 import { useManageTiersFormState } from '../../hooks/useComponentState'
 import { useManagedWallet } from '../../hooks'
 import {
@@ -64,7 +64,6 @@ interface ChainHookData {
 
 export default function ManageTiersForm({ projectId, chainId = defaultChainId(), messageId }: ManageTiersFormProps) {
   const { theme } = useThemeStore()
-  const { pinataJwt } = useSettingsStore()
   const isDark = theme === 'dark'
   const { isConnected } = useAccount()
   const { address: managedAddress, isManagedMode } = useManagedWallet()
@@ -703,7 +702,6 @@ export default function ManageTiersForm({ projectId, chainId = defaultChainId(),
                 onCancel={() => {
                   setShowEditor(false)
                 }}
-                pinataJwt={pinataJwt}
               />
             </div>
           )}
