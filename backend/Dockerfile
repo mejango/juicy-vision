@@ -13,7 +13,9 @@ RUN deno check --frozen main.ts run_migrate.ts scripts/validate-config.ts
 
 FROM denoland/deno:2.9.3@sha256:6288db6be1c26473bb9d1843f906d9a219c0dda57fd85de4aac90296951cf6ef
 
-ARG BUILD_SHA=source-unknown
+ARG BUILD_SHA
+ARG RAILWAY_GIT_COMMIT_SHA
+ENV BUILD_SHA=${BUILD_SHA:-${RAILWAY_GIT_COMMIT_SHA}}
 ENV DENO_ENV=production \
     FORGE_DOCKER_ENABLED=false \
     SEMGREP_ENABLED=false \

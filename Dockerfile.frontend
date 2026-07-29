@@ -4,7 +4,8 @@ FROM node:26.5.0-bookworm-slim@sha256:2d49d876e96237d76de412761cf05dbfe5aee325cc
 WORKDIR /app
 RUN npm install --global npm@12.0.1 --no-audit --no-fund
 ENV NODE_ENV=development
-ARG BUILD_SHA=source-unknown
+ARG BUILD_SHA
+ARG RAILWAY_GIT_COMMIT_SHA
 ARG SOURCE_DATE_EPOCH=0
 ARG VITE_API_URL=""
 ARG VITE_WALLETCONNECT_PROJECT_ID=""
@@ -12,7 +13,7 @@ ARG VITE_TESTNET_MODE=false
 ARG VITE_RELAYR_APP_ID=""
 ARG DEPLOY_ENV=development
 ARG ALLOW_SAME_ORIGIN_API=false
-ENV BUILD_SHA=${BUILD_SHA} \
+ENV BUILD_SHA=${BUILD_SHA:-${RAILWAY_GIT_COMMIT_SHA}} \
     SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH} \
     VITE_API_URL=${VITE_API_URL} \
     VITE_WALLETCONNECT_PROJECT_ID=${VITE_WALLETCONNECT_PROJECT_ID} \
@@ -32,7 +33,9 @@ RUN npm run check:release-config && npm run build && npm run check:bundle
 # Official multi-platform unprivileged Nginx image, pinned to the reviewed manifest digest.
 FROM nginxinc/nginx-unprivileged:1.31.3-alpine@sha256:18d67281256ded39ff65e010ae4f831be18f19356f83c60bc546492c7eb6dd23
 
-ARG BUILD_SHA=source-unknown
+ARG BUILD_SHA
+ARG RAILWAY_GIT_COMMIT_SHA
+ENV BUILD_SHA=${BUILD_SHA:-${RAILWAY_GIT_COMMIT_SHA}}
 LABEL org.opencontainers.image.revision=${BUILD_SHA}
 COPY docker/frontend.nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker/security-headers.inc /etc/nginx/security-headers.inc

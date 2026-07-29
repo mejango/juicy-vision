@@ -24,10 +24,11 @@ frontend service uses `railway.json`, and the backend service uses
 Connect both staging services to `staging` and both production services to `main`.
 Enable automatic deploys only after CI succeeds and disable overlap. The
 frontend gets the matching API origin in `VITE_API_URL`; the backend gets the
-matching frontend origin in `ALLOWED_ORIGINS`. Set `BUILD_SHA` to
-`${{RAILWAY_GIT_COMMIT_SHA}}` for both Docker builds. Keep separate databases
-and secrets in staging and production, run migrations once before each backend
-rollout, and promote by merging `staging` into `main`.
+matching frontend origin in `ALLOWED_ORIGINS`. Do not configure `BUILD_SHA` in
+Railway: both Dockerfiles consume Railway's automatically injected
+`RAILWAY_GIT_COMMIT_SHA`. Keep separate databases and secrets in staging and
+production, run migrations once before each backend rollout, and promote by
+merging `staging` into `main`.
 
 ## Release invariants
 
@@ -65,7 +66,7 @@ failure, not something the release job repairs.
 | `VITE_WALLETCONNECT_PROJECT_ID` | Required 32-character WalletConnect project ID. The source fallback is for local development only. |
 | `VITE_TESTNET_MODE` | Sets the default network for a new browser. Users can still switch network mode. |
 | `VITE_RELAYR_APP_ID` | Optional explicit Relayr application ID. |
-| `BUILD_SHA` | Full source revision; release workflows set this automatically. |
+| `BUILD_SHA` | Optional non-Railway revision override; Railway and the release workflows set revision metadata automatically. |
 | `SOURCE_DATE_EPOCH` | Commit timestamp used for reproducible build metadata. |
 
 Validate without building:

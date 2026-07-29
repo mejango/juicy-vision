@@ -80,6 +80,13 @@ for (const path of ['Dockerfile.frontend', 'backend/Dockerfile', 'backend/src/db
     }
   }
 }
+for (const path of ['Dockerfile.frontend', 'backend/Dockerfile']) {
+  requirePattern(
+    path,
+    /ARG RAILWAY_GIT_COMMIT_SHA[\s\S]*BUILD_SHA=\$\{BUILD_SHA:-\$\{RAILWAY_GIT_COMMIT_SHA\}\}/,
+    `${path} must derive its build revision from Railway's deployed commit`,
+  )
+}
 
 for (const path of ['backend/railway.json', 'backend/railway.staging.json']) {
   const config = JSON.parse(read(path))
