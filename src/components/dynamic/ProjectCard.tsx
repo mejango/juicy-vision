@@ -92,6 +92,7 @@ import {
   uniswapPoolLink,
 } from "../../services/payPreviewCard";
 import { quoteDirectBuy, type DirectBuyQuote } from "../../services/ammMarket";
+import ChainLogo from "../ui/ChainLogo";
 
 // Metadata extracted from on-chain resolver
 interface OnChainTierMetadata {
@@ -3611,10 +3612,11 @@ export default function ProjectCard({
                             className="flex justify-between gap-4 py-0.5"
                           >
                             <span
-                              className={
+                              className={`inline-flex items-center gap-1.5 ${
                                 isDark ? "text-gray-400" : "text-gray-500"
-                              }
+                              }`}
                             >
+                              <ChainLogo chainId={Number(pb.chainId)} size={14} />
                               {chainInfo.name}
                             </span>
                             <span

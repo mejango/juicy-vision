@@ -42,6 +42,7 @@ import {
   revLoansAddress,
 } from '../../../services/revLoans'
 import DialogShell from '../../ui/DialogShell'
+import ChainLogo from '../../ui/ChainLogo'
 
 export interface OpenLoanModalProps {
   isOpen: boolean
@@ -518,13 +519,16 @@ export function OpenLoanModal({ isOpen, onClose, project, chainIds, chainProject
             {/* Chain + collateral */}
             <div className="space-y-2">
               {loanChains.length > 1 ? (
-                <select className={selectClass} value={chainId} onChange={event => setChainId(Number(event.target.value))} disabled={running}>
-                  {loanChains.map(id => (
-                    <option key={id} value={id}>
-                      {CHAINS[id]?.name ?? `Chain ${id}`}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center gap-2">
+                  <ChainLogo chainId={chainId} size={16} />
+                  <select className={selectClass} value={chainId} onChange={event => setChainId(Number(event.target.value))} disabled={running}>
+                    {loanChains.map(id => (
+                      <option key={id} value={id}>
+                        {CHAINS[id]?.name ?? `Chain ${id}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               ) : null}
               <div>
                 <div className={`text-xs uppercase tracking-wide mb-1 ${keyText}`}>Collateral</div>

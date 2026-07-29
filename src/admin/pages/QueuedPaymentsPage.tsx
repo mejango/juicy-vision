@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useThemeStore } from '../../stores'
 import { MAINNET_CHAINS } from '../../constants'
+import ChainLogo from '../../components/ui/ChainLogo'
 import {
   useAdminJuiceSpends,
   useAdminJuiceStats,
@@ -89,7 +90,8 @@ function SpendRow({
       </td>
       <td className={`px-4 py-3 text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>
         <div>Project #{spend.projectId}</div>
-        <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+        <div className={`flex items-center gap-1.5 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+          <ChainLogo chainId={spend.chainId} size={14} />
           {chainName}
         </div>
       </td>

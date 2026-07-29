@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isAddress, zeroAddress } from "viem";
 import { useThemeStore } from "../../stores";
+import ChainLogo from "../ui/ChainLogo";
 import { ExplainerMessage } from "../ui/ExplainerMessage";
 import { CHAINS } from "../../constants";
 import { useGuardedTx } from "../../hooks/useGuardedTx";
@@ -636,6 +637,7 @@ export default function ExtrasTab({
                       )
                     }
                   />
+                  <ChainLogo chainId={c.chainId} size={14} />
                   {chainName(c.chainId)}
                   {!deployer && (
                     <span className="text-[10px] uppercase tracking-wide opacity-70">
@@ -740,7 +742,10 @@ export default function ExtrasTab({
                         title={row.address}
                       >
                         {truncateAddress(row.address)}
-                        <span className={`ml-2 font-sans ${subText}`}>
+                        <span
+                          className={`ml-2 font-sans inline-flex items-center gap-1.5 ${subText}`}
+                        >
+                          <ChainLogo chainId={row.chainId} size={14} />
                           {chainName(row.chainId)}
                         </span>
                       </div>

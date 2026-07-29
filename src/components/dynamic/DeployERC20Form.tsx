@@ -18,6 +18,7 @@ import { useManagedWallet } from '../../hooks'
 import { resolveProjectChains } from '../../utils/projectChains'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { IpfsImage } from '../ui/IpfsMedia'
+import ChainLogo from '../ui/ChainLogo'
 
 interface DeployERC20FormProps {
   projectId: string
@@ -252,10 +253,7 @@ export default function DeployERC20Form({ projectId, chainId = defaultChainId(),
               return (
                 <div key={cd.chainId} className="flex items-center justify-between py-1">
                   <div className="flex items-center gap-2">
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: chain?.color || '#888' }}
-                    />
+                    <ChainLogo chainId={cd.chainId} size={14} />
                     <span className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                       {chain?.name || `Chain ${cd.chainId}`}
                     </span>
@@ -315,10 +313,7 @@ export default function DeployERC20Form({ projectId, chainId = defaultChainId(),
                       isDark ? 'bg-white/10 text-white' : 'bg-white text-gray-700'
                     }`}
                   >
-                    <span
-                      className="w-1.5 h-1.5 rounded-full"
-                      style={{ backgroundColor: chain?.color || '#888' }}
-                    />
+                    <ChainLogo chainId={cd.chainId} size={12} />
                     {chain?.shortName || cd.chainId}
                     <span className="font-mono text-emerald-500">${cd.tokenSymbol}</span>
                   </div>

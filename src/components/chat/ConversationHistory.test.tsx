@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { chainMarks } from '../../test/test-utils'
 import { MemoryRouter } from 'react-router-dom'
+import { useAccount } from 'wagmi'
 import ConversationHistory from './ConversationHistory'
 import { useChatStore, useThemeStore, type Chat, type ChatMessage, type ChatFolder } from '../../stores'
 import * as chatApi from '../../services/chat'
+import { ALL_CHAIN_IDS, CHAINS } from '../../constants'
+import { fetchProjectsByOwner } from '../../services/bendystraw'
+import { getSupporterConversations } from '../../api/projectConversations'
 
 // Mock wagmi
 vi.mock('wagmi', () => ({
@@ -11,6 +16,14 @@ vi.mock('wagmi', () => ({
     address: undefined,
     isConnected: false,
   })),
+}))
+
+vi.mock('../../services/bendystraw', () => ({
+  fetchProjectsByOwner: vi.fn(async () => []),
+}))
+
+vi.mock('../../api/projectConversations', () => ({
+  getSupporterConversations: vi.fn(async () => ({ conversations: [] })),
 }))
 
 // Mock useManagedWallet hook
@@ -1140,6 +1153,52 @@ describe('ConversationHistory', () => {
       })
 
       consoleSpy.mockRestore()
+    })
+  })
+
+  // Chain choice moves money and testnet names are near-identical strings, so
+  // every row that names a chain carries that chain's brand mark.
+  describe('chain marks', () => {
+    beforeEach(() => {
+      vi.mocked(useAccount).mockReturnValue({
+        address: '0x1234567890123456789012345678901234567890',
+        isConnected: true,
+      } as unknown as ReturnType<typeof useAccount>)
+    })
+
+    afterEach(() => {
+      vi.mocked(useAccount).mockReturnValue({
+        address: undefined,
+        isConnected: false,
+      } as unknown as ReturnType<typeof useAccount>)
+    })
+
+    it('shows the chain logo on owned-project rows', async () => {
+      useChatStore.setState({ chats: [createMockChat({ messages: [createMockMessage('chat-1')] })] })
+      vi.mocked(fetchProjectsByOwner).mockResolvedValue([
+        { id: 'p-1', chainId: ALL_CHAIN_IDS[0], projectId: 5, name: 'Owned One' },
+      ] as unknown as Awaited<ReturnType<typeof fetchProjectsByOwner>>)
+
+      renderWithProviders(<ConversationHistory />)
+      fireEvent.click(screen.getByText('My Projects'))
+
+      const chainLabel = await screen.findByText(CHAINS[ALL_CHAIN_IDS[0]].name)
+      expect(chainMarks(chainLabel)).toHaveLength(1)
+      expect(chainLabel.closest('p')).toHaveTextContent(`${CHAINS[ALL_CHAIN_IDS[0]].name} · #5`)
+    })
+
+    it('shows the chain logo on supported-project rows', async () => {
+      useChatStore.setState({ chats: [createMockChat({ messages: [createMockMessage('chat-1')] })] })
+      vi.mocked(getSupporterConversations).mockResolvedValue({
+        conversations: [{ chatId: 'c-1', chainId: ALL_CHAIN_IDS[1], projectId: 9, projectName: 'Supported One' }],
+      } as unknown as Awaited<ReturnType<typeof getSupporterConversations>>)
+
+      renderWithProviders(<ConversationHistory />)
+      fireEvent.click(screen.getByText('Payments made'))
+
+      const chainLabel = await screen.findByText(CHAINS[ALL_CHAIN_IDS[1]].name)
+      expect(chainMarks(chainLabel)).toHaveLength(1)
+      expect(chainLabel.closest('p')).toHaveTextContent(`${CHAINS[ALL_CHAIN_IDS[1]].name} · #9`)
     })
   })
 })

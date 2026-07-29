@@ -12,6 +12,7 @@ import {
 import { isUsdcCurrency } from "../../utils/technicalDetails";
 import DialogShell from "../ui/DialogShell";
 import { IpfsMedia } from "../ui/IpfsMedia";
+import ChainLogo from "../ui/ChainLogo";
 
 interface TierDetailModalProps {
   isOpen: boolean;
@@ -407,10 +408,11 @@ export default function TierDetailModal({
                         {multiChainSupply.perChain.map((chain) => (
                           <span key={chain.chainId}>
                             <span
-                              className={
+                              className={`inline-flex items-center gap-1 ${
                                 isDark ? "text-gray-600" : "text-gray-400"
-                              }
+                              }`}
                             >
+                              <ChainLogo chainId={chain.chainId} size={12} />
                               {chain.chainName}
                             </span>{" "}
                             <span

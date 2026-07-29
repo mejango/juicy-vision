@@ -35,6 +35,7 @@ import { assertSafeStoredSplitGroups as assertSimpleStoredSplitGroups } from "..
 import { assertRulesetConfigurationSafe } from "../../utils/rulesetSafety";
 import { resolveProjectChains } from "../../utils/projectChains";
 import { ChainMappingWarning } from "./ChainMappingWarning";
+import ChainLogo from "../ui/ChainLogo";
 
 interface QueueRulesetFormProps {
   projectId: string;
@@ -746,10 +747,7 @@ export default function QueueRulesetForm({
                           : "bg-gray-100 text-gray-500 border border-gray-200 disabled:opacity-40 disabled:cursor-not-allowed"
                     }`}
                   >
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: chain?.color || "#888" }}
-                    />
+                    <ChainLogo chainId={cd.chainId} size={12} />
                     {chain?.shortName || cd.chainId}
                     {cd.selected && <span>✓</span>}
                     {!cd.configurationComplete && <span>Unavailable</span>}

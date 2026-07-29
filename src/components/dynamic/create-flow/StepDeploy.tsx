@@ -6,7 +6,7 @@
  * here). The audit prompt is ported from website/src/prompts.js.
  */
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { truncateAddress } from "../../../utils/ens";
 import {
   badStageIndex,
@@ -26,6 +26,7 @@ import { FOREVER_SECONDS, afterApplies } from "./builders";
 import { secondsLabel } from "./StepRulesets";
 import { revStageSummary } from "./StepStages";
 import { InfoNote, PinkNote, StepHead, WarnNote, useIsDark } from "./controls";
+import ChainLogo from "../../ui/ChainLogo";
 
 // ---------------------------------------------------------------------------
 // Pure helpers (ported from the website source)
@@ -482,7 +483,22 @@ export function getAuditPrompt(): string {
 // Review summary
 // ---------------------------------------------------------------------------
 
-function ReviewRow({ k, v }: { k: string; v: string }) {
+/** Chains the project will deploy to, each marked so near-identical testnet
+ * names ("Base Sepolia" vs "Optimism Sepolia") stay distinguishable. */
+function ReviewChains({ chainIds }: { chainIds: number[] }) {
+  return (
+    <span className="inline-flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
+      {chainIds.map((chainId) => (
+        <span key={chainId} className="inline-flex items-center gap-1">
+          <ChainLogo chainId={chainId} size={14} />
+          {chainName(chainId)}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+function ReviewRow({ k, v }: { k: string; v: ReactNode }) {
   const isDark = useIsDark();
   return (
     <div
@@ -548,7 +564,7 @@ function ReviewSummary({ state }: { state: CreateFlowState }) {
             v={revStageSummary(s, i, state)}
           />
         ))}
-        <ReviewRow k="Chains" v={state.chainIds.map(chainName).join(", ")} />
+        <ReviewRow k="Chains" v={<ReviewChains chainIds={state.chainIds} />} />
       </div>
     );
   }
@@ -598,7 +614,7 @@ function ReviewSummary({ state }: { state: CreateFlowState }) {
             : "None"
         }
       />
-      <ReviewRow k="Chains" v={state.chainIds.map(chainName).join(", ")} />
+      <ReviewRow k="Chains" v={<ReviewChains chainIds={state.chainIds} />} />
     </div>
   );
 }

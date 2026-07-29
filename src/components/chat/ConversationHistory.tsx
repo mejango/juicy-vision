@@ -25,6 +25,7 @@ import { useManagedWallet } from '../../hooks'
 import { CHAINS, MAINNET_CHAINS } from '../../constants'
 import { projectPathFor } from '../../utils/projectLink'
 import { IpfsImage } from '../ui/IpfsMedia'
+import ChainLogo from '../ui/ChainLogo'
 import {
   getSupporterConversations,
   type ProjectConversation,
@@ -1142,7 +1143,11 @@ export default function ConversationHistory() {
                       <p className={`text-xs truncate ${
                         theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
                       }`}>
-                        {getChainName(project.chainId)} · #{project.projectId}
+                        <span className="inline-flex items-center gap-1.5 align-middle">
+                          <ChainLogo chainId={project.chainId} size={14} />
+                          {getChainName(project.chainId)}
+                        </span>{' '}
+                        · #{project.projectId}
                       </p>
                     </div>
                   </div>
@@ -1219,7 +1224,11 @@ export default function ConversationHistory() {
                       <p className={`text-xs truncate ${
                         theme === 'dark' ? 'text-gray-500' : 'text-gray-400'
                       }`}>
-                        {getChainName(conv.chainId)} · #{conv.projectId}
+                        <span className="inline-flex items-center gap-1.5 align-middle">
+                          <ChainLogo chainId={conv.chainId} size={14} />
+                          {getChainName(conv.chainId)}
+                        </span>{' '}
+                        · #{conv.projectId}
                       </p>
                     </div>
                   </div>

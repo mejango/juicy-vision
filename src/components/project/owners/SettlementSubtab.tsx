@@ -21,6 +21,7 @@ import {
 } from '@bananapus/nana-sdk-core/v6'
 import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
+import ChainLogo from '../../ui/ChainLogo'
 import { ExplainerMessage } from '../../ui/ExplainerMessage'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import { publicClientFor, type GuardedTxPhase } from '../../../services/projectTx'
@@ -569,7 +570,12 @@ export function SettlementSubtab({ project, chainIds, chainProjects }: Settlemen
                   const supplyPct = pctOf(row.supply, compositionTotals?.totalSupply ?? null)
                   return (
                     <tr key={row.chainId} className={rowBorder}>
-                      <td className="py-2 pr-3">{chainName(row.chainId)}</td>
+                      <td className="py-2 pr-3">
+                        <span className="inline-flex items-center gap-1.5">
+                          <ChainLogo chainId={row.chainId} size={14} />
+                          {chainName(row.chainId)}
+                        </span>
+                      </td>
                       <td className="py-2 pl-3 text-right">
                         {row.supply == null ? (
                           '—'
@@ -650,7 +656,10 @@ export function SettlementSubtab({ project, chainIds, chainProjects }: Settlemen
               {gossip.map(block => (
                 <div key={block.chainId}>
                   <div className={`text-sm font-medium mb-1.5 ${isDark ? 'text-white' : 'text-gray-900'}`}>
-                    {chainName(block.chainId)} knows
+                    <span className="inline-flex items-center gap-1.5">
+                      <ChainLogo chainId={block.chainId} size={14} />
+                      {chainName(block.chainId)} knows
+                    </span>
                   </div>
                   <div className="overflow-x-auto">
                     <table className={`w-full text-sm ${bodyText}`}>
@@ -678,7 +687,12 @@ export function SettlementSubtab({ project, chainIds, chainProjects }: Settlemen
                             peer.syncSucker && (pending || (staleness.level !== 'synced' && staleness.level !== 'unknown'))
                           return (
                             <tr key={peer.peerChainId} className={rowBorder}>
-                              <td className="py-2 pr-3">{chainName(peer.peerChainId)}</td>
+                              <td className="py-2 pr-3">
+                                <span className="inline-flex items-center gap-1.5">
+                                  <ChainLogo chainId={peer.peerChainId} size={14} />
+                                  {chainName(peer.peerChainId)}
+                                </span>
+                              </td>
                               <td className="py-2 pr-3">
                                 <span className={`text-xs ${pending ? stalenessClass('slight') : stalenessClass(staleness.level)}`}>
                                   {pending ? 'Syncing…' : staleness.label}
@@ -756,7 +770,12 @@ export function SettlementSubtab({ project, chainIds, chainProjects }: Settlemen
                 {(bridgeGroups ?? []).map(group => (
                   <tr key={`${group.a}-${group.b}`} className={rowBorder}>
                     <td className="py-2 pr-3">
-                      {chainName(group.a)} <span className={muted}>↔</span> {chainName(group.b)}
+                      <span className="inline-flex items-center gap-1.5">
+                        <ChainLogo chainId={group.a} size={14} />
+                        {chainName(group.a)} <span className={muted}>↔</span>
+                        <ChainLogo chainId={group.b} size={14} />
+                        {chainName(group.b)}
+                      </span>
                     </td>
                     <td className="py-2">
                       <span className="inline-flex flex-wrap gap-1">
@@ -912,7 +931,12 @@ function MovementGroup(props: {
           <tr key={`${tx.chainId}:${tx.sourceSucker}:${tx.index}`} className={rowBorder}>
             <td className={`py-2 pr-3 text-xs ${muted}`}>{timeAgo(tx.createdAt)}</td>
             <td className="py-2 pr-3 whitespace-nowrap">
-              {chainName(tx.chainId)} <span className={muted}>→</span> {chainName(tx.peerChainId)}
+              <span className="inline-flex items-center gap-1.5">
+                <ChainLogo chainId={tx.chainId} size={14} />
+                {chainName(tx.chainId)} <span className={muted}>→</span>
+                <ChainLogo chainId={tx.peerChainId} size={14} />
+                {chainName(tx.peerChainId)}
+              </span>
             </td>
             <td className="py-2 pr-3 font-mono text-xs" title={tx.beneficiary}>
               {shortAddress(tx.beneficiary)}

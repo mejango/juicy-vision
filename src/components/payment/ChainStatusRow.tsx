@@ -1,4 +1,5 @@
-import { CHAINS, EXPLORER_URLS } from '../../constants'
+import { ALL_CHAINS, EXPLORER_URLS } from '../../constants'
+import ChainLogo from '../ui/ChainLogo'
 
 const ACCENTS = {
   purple: {
@@ -53,7 +54,9 @@ export default function ChainStatusRow({
   signingLabel = 'Sign in wallet',
   confirmedGlyph = '✓',
 }: ChainStatusRowProps) {
-  const chainInfo = CHAINS[chainId]
+  // ALL_CHAINS, not the environment-aware table: the row must name whatever
+  // chain the logo shows, including a chain from the other environment.
+  const chainInfo = ALL_CHAINS[chainId]
   const colors = ACCENTS[accent]
 
   return (
@@ -65,10 +68,7 @@ export default function ChainStatusRow({
       }`}
     >
       <div className="flex items-center gap-2">
-        <span
-          className="w-2.5 h-2.5 rounded-full"
-          style={{ backgroundColor: chainInfo?.color || '#888' }}
-        />
+        <ChainLogo chainId={chainId} size={16} />
         <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
           {chainInfo?.name || `Chain ${chainId}`}
         </span>

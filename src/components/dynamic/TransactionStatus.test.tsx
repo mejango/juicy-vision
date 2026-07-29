@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
 import TransactionStatus from './TransactionStatus'
 import { useTransactionStore } from '../../stores'
+import { chainMarks } from '../../test/test-utils'
 
 describe('TransactionStatus', () => {
   beforeEach(() => {
@@ -70,6 +71,24 @@ describe('TransactionStatus', () => {
 
       expect(screen.getByText('Failed')).toBeInTheDocument()
       expect(screen.getByText('Insufficient funds')).toBeInTheDocument()
+    })
+  })
+
+  describe('per-chain status rows', () => {
+    it('shows the chain brand mark beside each chain name', () => {
+      const txId = useTransactionStore.getState().addTransaction({
+        type: 'pay',
+        chainId: 1,
+        status: 'pending',
+        chainStates: [
+          { chainId: 1, status: 'pending' },
+          { chainId: 10, status: 'confirmed' },
+        ],
+      })
+
+      render(<TransactionStatus txId={txId} />)
+
+      expect(chainMarks()).toHaveLength(2)
     })
   })
 

@@ -5,6 +5,7 @@
  */
 
 import { render, screen, waitFor, within } from '@testing-library/react'
+import { chainMarks, chainMarksFor } from '../../../test/test-utils'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { SplitsSubtab } from './SplitsSubtab'
@@ -131,6 +132,31 @@ describe('SplitsSubtab per-chain splits', () => {
     // Each chain is read with ITS OWN project id, at the browsed stage index.
     expect(mocks.fetchStageReservedSplits).toHaveBeenCalledWith({ chainId: 1, projectId: 5 }, 1)
     expect(mocks.fetchStageReservedSplits).toHaveBeenCalledWith({ chainId: 10, projectId: 9 }, 1)
+  })
+
+  it('marks every chain block with that chain’s logo beside its name', async () => {
+    mocks.fetchStageReservedSplits.mockImplementation(async (chainProject: { chainId: number }) =>
+      chainSplits({ chainId: chainProject.chainId, rulesetId: '12', splits: [split(ALICE)] }),
+    )
+
+    renderSubtab()
+
+    await waitFor(() => expect(chainMarks(chainBlock('1'))).toHaveLength(1))
+    expect(chainMarks(chainBlock('1'))[0]).toHaveAttribute('src', '/assets/img/logo/mainnet.svg')
+    expect(chainMarks(chainBlock('10'))[0]).toHaveAttribute('src', '/assets/img/logo/optimism.svg')
+  })
+
+  it('marks each distribution row with its chain logo', async () => {
+    mocks.fetchStageReservedSplits.mockResolvedValue(chainSplits({ chainId: 1, rulesetId: '12', splits: [] }))
+    // A chain outside the rendered chain blocks, so the only Base mark on the
+    // page is the one the distributions feed puts beside the row's chain name.
+    mocks.fetchReservedDistributions.mockResolvedValue([
+      { chainId: 8453, txHash: '0xabc', tokenCount: 10n ** 18n, timestamp: NOW - 60 },
+    ])
+
+    renderSubtab()
+
+    await waitFor(() => expect(chainMarksFor(8453)).not.toHaveLength(0))
   })
 
   it('isolates a failed chain read — the other chain still renders its rows', async () => {

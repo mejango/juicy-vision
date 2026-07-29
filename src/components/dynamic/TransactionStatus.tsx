@@ -4,6 +4,7 @@ import {
   type TransactionStatus as TxStatus,
 } from '../../stores'
 import { ALL_VIEM_CHAINS } from '../../constants/chains'
+import ChainLogo from '../ui/ChainLogo'
 
 interface TransactionStatusProps {
   txId: string
@@ -143,7 +144,11 @@ export default function TransactionStatus({ txId }: TransactionStatusProps) {
                 const stateChain = ALL_VIEM_CHAINS[state.chainId as keyof typeof ALL_VIEM_CHAINS]
                 const stateExplorer = stateChain?.blockExplorers?.default.url
                 const content = <>
-                  {stateChain?.name ?? `Chain ${state.chainId}`}: {state.status}
+                  <span className="inline-flex items-center gap-1">
+                    <ChainLogo chainId={state.chainId} size={12} />
+                    {stateChain?.name ?? `Chain ${state.chainId}`}
+                  </span>
+                  {`: ${state.status}`}
                   {state.txHash ? ` · ${state.txHash.slice(0, 8)}…${state.txHash.slice(-6)}` : ''}
                   {state.error ? ` · ${state.error}` : ''}
                 </>

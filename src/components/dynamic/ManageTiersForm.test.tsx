@@ -62,6 +62,7 @@ vi.mock('../payment', () => ({
 
 // Get mocked wagmi
 import { useAccount } from 'wagmi'
+import { chainMarksFor } from '../../test/test-utils'
 const mockedUseAccount = useAccount as Mock
 
 describe('ManageTiersForm', () => {
@@ -194,6 +195,22 @@ describe('ManageTiersForm', () => {
       await waitFor(() => {
         expect(screen.getByText(/\(locked\)/)).toBeInTheDocument()
       })
+    })
+  })
+
+  describe('chain selector', () => {
+    it('shows each chain’s logo beside its name', async () => {
+      ;(bendystraw.fetchConnectedChains as Mock).mockResolvedValue([
+        { chainId: 10, projectId: 1 },
+        { chainId: 8453, projectId: 7 },
+      ])
+
+      render(<ManageTiersForm projectId="1" chainId="10" />)
+
+      await waitFor(() => {
+        expect(chainMarksFor(10)).not.toHaveLength(0)
+      })
+      expect(chainMarksFor(8453)).not.toHaveLength(0)
     })
   })
 

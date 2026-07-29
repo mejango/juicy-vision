@@ -4,6 +4,7 @@ import TopProjects from './TopProjects'
 import { useThemeStore } from '../../stores'
 import * as bendystraw from '../../services/bendystraw'
 import { PROJECTS_QUERY } from '../../services/bendystraw/queries'
+import { chainMarks } from '../../test/test-utils'
 
 // Mock bendystraw service
 vi.mock('../../services/bendystraw', () => ({
@@ -183,6 +184,14 @@ describe('TopProjects', () => {
         // Project Alpha should show both ETH and OP badges
         expect(screen.getByText(/V6 ETH #1/)).toBeInTheDocument()
         expect(screen.getByText(/V6 OP #1/)).toBeInTheDocument()
+      })
+    })
+
+    it('shows the chain brand mark inside each chain badge', async () => {
+      render(<TopProjects />)
+
+      await waitFor(() => {
+        expect(chainMarks().length).toBeGreaterThan(0)
       })
     })
 

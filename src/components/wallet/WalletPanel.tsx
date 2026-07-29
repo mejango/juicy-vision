@@ -17,6 +17,7 @@ import { useJuicyIdentityDisplay } from '../chat/hooks/useJuicyIdentityDisplay'
 import { useStripeCheckout, PAY_CREDITS_RATE, PRESET_AMOUNTS } from '../juice/useStripeCheckout'
 import { AccountLinkingBanner } from './AccountLinkingBanner'
 import { useAllChainBalances } from './useAllChainBalances'
+import ChainLogo from '../ui/ChainLogo'
 import { walletDappUrl, mobileWalletLinks, isMobileDevice } from '../../utils/walletLinks'
 
 export interface AnchorPosition {
@@ -893,7 +894,10 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsuff
               if (eth === 0 && usdc === 0) return null
               return (
                 <div key={b.chainId} className="px-3 py-2 flex justify-between text-xs">
-                  <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{b.chainName}</span>
+                  <span className={`inline-flex items-center gap-1.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <ChainLogo chainId={b.chainId} size={14} />
+                    {b.chainName}
+                  </span>
                   <div className="flex gap-4">
                     {usdc > 0 && (
                       <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>
@@ -948,8 +952,10 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsuff
                   <div className={`text-lg font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
                     {paymentContext.amount} {paymentContext.token}
                   </div>
-                  <div className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                    on {paymentContext.chainName}
+                  <div className={`flex items-center gap-1.5 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                    on
+                    <ChainLogo chainId={paymentContext.chainId} size={14} />
+                    {paymentContext.chainName}
                   </div>
                 </div>
                 <button
@@ -990,7 +996,11 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsuff
                             : 'bg-green-50 border border-green-200 text-green-700 hover:bg-green-100'
                         }`}
                       >
-                        <span>Pay on {chain.chainName}</span>
+                        <span className="inline-flex items-center gap-1.5">
+                          Pay on
+                          <ChainLogo chainId={chain.chainId} size={14} />
+                          {chain.chainName}
+                        </span>
                         <span className={isDark ? 'text-green-400/70' : 'text-green-600/70'}>
                           {paymentContext.token === 'ETH'
                             ? `${parseFloat(chain.eth).toFixed(4)} ETH`
@@ -1131,7 +1141,10 @@ function PasskeyWalletView({ wallet, onTopUp, onDisconnect }: {
               if (eth === 0 && usdc === 0) return null
               return (
                 <div key={b.chainId} className="px-3 py-2 flex justify-between text-xs">
-                  <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>{b.chainName}</span>
+                  <span className={`inline-flex items-center gap-1.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    <ChainLogo chainId={b.chainId} size={14} />
+                    {b.chainName}
+                  </span>
                   <div className="flex gap-4">
                     {usdc > 0 && (
                       <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>

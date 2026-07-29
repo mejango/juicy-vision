@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import * as bendystraw from '../../services/bendystraw'
 import { requireRecognizedRuntimeSplitHook } from '../../utils/projectTrust'
 import { ProjectSplitRoute } from './ProjectSplitRoute'
+import { chainMarks } from '../../test/test-utils'
 
 vi.mock('../../services/bendystraw', () => ({
   fetchProject: vi.fn(),
@@ -43,8 +44,11 @@ describe('ProjectSplitRoute', () => {
     await waitFor(() => expect(screen.getByText('Test PPN · #8')).toBeInTheDocument())
     expect(screen.getByText('pay project')).toBeInTheDocument()
     expect(screen.getByText('Tokens: distribution caller')).toBeInTheDocument()
+    // The chain's brand mark is decorative, so the link announces only the
+    // visible name — not the chain twice.
     const mapped = screen.getByRole('link', { name: 'Sepolia · #42' })
     expect(mapped).toHaveAttribute('href', '/sep:42')
+    expect(chainMarks().length).toBeGreaterThan(0)
   })
 
   it('labels add-to-balance routes as minting no destination tokens', async () => {

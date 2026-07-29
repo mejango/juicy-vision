@@ -20,6 +20,7 @@ import {
   ZERO_ADDRESS,
 } from "../../constants";
 import { DEFAULT_CHAIN_ID, normalizeChainIds } from "./create-flow/state";
+import ChainLogo from "../ui/ChainLogo";
 
 interface CreateProjectFormProps {
   defaultChainIds?: number[] | string;
@@ -373,10 +374,7 @@ export default function CreateProjectForm({
                         : "bg-gray-100 text-gray-500 border border-gray-200"
                   }`}
                 >
-                  <span
-                    className="w-2 h-2 rounded-full"
-                    style={{ backgroundColor: chain?.color || "#888" }}
-                  />
+                  <ChainLogo chainId={chainId} size={12} />
                   {chain?.shortName || chainId}
                 </button>
               );

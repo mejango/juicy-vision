@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import TokensTab from './TokensTab'
+import { chainMarks } from '../../test/test-utils'
 
 vi.mock('wagmi', () => ({
   useAccount: () => ({ address: undefined, isConnected: false }),
@@ -67,6 +68,14 @@ describe('TokensTab without a deployed ERC-20', () => {
       expect(screen.getByText(/No ERC-20 yet/)).toBeInTheDocument()
     })
     expect(screen.queryByRole('button', { name: 'Deploy ERC-20' })).not.toBeInTheDocument()
+  })
+
+  it('shows the chain brand mark beside each per-chain label', async () => {
+    render(<TokensTab projectId="10" chainId="84532" />)
+
+    await waitFor(() => {
+      expect(chainMarks().length).toBeGreaterThan(0)
+    })
   })
 
   it('labels pending reserved amounts as credits when no ERC-20 exists', async () => {

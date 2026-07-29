@@ -2,6 +2,10 @@
 export * from './chains'
 
 import { IS_TESTNET, SUPPORTED_CHAIN_IDS } from '../config/environment'
+import {
+  MAINNET_CHAINS as SHARED_MAINNET_CHAINS,
+  TESTNET_CHAINS as SHARED_TESTNET_CHAINS,
+} from '../../shared/chains'
 
 // =============================================================================
 // WebSocket Configuration
@@ -55,7 +59,7 @@ export const ACTIVITY_PAGE_SIZE = 15
 export const ACTIVITY_POLL_INTERVAL = 30000 // 30 seconds
 
 // Chain config type
-type ChainConfig = {
+export type ChainConfig = {
   name: string        // Full name: "Ethereum", "Optimism"
   shortName: string   // Short display: "ETH", "OP"
   slug: string        // URL slug: "eth", "op"
@@ -141,8 +145,30 @@ export const TESTNET_CHAINS: Record<number, ChainConfig> = {
 // Use MAINNET_CHAINS directly when you need mainnet info regardless of environment
 export const CHAINS: Record<number, ChainConfig> = IS_TESTNET ? TESTNET_CHAINS : MAINNET_CHAINS
 
+// Every deployed chain by id, independent of environment. Mainnet and testnet
+// ids are disjoint, so the union is lossless and lets display code label a chain
+// it did not fetch (a testnet record surfaced in a mainnet session, and back).
+export const ALL_CHAINS: Record<number, ChainConfig> = { ...MAINNET_CHAINS, ...TESTNET_CHAINS }
+
 // All supported chain IDs as array (environment-aware)
 export const ALL_CHAIN_IDS = SUPPORTED_CHAIN_IDS
+
+// Brand marks, one per chain family. Testnets carry their mainnet's mark;
+// shared/chains.ts keys both tables by the same family, so the mainnet/testnet
+// pairing comes from those tables instead of a second hand-written id list.
+const CHAIN_LOGO_BY_FAMILY: Record<string, string> = {
+  ethereum: '/assets/img/logo/mainnet.svg',
+  optimism: '/assets/img/logo/optimism.svg',
+  base: '/assets/img/logo/base.svg',
+  arbitrum: '/assets/img/logo/arbitrum.svg',
+}
+
+export const CHAIN_LOGOS: Record<number, string> = Object.fromEntries(
+  Object.entries(CHAIN_LOGO_BY_FAMILY).flatMap(([family, logo]) => [
+    [SHARED_MAINNET_CHAINS[family].id, logo],
+    [SHARED_TESTNET_CHAINS[family].id, logo],
+  ]),
+)
 
 // Explorer transaction URLs (derived from environment-aware CHAINS)
 export const EXPLORER_URLS: Record<number, string> = Object.fromEntries(

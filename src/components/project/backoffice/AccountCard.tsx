@@ -21,6 +21,7 @@
 import { useEffect, useState } from "react";
 import type { Address } from "viem";
 import { useThemeStore } from "../../../stores";
+import ChainLogo from "../../ui/ChainLogo";
 import { ExplainerMessage } from "../../ui/ExplainerMessage";
 import { fetchRevnetOperator } from "../../../services/bendystraw";
 import { readProjectOwner } from "../../../services/permissionsAdmin";
@@ -182,7 +183,10 @@ function DeploySafeButton({
           }`}
         >
           {status.kind === "error" ? "Retry deploy" : "Deploy Safe on"}{" "}
-          {chainName(chainId)}
+          <span className="inline-flex items-center gap-1.5">
+            <ChainLogo chainId={chainId} size={14} />
+            {chainName(chainId)}
+          </span>
         </button>
         {status.kind === "running" ? (
           <span

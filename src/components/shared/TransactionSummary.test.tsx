@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { chainMarks, chainMarksFor } from '../../test/test-utils'
 import TransactionSummary from './TransactionSummary'
 import type {
   PayDetails,
@@ -367,18 +368,24 @@ describe('TransactionSummary', () => {
       expect(screen.getByText('New Project')).toBeInTheDocument()
     })
 
-    it('displays chain names from chain IDs', () => {
+    it('displays chain names from chain IDs, each with its logo', () => {
       render(<TransactionSummary type="launchProject" details={launchProjectDetails} isDark={false} />)
-      expect(screen.getByText('Ethereum, Optimism, Base')).toBeInTheDocument()
+      for (const name of ['Ethereum', 'Optimism', 'Base']) {
+        expect(screen.getByText(name)).toBeInTheDocument()
+      }
+      expect(chainMarks()).toHaveLength(3)
     })
 
-    it('uses provided chain names when available', () => {
+    it('uses provided chain names when available, still logoed by chain id', () => {
       const detailsWithNames = {
         ...launchProjectDetails,
         chainNames: ['ETH Mainnet', 'OP', 'Base'],
       }
       render(<TransactionSummary type="launchProject" details={detailsWithNames} isDark={false} />)
-      expect(screen.getByText('ETH Mainnet, OP, Base')).toBeInTheDocument()
+      expect(screen.getByText('ETH Mainnet')).toBeInTheDocument()
+      expect(screen.getByText('OP')).toBeInTheDocument()
+      expect(chainMarksFor(1)).not.toHaveLength(0)
+      expect(chainMarksFor(10)).not.toHaveLength(0)
     })
 
     it('displays truncated owner address', () => {
@@ -405,7 +412,10 @@ describe('TransactionSummary', () => {
         chainIds: [1, 99999],
       }
       render(<TransactionSummary type="launchProject" details={detailsUnknownChain} isDark={false} />)
-      expect(screen.getByText('Ethereum, Chain 99999')).toBeInTheDocument()
+      expect(screen.getByText('Ethereum')).toBeInTheDocument()
+      expect(screen.getByText('Chain 99999')).toBeInTheDocument()
+      // An unknown chain has no brand mark, but it is still named.
+      expect(chainMarks()).toHaveLength(1)
     })
   })
 
@@ -433,9 +443,12 @@ describe('TransactionSummary', () => {
       expect(screen.getByText(/\$TREV/)).toBeInTheDocument()
     })
 
-    it('displays chain names', () => {
+    it('displays chain names, each with its logo', () => {
       render(<TransactionSummary type="deployRevnet" details={deployRevnetDetails} isDark={false} />)
-      expect(screen.getByText('Ethereum, Optimism, Base, Arbitrum')).toBeInTheDocument()
+      for (const name of ['Ethereum', 'Optimism', 'Base', 'Arbitrum']) {
+        expect(screen.getByText(name)).toBeInTheDocument()
+      }
+      expect(chainMarks()).toHaveLength(4)
     })
 
     it('displays stage count', () => {
@@ -509,7 +522,10 @@ describe('TransactionSummary', () => {
     it('displays multi-chain deployment info', () => {
       render(<TransactionSummary type="deployERC20" details={deployERC20Details} isDark={false} />)
       expect(screen.getByText(/Deploying on:/)).toBeInTheDocument()
-      expect(screen.getByText('Ethereum, Optimism, Base')).toBeInTheDocument()
+      for (const name of ['Ethereum', 'Optimism', 'Base']) {
+        expect(screen.getByText(name)).toBeInTheDocument()
+      }
+      expect(chainMarks()).toHaveLength(3)
     })
 
     it('shows CREATE2 notice for multi-chain', () => {

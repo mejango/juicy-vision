@@ -13,6 +13,7 @@ import {
   CHAIN_NAMES,
   CHAIN_COLORS,
 } from '../../utils/technicalDetails'
+import ChainLogo from '../ui/ChainLogo'
 
 export interface TechnicalDetailsProps {
   /** Contract identifier name e.g. "JB_MULTI_TERMINAL" */
@@ -451,13 +452,18 @@ export default function TechnicalDetails({
                 allChains.map((c) => {
                   const color = CHAIN_COLORS[c.chainId.toString()] || 'bg-gray-500/20 text-gray-300 border-gray-500/30'
                   return (
-                    <span key={c.chainId} className={`px-2 py-0.5 text-xs font-medium border ${color}`}>
+                    <span
+                      key={c.chainId}
+                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium border ${color}`}
+                    >
+                      <ChainLogo chainId={c.chainId} size={14} />
                       {c.chainName}
                     </span>
                   )
                 })
               ) : (
-                <span className={`px-2 py-0.5 text-xs font-medium border ${chainColor}`}>
+                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium border ${chainColor}`}>
+                  <ChainLogo chainId={chainId} size={14} />
                   {displayChainName}
                 </span>
               )}

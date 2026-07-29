@@ -18,6 +18,7 @@ import { type JBSuckerBridge } from '../../utils/suckerConfig'
 import { isIpfsUri } from '../../utils/ipfs'
 import { useReviewedTransactionAccount } from '../../hooks/useReviewedTransactionAccount'
 import DialogShell from '../ui/DialogShell'
+import ChainLogo from '../ui/ChainLogo'
 
 function revnetDeploymentKey(value: unknown): string {
   return keccak256(toBytes(JSON.stringify(
@@ -298,10 +299,7 @@ export default function DeployRevnetModal({
                   }`}
                 >
                   <div className="flex items-center gap-2">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full"
-                      style={{ backgroundColor: chain?.color || '#888' }}
-                    />
+                    <ChainLogo chainId={chainId} size={16} />
                     <span className={`text-sm font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
                       {chain?.name || `Chain ${chainId}`}
                     </span>
@@ -503,10 +501,7 @@ export default function DeployRevnetModal({
               <div className="grid grid-cols-2 gap-2 mb-2">
                 {Object.entries(createdProjectIds).map(([chainId, projectId]) => (
                   <div key={chainId} className="flex items-center gap-2">
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: CHAINS[Number(chainId)]?.color || '#888' }}
-                    />
+                    <ChainLogo chainId={Number(chainId)} size={14} />
                     <span className={`text-xs ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                       {CHAINS[Number(chainId)]?.shortName}: #{projectId}
                     </span>

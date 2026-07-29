@@ -3,6 +3,7 @@ import { erc20Abi, formatUnits } from "viem";
 import { jbMultiTerminalAbi } from "@bananapus/nana-sdk-core";
 import { useThemeStore } from "../../stores";
 import DialogShell from "../ui/DialogShell";
+import ChainLogo from "../ui/ChainLogo";
 import {
   PAYMENT_REVIEW_EVENT,
   type PaymentReview,
@@ -168,7 +169,11 @@ export default function PaymentReviewModal() {
           <p
             className={`mt-1 text-xs ${isDark ? "text-gray-400" : "text-gray-500"}`}
           >
-            Project #{review.projectId} · {review.chainName}
+            Project #{review.projectId} ·{" "}
+            <span className="inline-flex items-center gap-1.5 align-middle">
+              <ChainLogo chainId={review.chainId} size={14} />
+              {review.chainName}
+            </span>
           </p>
         </div>
 

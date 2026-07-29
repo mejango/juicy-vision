@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import QueueRulesetForm from './QueueRulesetForm'
 import type { JBRulesetConfig } from '../../services/relayr'
+import { chainMarksFor } from '../../test/test-utils'
 
 const mocks = vi.hoisted(() => ({
   fetchProject: vi.fn(),
@@ -135,5 +136,29 @@ describe('QueueRulesetForm reserved rate', () => {
     }
     // No minimum gate: 0 survives input -> form state -> config encode.
     expect(props.rulesetConfigsByChain[1].metadata.reservedPercent).toBe(0)
+  })
+})
+
+describe('QueueRulesetForm chain selector', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('shows each chain’s logo beside its name', async () => {
+    primeForm()
+    mocks.resolveProjectChains.mockResolvedValue({
+      mappingAvailable: true,
+      chains: [
+        { chainId: 1, projectId: 5 },
+        { chainId: 10, projectId: 9 },
+      ],
+    })
+
+    render(<QueueRulesetForm projectId="5" chainId="1" />)
+
+    await waitFor(() =>
+      expect(chainMarksFor(1)).not.toHaveLength(0)
+    )
+    expect(chainMarksFor(10)).not.toHaveLength(0)
   })
 })

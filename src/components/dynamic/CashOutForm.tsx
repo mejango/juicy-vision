@@ -21,6 +21,7 @@ import { CHAINS, MAINNET_CHAINS } from '../../constants'
 import { resolveProjectChains } from '../../utils/projectChains'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { IpfsImage } from '../ui/IpfsMedia'
+import ChainLogo from '../ui/ChainLogo'
 
 interface CashOutFormProps {
   projectId: string
@@ -267,6 +268,7 @@ export default function CashOutForm({ projectId, chainId: initialChainId = defau
                   isDark ? 'bg-white/10 text-gray-300 hover:bg-white/20' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
+                <ChainLogo chainId={parseInt(selectedChainId)} size={14} />
                 {chainInfo.shortName}
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -293,7 +295,7 @@ export default function CashOutForm({ projectId, chainId: initialChainId = defau
                             : isDark ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'
                         }`}
                       >
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: info.color }} />
+                        <ChainLogo chainId={chain.chainId} size={14} />
                         {info.name}
                       </button>
                     )
@@ -302,7 +304,8 @@ export default function CashOutForm({ projectId, chainId: initialChainId = defau
               )}
             </div>
           ) : (
-            <span className={`px-2 py-0.5 text-xs font-medium ${isDark ? 'bg-white/10 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+            <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium ${isDark ? 'bg-white/10 text-gray-300' : 'bg-gray-100 text-gray-600'}`}>
+              <ChainLogo chainId={parseInt(selectedChainId)} size={14} />
               {chainInfo.shortName}
             </span>
           )}

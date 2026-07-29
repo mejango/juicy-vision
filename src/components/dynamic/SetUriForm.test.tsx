@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SetUriForm from './SetUriForm'
+import { chainMarksFor } from '../../test/test-utils'
 
 const mocks = vi.hoisted(() => ({
   fetchProject: vi.fn(),
@@ -209,6 +210,21 @@ describe('SetUriForm metadata round-trip', () => {
     expect(pinned.name).toBe('Form Name')
     expect(pinned.tags).toEqual(['football', 'league'])
     expect(pinned.leagueID).toBe(42)
+  })
+
+  it('shows each chain’s logo beside its name in the chain selector', async () => {
+    primeHappyPath()
+    mocks.resolveProjectChains.mockResolvedValue({
+      mappingAvailable: true,
+      chains: [
+        { chainId: 1, projectId: 5 },
+        { chainId: 10, projectId: 9 },
+      ],
+    })
+    await renderForm()
+
+    expect(chainMarksFor(1)).not.toHaveLength(0)
+    expect(chainMarksFor(10)).not.toHaveLength(0)
   })
 
   it('disables submission until something changes', async () => {

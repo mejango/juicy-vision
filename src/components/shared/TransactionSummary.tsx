@@ -1,6 +1,7 @@
 // Human-readable transaction summary component
 
 import { truncateAddress } from '../../utils/ens'
+import ChainLogo from '../ui/ChainLogo'
 
 export type TransactionType =
   | 'pay'
@@ -149,6 +150,38 @@ const CHAIN_NAMES: Record<number, string> = {
   10: 'Optimism',
   8453: 'Base',
   42161: 'Arbitrum',
+}
+
+/**
+ * Chains the transaction touches, each marked with its logo. Names alone are
+ * near-identical across testnets, and picking the wrong chain here sends money
+ * to the wrong place. `chainNames` may override the labels; the logo still
+ * comes from the chain id at the same position.
+ */
+function ChainNameList({
+  chainIds,
+  chainNames,
+  isDark,
+}: {
+  chainIds?: number[]
+  chainNames: string[]
+  isDark: boolean
+}) {
+  return (
+    <span
+      className={`inline-flex flex-wrap items-center gap-x-2 gap-y-1 ${isDark ? 'text-white' : 'text-gray-900'}`}
+    >
+      {chainNames.map((name, index) => {
+        const chainId = chainIds?.[index]
+        return (
+          <span key={`${chainId ?? 'chain'}-${index}`} className="inline-flex items-center gap-1">
+            {chainId !== undefined && <ChainLogo chainId={chainId} size={14} />}
+            {name}
+          </span>
+        )
+      })}
+    </span>
+  )
 }
 
 // Summary components for each transaction type
@@ -486,9 +519,7 @@ function LaunchProjectSummary({ details, isDark }: { details: LaunchProjectDetai
           <span className="shrink-0">-</span>
           <span>
             Chains:{' '}
-            <span className={isDark ? 'text-white' : 'text-gray-900'}>
-              {chainNames.join(', ')}
-            </span>
+            <ChainNameList chainIds={details.chainIds} chainNames={chainNames} isDark={isDark} />
           </span>
         </li>
         <li className="flex items-start gap-2">
@@ -534,9 +565,7 @@ function DeployRevnetSummary({ details, isDark }: { details: DeployRevnetDetails
           <span className="shrink-0">-</span>
           <span>
             Chains:{' '}
-            <span className={isDark ? 'text-white' : 'text-gray-900'}>
-              {chainNames.join(', ')}
-            </span>
+            <ChainNameList chainIds={details.chainIds} chainNames={chainNames} isDark={isDark} />
           </span>
         </li>
         {details.stages.length > 0 && (
@@ -599,9 +628,7 @@ function DeployERC20Summary({ details, isDark }: { details: DeployERC20Details; 
             <span className="shrink-0">-</span>
             <span>
               {isMultiChain ? 'Deploying on: ' : 'Network: '}
-              <span className={isDark ? 'text-white' : 'text-gray-900'}>
-                {chainNames.join(', ')}
-              </span>
+              <ChainNameList chainIds={details.chainIds} chainNames={chainNames} isDark={isDark} />
             </span>
           </li>
         )}

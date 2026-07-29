@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { fetchMultiChainTierSupply, type MultiChainTierSupply } from '../../services/nft/multichain'
+import ChainLogo from './ChainLogo'
 
 interface SupplyBadgeProps {
   tierId: number
@@ -166,7 +167,8 @@ export default function SupplyBadge({
           <div className="space-y-1.5">
             {supplyData.perChain.map((chain) => (
               <div key={chain.chainId} className="flex justify-between items-center">
-                <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>
+                <span className={`inline-flex items-center gap-1.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                  <ChainLogo chainId={chain.chainId} size={14} />
                   {chain.chainName}
                 </span>
                 <span className={`font-mono ${

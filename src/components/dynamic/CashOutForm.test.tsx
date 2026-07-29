@@ -46,6 +46,7 @@ vi.mock('../payment', () => ({
 
 // Get mocked wagmi
 import { useAccount } from 'wagmi'
+import { chainMarks } from '../../test/test-utils'
 const mockedUseAccount = useAccount as Mock
 
 function renderForm(ui: ReactElement) {
@@ -201,6 +202,16 @@ describe('CashOutForm', () => {
       // The confirmed transaction locks the form and reloads the live balance.
       await waitFor(() => expect(bendystraw.fetchUserTokenBalance).toHaveBeenCalledTimes(2))
       window.removeEventListener('juice:project-data-invalidated', invalidated)
+    })
+  })
+
+  describe('chain identity', () => {
+    it('shows the chain brand mark beside the chain name', async () => {
+      renderForm(<CashOutForm projectId="1" />)
+
+      await waitFor(() => {
+        expect(chainMarks().length).toBeGreaterThan(0)
+      })
     })
   })
 

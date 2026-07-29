@@ -18,6 +18,7 @@ import { assertCurrentProjectPayConfigurationTrusted } from '../../utils/project
 import { resolveProjectChains } from '../../utils/projectChains'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { IpfsImage } from '../ui/IpfsMedia'
+import ChainLogo from '../ui/ChainLogo'
 
 interface NoteCardProps {
   projectId: string
@@ -315,6 +316,7 @@ export default function NoteCard({ projectId, chainId: initialChainId = defaultC
             </ProjectLink>
           </div>
           {/* Chain selector - compact */}
+          <ChainLogo chainId={Number(selectedChainId)} size={16} />
           <select
             value={selectedChainId}
             onChange={(e) => setSelectedChainId(e.target.value)}

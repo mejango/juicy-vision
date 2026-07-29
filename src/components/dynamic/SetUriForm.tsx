@@ -27,6 +27,7 @@ import { ChainMappingWarning } from './ChainMappingWarning'
 import { IpfsImage } from '../ui/IpfsMedia'
 import { CreateFlowTheme, ImagePicker } from './create-flow/controls'
 import { MAINNET_CHAINS } from '../../constants'
+import ChainLogo from '../ui/ChainLogo'
 
 interface SetUriFormProps {
   projectId: string
@@ -384,10 +385,7 @@ export default function SetUriForm({ projectId, chainId = defaultChainId(), mess
                             : 'bg-gray-100 text-gray-500 border border-gray-200'
                     }`}
                   >
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: chain?.color || '#888' }}
-                    />
+                    <ChainLogo chainId={cd.chainId} size={12} />
                     {chain?.shortName || cd.chainId}
                     {cd.selected && <span>✓</span>}
                   </button>

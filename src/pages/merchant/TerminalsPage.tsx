@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useThemeStore, useAuthStore } from '../../stores'
 import Button from '../../components/ui/Button'
+import ChainLogo from '../../components/ui/ChainLogo'
 import { getChainName } from '../../components/dynamic/charts/utils'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
@@ -356,8 +357,10 @@ export default function TerminalsPage() {
                             {device.isActive ? 'Active' : 'Inactive'}
                           </span>
                         </div>
-                        <p className={`text-sm mt-1 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
-                          Project #{device.projectId} on {getChainName(device.chainId)}
+                        <p className={`text-sm mt-1 flex items-center gap-1.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                          <span>Project #{device.projectId} on</span>
+                          <ChainLogo chainId={device.chainId} size={14} />
+                          <span>{getChainName(device.chainId)}</span>
                         </p>
                         <p className={`text-xs mt-1 font-mono ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                           API Key: {device.apiKeyPrefix}...
@@ -560,20 +563,23 @@ export default function TerminalsPage() {
                     <label className={`block text-xs mb-1.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                       Chain
                     </label>
-                    <select
-                      value={newTerminalChainId}
-                      onChange={(e) => setNewTerminalChainId(e.target.value)}
-                      className={`w-full select-caret pl-3 pr-6 py-2 text-sm border ${
-                        isDark
-                          ? 'bg-white/5 border-white/10 text-white'
-                          : 'bg-gray-50 border-gray-200 text-gray-900'
-                      } focus:border-juice-cyan outline-none`}
-                    >
-                      <option value="42161">Arbitrum (Recommended)</option>
-                      <option value="8453">Base</option>
-                      <option value="10">Optimism</option>
-                      <option value="1">Ethereum</option>
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <ChainLogo chainId={Number(newTerminalChainId)} size={16} />
+                      <select
+                        value={newTerminalChainId}
+                        onChange={(e) => setNewTerminalChainId(e.target.value)}
+                        className={`flex-1 min-w-0 select-caret pl-3 pr-6 py-2 text-sm border ${
+                          isDark
+                            ? 'bg-white/5 border-white/10 text-white'
+                            : 'bg-gray-50 border-gray-200 text-gray-900'
+                        } focus:border-juice-cyan outline-none`}
+                      >
+                        <option value="42161">Arbitrum (Recommended)</option>
+                        <option value="8453">Base</option>
+                        <option value="10">Optimism</option>
+                        <option value="1">Ethereum</option>
+                      </select>
+                    </div>
                   </div>
 
                   <Button

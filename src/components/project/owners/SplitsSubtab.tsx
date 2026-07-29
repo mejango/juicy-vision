@@ -17,6 +17,7 @@ import { encodeFunctionData, zeroAddress } from "viem";
 import { jbControllerAbi } from "@bananapus/nana-sdk-core";
 import { useThemeStore } from "../../../stores";
 import { CHAINS } from "../../../constants";
+import ChainLogo from "../../ui/ChainLogo";
 import { ExplainerMessage } from "../../ui/ExplainerMessage";
 import { ProjectSplitRoute } from "../../dynamic/ProjectSplitRoute";
 import { useGuardedTx } from "../../../hooks/useGuardedTx";
@@ -356,7 +357,10 @@ export function SplitsSubtab({
         <div
           className={`text-xs font-medium mb-1 ${isDark ? "text-gray-300" : "text-gray-700"}`}
         >
-          {chainName}
+          <span className="inline-flex items-center gap-1.5">
+            <ChainLogo chainId={chainId} size={14} />
+            {chainName}
+          </span>
         </div>
         {row === undefined ? (
           <p className={`text-sm ${mutedText}`}>Reading splits…</p>
@@ -586,7 +590,10 @@ export function SplitsSubtab({
                       >
                         <span>
                           {formatTokenCount18(row.tokenCount)} {symbol}
-                          <span className={`text-xs ml-2 ${mutedText}`}>
+                          <span
+                            className={`text-xs ml-2 inline-flex items-center gap-1.5 ${mutedText}`}
+                          >
+                            <ChainLogo chainId={row.chainId} size={14} />
                             {chain?.name ?? `Chain ${row.chainId}`}
                           </span>
                         </span>

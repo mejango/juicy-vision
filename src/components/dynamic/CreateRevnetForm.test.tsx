@@ -54,6 +54,7 @@ vi.mock('../payment', () => ({
 // Get mocked wagmi
 import { useAccount } from 'wagmi'
 import { pinMetadata } from '../../services/ipfsPinning'
+import { chainMarksFor } from '../../test/test-utils'
 const mockedUseAccount = useAccount as Mock
 const mockedPinMetadata = pinMetadata as Mock
 
@@ -96,6 +97,16 @@ describe('CreateRevnetForm', () => {
       expect(screen.getByText(BASE_LABEL)).toBeInTheDocument()
       expect(screen.getByText(ARB_LABEL)).toBeInTheDocument()
       expect(screen.getByText(/on 1 chain/)).toBeInTheDocument()
+    })
+
+    it('shows each chain’s logo beside its name', () => {
+      render(<CreateRevnetForm />)
+
+      for (const id of ALL_CHAIN_IDS) {
+        expect(
+          chainMarksFor(id)[0]
+        ).toBeInTheDocument()
+      }
     })
 
     it('renders revnet info fields', () => {

@@ -9,6 +9,7 @@ import { type ReactNode } from 'react'
 import { CHAINS } from '../../../constants'
 import type { GuardedTxPhase } from '../../../services/projectTx'
 import { isSafeAppActive } from '../../../services/safeApp'
+import ChainLogo from '../../ui/ChainLogo'
 import DialogShell from '../../ui/DialogShell'
 
 export const PHASE_LABELS: Record<GuardedTxPhase, string> = {
@@ -153,7 +154,12 @@ export function ChainRunRows({
         return (
           <div key={chainId} className={`border p-3 space-y-2 ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
             <div className="flex items-center justify-between gap-3">
-              <span className={`text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>{chainName(chainId)}</span>
+              <span
+                className={`text-sm inline-flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-gray-900'}`}
+              >
+                <ChainLogo chainId={chainId} size={14} />
+                {chainName(chainId)}
+              </span>
               {status.kind === 'idle' || status.kind === 'error' ? (
                 <button
                   onClick={() => onExecute(chainId)}

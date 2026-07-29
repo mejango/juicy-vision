@@ -15,6 +15,7 @@ import {
   inputClass, useIsDark,
 } from './controls'
 import { CashOutTaxCard, PerChainAddrControl, ReservedSplitRow, SplitRowShell } from './pickers'
+import ChainLogo from '../../ui/ChainLogo'
 
 interface StepProps {
   state: CreateFlowState
@@ -298,11 +299,14 @@ function AutoIssuanceRow(props: {
         {chainIds.length > 1 && (
           <>
             <span className="text-sm pt-2 shrink-0">on</span>
-            <Select
-              value={String(rowChain)}
-              onChange={(v) => onChange({ chainId: Number(v) })}
-              options={chainIds.map((id) => [String(id), chainName(id)])}
-            />
+            <div className="flex items-center gap-2">
+              <ChainLogo chainId={rowChain} size={16} />
+              <Select
+                value={String(rowChain)}
+                onChange={(v) => onChange({ chainId: Number(v) })}
+                options={chainIds.map((id) => [String(id), chainName(id)])}
+              />
+            </div>
           </>
         )}
       </SplitRowShell>

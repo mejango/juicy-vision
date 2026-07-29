@@ -1,7 +1,19 @@
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
 import type { ResolvedNFTTier } from '../../services/nft'
 import TierDetailModal from './TierDetailModal'
+import { chainMarks } from '../../test/test-utils'
+
+vi.mock('../../services/nft/multichain', () => ({
+  fetchMultiChainTierSupply: vi.fn(async () => ({
+    totalRemaining: 6,
+    totalInitial: 20,
+    perChain: [
+      { chainId: 11155111, chainName: 'Sepolia', remaining: 4, initial: 10 },
+      { chainId: 84532, chainName: 'Base Sepolia', remaining: 2, initial: 10 },
+    ],
+  })),
+}))
 
 const tier: ResolvedNFTTier = {
   tierId: 7,
@@ -39,5 +51,26 @@ describe('TierDetailModal', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /technical details/i }))
     expect(screen.getByText('video/mp4')).toBeInTheDocument()
+  })
+
+  it('shows the chain brand mark beside each network in the inventory breakdown', async () => {
+    render(
+      <TierDetailModal
+        isOpen
+        onClose={() => undefined}
+        tier={tier}
+        imageUrl="https://example.com/poster.png"
+        connectedChains={[
+          { chainId: 11155111, projectId: 1 },
+          { chainId: 84532, projectId: 2 },
+        ]}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /technical details/i }))
+    await waitFor(() => {
+      expect(screen.getByText('Inventory by Network')).toBeInTheDocument()
+    })
+    expect(chainMarks()).toHaveLength(2)
   })
 })

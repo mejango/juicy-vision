@@ -27,6 +27,7 @@ import { NATIVE_TOKEN, type JBChainId } from "@bananapus/nana-sdk-core";
 import { buildPayTx } from "@bananapus/nana-sdk-core/v6";
 import { useThemeStore, useAuthStore, useTransactionStore } from "../../stores";
 import Button from "../../components/ui/Button";
+import ChainLogo from "../../components/ui/ChainLogo";
 import { getChainName } from "../../components/dynamic/charts/utils";
 import {
   RPC_ENDPOINTS,
@@ -1242,8 +1243,11 @@ export default function PaymentPage() {
               <p
                 className={`text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`}
               >
-                {getChainName(session.chainId)} &middot; Project #
-                {session.projectId}
+                <span className="inline-flex items-center gap-1.5 align-middle">
+                  <ChainLogo chainId={session.chainId} size={14} />
+                  {getChainName(session.chainId)}
+                </span>{" "}
+                &middot; Project #{session.projectId}
               </p>
             </div>
 

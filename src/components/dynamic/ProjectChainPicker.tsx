@@ -6,6 +6,7 @@ import { CHAINS, ALL_CHAIN_IDS } from "../../constants";
 import { resolveProjectChains } from "../../utils/projectChains";
 import { ChainMappingWarning } from "./ChainMappingWarning";
 import { IpfsImage } from "../ui/IpfsMedia";
+import ChainLogo from "../ui/ChainLogo";
 
 interface ProjectChainPickerProps {
   projectId: string;
@@ -21,6 +22,24 @@ interface ProjectOption {
 }
 
 // Use environment-aware chain info from constants
+
+// The chains a project option spans, each name carrying its brand mark. Picking
+// the wrong option moves money to the wrong chain, and testnet names differ by a
+// single word, so the mark rides along with every name.
+function ChainNameList({ chainIds }: { chainIds: number[] }) {
+  const named = chainIds.filter((id) => CHAINS[id]?.name);
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      {named.map((id, index) => (
+        <span key={id} className="inline-flex items-center gap-1.5">
+          {index > 0 && <span>+</span>}
+          <ChainLogo chainId={id} size={14} />
+          {CHAINS[id].name}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 export default function ProjectChainPicker({
   projectId,
@@ -202,10 +221,6 @@ export default function ProjectChainPicker({
   if (options.length === 1) {
     // Only one option - auto-select it
     const option = options[0];
-    const chainNames = option.chainIds
-      .map((id) => CHAINS[id]?.name)
-      .filter(Boolean)
-      .join(" + ");
 
     return (
       <div
@@ -241,7 +256,7 @@ export default function ProjectChainPicker({
               <div
                 className={`text-xs ${isDark ? "text-gray-400" : "text-gray-500"}`}
               >
-                {chainNames}
+                <ChainNameList chainIds={option.chainIds} />
               </div>
               <div
                 className={`text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`}
@@ -279,10 +294,6 @@ export default function ProjectChainPicker({
       <div className="p-3">
         <div className="space-y-2">
           {options.map((option, index) => {
-            const chainNames = option.chainIds
-              .map((id) => CHAINS[id]?.name)
-              .filter(Boolean)
-              .join(" + ");
             const isSelected = index === selectedIndex;
 
             return (
@@ -340,7 +351,7 @@ export default function ProjectChainPicker({
                   <div
                     className={`text-xs ${isDark ? "text-gray-400" : "text-gray-500"}`}
                   >
-                    {chainNames}
+                    <ChainNameList chainIds={option.chainIds} />
                   </div>
                   <div
                     className={`text-xs ${isDark ? "text-gray-500" : "text-gray-400"}`}

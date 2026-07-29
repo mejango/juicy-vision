@@ -14,6 +14,7 @@ import { type JBChainId } from '@bananapus/nana-sdk-core'
 import { buildAutoIssueTx, getAmountToAutoIssue } from '@bananapus/nana-sdk-core/v6'
 import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
+import ChainLogo from '../../ui/ChainLogo'
 import { ExplainerMessage } from '../../ui/ExplainerMessage'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import { publicClientFor, type GuardedTxPhase } from '../../../services/projectTx'
@@ -269,7 +270,12 @@ export function AutoIssuanceSubtab({ project, chainIds, chainProjects }: AutoIss
             <tbody>
               {rows.map(row => (
                 <tr key={autoIssueKey(row)} className={`border-t ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
-                  <td className="py-2 pr-3">{CHAINS[row.chainId]?.name ?? `Chain ${row.chainId}`}</td>
+                  <td className="py-2 pr-3">
+                    <span className="inline-flex items-center gap-1.5">
+                      <ChainLogo chainId={row.chainId} size={14} />
+                      {CHAINS[row.chainId]?.name ?? `Chain ${row.chainId}`}
+                    </span>
+                  </td>
                   <td className="py-2 pr-3">{row.stageIndex + 1}</td>
                   <td className="py-2 pr-3">
                     <span className="font-mono text-xs" title={row.beneficiary}>

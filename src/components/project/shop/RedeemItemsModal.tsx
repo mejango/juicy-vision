@@ -32,6 +32,7 @@ import {
   type ShopChain,
 } from '../../../services/shopCustomers'
 import DialogShell from '../../ui/DialogShell'
+import ChainLogo from '../../ui/ChainLogo'
 
 const METADATA_ID_TARGET_ABI = [{
   name: 'METADATA_ID_TARGET',
@@ -435,6 +436,7 @@ export function RedeemItemsModal({ isOpen, onClose, chains, defaultChainId, onRe
           {chainList.length > 1 ? (
             <div className="flex items-center gap-2">
               <span className={`text-sm ${keyText}`}>Redeem on</span>
+              <ChainLogo chainId={chainId} size={16} />
               <select className={selectClass} value={chainId} onChange={e => setChainId(Number(e.target.value))} disabled={running}>
                 {chainList.map(c => (
                   <option key={c.chainId} value={c.chainId}>

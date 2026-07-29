@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useThemeStore } from '../../stores'
 import { ExplainerMessage } from '../ui/ExplainerMessage'
+import ChainLogo from '../ui/ChainLogo'
 import { resolveBaseCurrency } from '../../utils/currency'
 import { resolveProjectChains } from '../../utils/projectChains'
 import type { ConnectedChain } from '../../services/bendystraw'
@@ -357,22 +358,25 @@ export default function RulesetsTab({ projectId, chainId, isRevnet = false, onQu
         Synced across all chains
       </span>
     ) : syncState === 'differs' ? (
-      <select
-        value={selected.chainId}
-        onChange={event => {
-          const chain = chains.find(candidate => candidate.chainId === Number(event.target.value))
-          if (chain) setSelected({ chainId: chain.chainId, projectId: chain.projectId })
-        }}
-        className={`select-caret pl-2 pr-6 py-1 text-xs border ${
-          isDark ? 'bg-juice-dark border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900'
-        }`}
-      >
-        {chains.map(chain => (
-          <option key={chain.chainId} value={chain.chainId}>
-            {CHAIN_NAMES[chain.chainId] || `Chain ${chain.chainId}`}
-          </option>
-        ))}
-      </select>
+      <span className="inline-flex items-center gap-2">
+        <ChainLogo chainId={selected.chainId} size={16} />
+        <select
+          value={selected.chainId}
+          onChange={event => {
+            const chain = chains.find(candidate => candidate.chainId === Number(event.target.value))
+            if (chain) setSelected({ chainId: chain.chainId, projectId: chain.projectId })
+          }}
+          className={`select-caret pl-2 pr-6 py-1 text-xs border ${
+            isDark ? 'bg-juice-dark border-white/10 text-white' : 'bg-white border-gray-200 text-gray-900'
+          }`}
+        >
+          {chains.map(chain => (
+            <option key={chain.chainId} value={chain.chainId}>
+              {CHAIN_NAMES[chain.chainId] || `Chain ${chain.chainId}`}
+            </option>
+          ))}
+        </select>
+      </span>
     ) : syncState === 'checking' ? (
       <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>Checking chains…</span>
     ) : null

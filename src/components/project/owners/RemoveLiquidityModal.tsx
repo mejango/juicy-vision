@@ -32,6 +32,7 @@ import {
   type UserLpPosition,
 } from '../../../services/ammMarket'
 import DialogShell from '../../ui/DialogShell'
+import ChainLogo from '../../ui/ChainLogo'
 
 export interface RemoveLiquidityModalProps {
   isOpen: boolean
@@ -215,23 +216,26 @@ export function RemoveLiquidityModal({ isOpen, onClose, project, chainIds, chain
               {lpChains.length > 1 ? (
                 <div>
                   <label className={labelClass}>Chain</label>
-                  <select
-                    value={chainId}
-                    onChange={event => {
-                      setChainId(Number(event.target.value))
-                      setStatus({ kind: 'idle' })
-                    }}
-                    disabled={running}
-                    className={`select-caret pl-3 pr-6 py-2 text-sm border bg-transparent ${
-                      isDark ? 'border-white/20 text-white' : 'border-gray-300 text-gray-900'
-                    }`}
-                  >
-                    {lpChains.map(id => (
-                      <option key={id} value={id}>
-                        {CHAINS[id]?.name ?? `Chain ${id}`}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center gap-2">
+                    <ChainLogo chainId={chainId} size={16} />
+                    <select
+                      value={chainId}
+                      onChange={event => {
+                        setChainId(Number(event.target.value))
+                        setStatus({ kind: 'idle' })
+                      }}
+                      disabled={running}
+                      className={`select-caret pl-3 pr-6 py-2 text-sm border bg-transparent ${
+                        isDark ? 'border-white/20 text-white' : 'border-gray-300 text-gray-900'
+                      }`}
+                    >
+                      {lpChains.map(id => (
+                        <option key={id} value={id}>
+                          {CHAINS[id]?.name ?? `Chain ${id}`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               ) : null}
 

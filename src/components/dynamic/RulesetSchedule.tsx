@@ -33,6 +33,7 @@ import { resolveProjectChains } from "../../utils/projectChains";
 import { ChainMappingWarning } from "./ChainMappingWarning";
 import InlineChainSelector from "./InlineChainSelector";
 import { ProjectSplitRoute } from "./ProjectSplitRoute";
+import ChainLogo from "../ui/ChainLogo";
 
 // Build a per-chain block-explorer address URL. EXPLORER_URLS holds the tx-prefix
 // (e.g. "https://optimistic.etherscan.io/tx/"), so swap the path segment for /address/.
@@ -436,10 +437,7 @@ function ChainTab({
       }}
     >
       <span className="flex items-center gap-1.5">
-        <span
-          className="w-2 h-2 rounded-full"
-          style={{ backgroundColor: chain.color }}
-        />
+        <ChainLogo chainId={chainId} size={14} />
         {chain.shortName}
         <span
           className="w-1.5 h-1.5 bg-amber-400 rounded-full"
@@ -496,10 +494,7 @@ function ChainBadge({ chainId, isDark }: { chainId: number; isDark: boolean }) {
       }`}
       title={chain.name}
     >
-      <span
-        className="w-1.5 h-1.5 rounded-full"
-        style={{ backgroundColor: chain.color }}
-      />
+      <ChainLogo chainId={chainId} size={12} />
       {chain.shortName}
     </span>
   );
@@ -3709,12 +3704,7 @@ export default function RulesetSchedule({
                                 return (
                                   <div key={cr.chainId}>
                                     <div className="flex items-center gap-1.5 mb-1">
-                                      <span
-                                        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                                        style={{
-                                          backgroundColor: chainInfo.color,
-                                        }}
-                                      />
+                                      <ChainLogo chainId={cr.chainId} size={14} />
                                       <span
                                         className={`text-xs font-medium ${isDark ? "text-gray-400" : "text-gray-500"}`}
                                       >

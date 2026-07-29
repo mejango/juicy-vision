@@ -20,6 +20,7 @@ import { useManagedWallet } from '../../hooks'
 import { buildSplit } from '../../utils/splitSafety'
 import { JBP6_FEE_LP_SPLIT_HOOK } from './create-flow/builders'
 import { resolveProjectChains } from '../../utils/projectChains'
+import ChainLogo from '../ui/ChainLogo'
 import { fetchStageRulesetsPerChain } from '../../services/reservedSplits'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { IpfsImage } from '../ui/IpfsMedia'
@@ -974,10 +975,7 @@ export default function SetSplitsForm({ projectId, chainId = defaultChainId(), m
                             : 'bg-gray-100 text-gray-500 border border-gray-200'
                     }`}
                   >
-                    <span
-                      className="w-2 h-2 rounded-full"
-                      style={{ backgroundColor: chain?.color || '#888' }}
-                    />
+                    <ChainLogo chainId={cd.chainId} size={12} />
                     {chain?.shortName || cd.chainId}
                     {cd.selected && <span>✓</span>}
                     {!cd.configurationComplete && <span>Unavailable</span>}

@@ -3,6 +3,7 @@ import { CHAINS, MAINNET_CHAINS } from '../../constants'
 import { getSessionTransactions, getUserTransactions, type Transaction as PersistedTransaction } from '../../api/transactions'
 import { getSessionId } from '../../services/session'
 import { useAuthStore, useThemeStore, useTransactionStore } from '../../stores'
+import ChainLogo from '../ui/ChainLogo'
 
 function shortHash(hash: string): string {
   return `${hash.slice(0, 8)}…${hash.slice(-6)}`
@@ -97,7 +98,11 @@ export default function TransactionHistory() {
                     {row.type}{row.projectId ? ` · Project #${row.projectId}` : ''}
                   </div>
                   <div className={`mt-0.5 text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                    {chain?.name || `Chain ${row.chainId}`}{row.amount ? ` · ${row.amount}` : ''}
+                    <span className="inline-flex items-center gap-1.5">
+                      <ChainLogo chainId={row.chainId} size={14} />
+                      {chain?.name || `Chain ${row.chainId}`}
+                    </span>
+                    {row.amount ? ` · ${row.amount}` : ''}
                   </div>
                 </div>
                 <div className="shrink-0 text-right">

@@ -2,11 +2,16 @@
  * The parameters tree must render `weight` in the denomination of ITS
  * ruleset's metadata.baseCurrency — never a hardcoded tokens/USD.
  */
+import type { ComponentProps } from 'react'
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import { chainMarks } from '../../test/test-utils'
 import TechnicalDetails from './TechnicalDetails'
 
-function renderDetails(parameters: Record<string, unknown>) {
+function renderDetails(
+  parameters: Record<string, unknown>,
+  extra: Partial<ComponentProps<typeof TechnicalDetails>> = {},
+) {
   return render(
     <TechnicalDetails
       contract="JB_CONTROLLER"
@@ -16,6 +21,7 @@ function renderDetails(parameters: Record<string, unknown>) {
       parameters={parameters}
       isDark
       defaultExpanded
+      {...extra}
     />,
   )
 }
@@ -41,5 +47,23 @@ describe('TechnicalDetails weight denomination', () => {
   it('defaults to tokens/ETH when no baseCurrency exists in the tree', () => {
     renderDetails({ weight: WEIGHT })
     expect(screen.getByText('1.0M tokens/ETH')).toBeInTheDocument()
+  })
+})
+
+describe('TechnicalDetails chain marks', () => {
+  it('shows the chain logo beside the single-chain badge', () => {
+    renderDetails({ weight: WEIGHT })
+    expect(chainMarks()).toHaveLength(1)
+  })
+
+  it('shows a chain logo beside every badge in the multi-chain list', () => {
+    renderDetails({ weight: WEIGHT }, {
+      allChains: [
+        { chainId: 11155111, chainName: 'Sepolia' },
+        { chainId: 11155420, chainName: 'OP Sepolia' },
+        { chainId: 84532, chainName: 'Base Sepolia' },
+      ],
+    })
+    expect(chainMarks()).toHaveLength(3)
   })
 })

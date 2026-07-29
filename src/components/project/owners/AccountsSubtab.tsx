@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { formatUnits, type Address } from 'viem'
 import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
+import ChainLogo from '../../ui/ChainLogo'
 import { ExplainerMessage } from '../../ui/ExplainerMessage'
 import { HoldersChart } from '../../dynamic/charts'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
@@ -282,10 +283,11 @@ function HoldersTable({
                         <span
                           key={chainId}
                           title={CHAINS[chainId]?.name ?? `Chain ${chainId}`}
-                          className={`px-1 py-0.5 border text-[10px] ${
+                          className={`px-1 py-0.5 border text-[10px] inline-flex items-center gap-1 ${
                             isDark ? 'border-white/15 text-gray-400' : 'border-gray-200 text-gray-500'
                           }`}
                         >
+                          <ChainLogo chainId={chainId} size={12} />
                           {CHAINS[chainId]?.shortName ?? chainId}
                         </span>
                       ))}

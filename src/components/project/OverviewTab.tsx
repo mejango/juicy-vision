@@ -15,6 +15,7 @@ import {
 } from "../../services/bendystraw";
 import { getSafetyPublicClient } from "../../utils/transactionSafety";
 import { truncateAddress } from "../../utils/ens";
+import ChainLogo from "../ui/ChainLogo";
 import { IpfsImage } from "../ui/IpfsMedia";
 import { ExplainerMessage } from "../ui/ExplainerMessage";
 import { RichContent } from "../ui/RichContent";
@@ -301,7 +302,8 @@ export default function OverviewTab({
               {chains.map((chain) => {
                 const path = projectPathFor(chain.chainId, chain.projectId);
                 const row = (
-                  <span className="flex items-baseline gap-1.5">
+                  <span className="flex items-center gap-1.5">
+                    <ChainLogo chainId={chain.chainId} size={14} />
                     <span className={infoValueClass}>
                       {chainNameOf(chain.chainId)}
                     </span>
@@ -381,8 +383,9 @@ export default function OverviewTab({
                 {authorityRows.map((row) => (
                   <div
                     key={row.chainId}
-                    className="flex items-baseline gap-1.5 text-xs"
+                    className="flex items-center gap-1.5 text-xs"
                   >
+                    <ChainLogo chainId={row.chainId} size={14} />
                     <span className={infoLabelClass}>{row.name}</span>
                     {row.owner ? (
                       <a

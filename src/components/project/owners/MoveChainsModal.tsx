@@ -39,6 +39,7 @@ import {
   type SuckerPair,
 } from '../../../services/suckerBridge'
 import DialogShell from '../../ui/DialogShell'
+import ChainLogo from '../../ui/ChainLogo'
 
 export interface MoveChainsModalProps {
   isOpen: boolean
@@ -395,6 +396,7 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds, chainProje
           {/* From / to */}
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className={labelClass}>From</span>
+            <ChainLogo chainId={fromChainId} size={16} />
             <select value={fromChainId} onChange={event => setFromChainId(Number(event.target.value))} disabled={busy || flow.kind === 'review'} className={selectClass}>
               {chainIds.map(chainId => (
                 <option key={chainId} value={chainId}>
@@ -403,6 +405,7 @@ export function MoveChainsModal({ isOpen, onClose, project, chainIds, chainProje
               ))}
             </select>
             <span className={labelClass}>to</span>
+            <ChainLogo chainId={toChainId} size={16} />
             <select value={toChainId} onChange={event => setToChainId(Number(event.target.value))} disabled={busy || flow.kind === 'review'} className={selectClass}>
               {chainIds.map(chainId => (
                 <option key={chainId} value={chainId}>

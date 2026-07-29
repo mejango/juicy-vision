@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SetSplitsForm from './SetSplitsForm'
 import type { JBSplitData } from '../../services/bendystraw'
+import { chainMarksFor } from '../../test/test-utils'
 
 const mocks = vi.hoisted(() => ({
   fetchProject: vi.fn(),
@@ -232,6 +233,15 @@ describe('SetSplitsForm stage targeting', () => {
     )
     expect(mocks.fetchStageRulesetsPerChain).not.toHaveBeenCalled()
     expect(screen.queryByTestId('splits-target-stage')).not.toBeInTheDocument()
+  })
+
+  it('shows each chain’s logo beside its name in the chain selector', async () => {
+    render(<SetSplitsForm projectId="5" chainId="1" stageIndex={2} />)
+
+    await waitFor(() =>
+      expect(chainMarksFor(1)).not.toHaveLength(0)
+    )
+    expect(chainMarksFor(10)).not.toHaveLength(0)
   })
 
   it('marks a chain unavailable when it has no ruleset for the browsed stage', async () => {

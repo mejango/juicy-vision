@@ -7,6 +7,7 @@ import { MAINNET_CHAINS } from '../../constants'
 import { resolveProjectNameForDisplay, type ActivityEvent } from '../../services/bendystraw/client'
 import { projectPathFor } from '../../utils/projectLink'
 import { IpfsImage } from '../ui/IpfsMedia'
+import ChainLogo from '../ui/ChainLogo'
 
 interface ActivityItemProps {
   event: ActivityEvent
@@ -118,9 +119,10 @@ export default function ActivityItem({ event, onProjectClick }: ActivityItemProp
               <span className="truncate">{ensName || truncateAddress(from)}</span>
               <span>on</span>
               <span
-                className="text-[8px] font-bold px-1 py-0.5 rounded"
+                className="inline-flex items-center gap-1 text-[8px] font-bold px-1 py-0.5 rounded"
                 style={{ backgroundColor: `${chain.color}80`, color: 'rgba(255,255,255,0.85)' }}
               >
+                <ChainLogo chainId={event.chainId} size={12} />
                 {chain.shortName || chain.name}
               </span>
             </>

@@ -13,6 +13,7 @@ import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import { publicClientFor, type GuardedTxPhase } from '../../../services/projectTx'
+import ChainLogo from '../../ui/ChainLogo'
 import DialogShell from '../../ui/DialogShell'
 
 export interface ClaimCreditsRow {
@@ -187,7 +188,12 @@ export function ClaimCreditsModal({
                     className={`border p-3 space-y-2 ${isDark ? 'border-white/10' : 'border-gray-200'}`}
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <span className={`text-sm ${isDark ? 'text-white' : 'text-gray-900'}`}>{chainName}</span>
+                      <span
+                        className={`text-sm inline-flex items-center gap-1.5 ${isDark ? 'text-white' : 'text-gray-900'}`}
+                      >
+                        <ChainLogo chainId={row.chainId} size={14} />
+                        {chainName}
+                      </span>
                       <span className={`text-sm font-mono ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
                         {formatCredits(row.creditBalance)} credits
                       </span>

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import TransactionReviewModal from './TransactionReviewModal'
 import { requestTransactionReview, type TransactionReview } from '../../utils/transactionReview'
+import { chainMarks } from '../../test/test-utils'
 
 const FROM = '0x1111111111111111111111111111111111111111' as const
 const TARGET = '0x2222222222222222222222222222222222222222' as const
@@ -42,6 +43,8 @@ describe('TransactionReviewModal', () => {
     expect(screen.getAllByText(TARGET).length).toBeGreaterThan(0)
     expect(screen.getByText(/"value": "0x7b"/)).toBeInTheDocument()
     expect(screen.getByText(/"data": "0x12345678"/)).toBeInTheDocument()
+    // The chain the call lands on carries its brand mark beside the name.
+    expect(chainMarks().length).toBeGreaterThan(0)
 
     await user.click(screen.getByRole('checkbox', { name: /I reviewed the chain/ }))
     expect(firstApprove).toBeEnabled()

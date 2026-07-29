@@ -1,5 +1,6 @@
 import { useThemeStore } from '../../../stores'
-import { getChainColor, getChainName, CHART_COLORS } from './utils'
+import { getChainName, CHART_COLORS } from './utils'
+import ChainLogo from '../../ui/ChainLogo'
 
 interface ChainToggleBarProps {
   availableChains: number[]
@@ -46,7 +47,6 @@ export default function ChainToggleBar({
       {/* Per-chain toggles */}
       {availableChains.map(chainId => {
         const isSelected = !isAllSelected && (selectedChains as Set<number>).has(chainId)
-        const color = getChainColor(chainId)
         const name = getChainName(chainId)
 
         return (
@@ -65,10 +65,7 @@ export default function ChainToggleBar({
               }
             `}
           >
-            <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ backgroundColor: color }}
-            />
+            <ChainLogo chainId={chainId} size={12} />
             <span>{name}</span>
           </button>
         )

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import LaunchProjectModal from './LaunchProjectModal'
 import { useThemeStore, useAuthStore } from '../../stores'
 import { ALL_CHAIN_IDS, CHAINS } from '../../constants'
+import { chainMarks } from '../../test/test-utils'
 
 // Derive chain IDs and labels from the same constants the component renders and
 // the verification util validates against, so these tests are env-independent
@@ -307,6 +308,20 @@ describe('LaunchProjectModal', () => {
       expect(screen.getByText('Pending')).toBeInTheDocument()
     })
 
+    it('marks each per-chain status row with that chain logo', () => {
+      mockHookState.bundleState.chainStates = [
+        { chainId: C0, status: 'pending' },
+        { chainId: C1, status: 'pending' },
+      ]
+
+      render(<LaunchProjectModal {...defaultProps} />)
+
+      for (const name of [NAME0, NAME1]) {
+        const row = screen.getByText(name).closest('div')!
+        expect(chainMarks(row)).not.toHaveLength(0)
+      }
+    })
+
     it('shows submitted/creating status', () => {
       mockHookState.bundleState.chainStates = [
         { chainId: C0, status: 'submitted' },
@@ -384,6 +399,15 @@ describe('LaunchProjectModal', () => {
       expect(screen.getByText(new RegExp(`${SHORT1}: #101`))).toBeInTheDocument()
       expect(screen.getByText(new RegExp(`${SHORT2}: #102`))).toBeInTheDocument()
       expect(screen.getByText(new RegExp(`${SHORT3}: #103`))).toBeInTheDocument()
+    })
+
+    it('marks every created-project row with its chain logo', () => {
+      render(<LaunchProjectModal {...defaultProps} />)
+
+      for (const [short, projectId] of [[SHORT0, 100], [SHORT1, 101], [SHORT2, 102], [SHORT3, 103]] as const) {
+        const cell = screen.getByText(new RegExp(`${short}: #${projectId}`)).closest('div')!
+        expect(chainMarks(cell)).not.toHaveLength(0)
+      }
     })
 
     it('confirms cross-chain bridges were deployed atomically', () => {

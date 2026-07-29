@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { CHAINS, MAINNET_CHAINS } from '../../constants'
+import ChainLogo from '../ui/ChainLogo'
 
 // Mainnet info is always available; environment-specific (testnet) entries overlay it.
 const CHAIN_INFO = { ...MAINNET_CHAINS, ...CHAINS }
@@ -42,11 +43,7 @@ export default function InlineChainSelector({
     return (
       <div className="flex min-w-0 flex-wrap gap-1" aria-label={ariaLabel}>
         {options.map(option => {
-          const chain = CHAIN_INFO[option.chainId] || {
-            name: `Chain ${option.chainId}`,
-            shortName: String(option.chainId),
-            color: '#888888',
-          }
+          const shortName = CHAIN_INFO[option.chainId]?.shortName || String(option.chainId)
           return (
             <button
               key={option.key}
@@ -57,8 +54,8 @@ export default function InlineChainSelector({
                 : isDark ? 'bg-white/5 text-gray-400 hover:bg-white/10' : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
               }`}
             >
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: chain.color }} />
-              <span className="min-w-0 truncate">{option.label ?? chain.shortName}</span>
+              <ChainLogo chainId={option.chainId} size={12} />
+              <span className="min-w-0 truncate">{option.label ?? shortName}</span>
             </button>
           )
         })}
@@ -69,11 +66,7 @@ export default function InlineChainSelector({
   return (
     <div className="flex items-center gap-1 flex-wrap">
       {options.map(option => {
-        const chain = CHAIN_INFO[option.chainId] || {
-          name: `Chain ${option.chainId}`,
-          shortName: String(option.chainId),
-          color: '#888888',
-        }
+        const shortName = CHAIN_INFO[option.chainId]?.shortName || String(option.chainId)
         return (
           <button
             key={option.key}
@@ -88,11 +81,8 @@ export default function InlineChainSelector({
                   : 'bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-900'
             }`}
           >
-            <span
-              className="w-1.5 h-1.5 rounded-full"
-              style={{ backgroundColor: chain.color }}
-            />
-            {chain.shortName}
+            <ChainLogo chainId={option.chainId} size={12} />
+            {shortName}
             {option.suffix}
           </button>
         )

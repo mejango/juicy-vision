@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import TransactionHistory from './TransactionHistory'
+import { chainMarks } from '../../test/test-utils'
 
 const getSessionTransactions = vi.fn()
 const getUserTransactions = vi.fn()
@@ -49,6 +50,14 @@ describe('TransactionHistory', () => {
     ))
     expect(getUserTransactions).not.toHaveBeenCalled()
     expect(screen.getByText('pay · Project #7')).toBeInTheDocument()
+  })
+
+  it('shows the chain brand mark beside the chain name on each row', async () => {
+    render(<TransactionHistory />)
+
+    await waitFor(() => {
+      expect(chainMarks().length).toBeGreaterThan(0)
+    })
   })
 
   it('uses authenticated user history and deduplicates an onchain hash', async () => {

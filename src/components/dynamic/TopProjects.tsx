@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { fetchProjects, type Project } from '../../services/bendystraw'
 import { useThemeStore } from '../../stores'
 import { IpfsImage } from '../ui/IpfsMedia'
+import ChainLogo from '../ui/ChainLogo'
 
 interface TopProjectsProps {
   limit?: number
@@ -260,12 +261,13 @@ export default function TopProjects({
                     return (
                       <span
                         key={chainId}
-                        className="text-xs px-1.5 py-0.5 rounded"
+                        className="inline-flex items-center gap-1.5 text-xs px-1.5 py-0.5 rounded"
                         style={{
                           backgroundColor: `${chain?.color}20`,
                           color: chain?.color
                         }}
                       >
+                        <ChainLogo chainId={chainId} size={14} />
                         V{version} {chain?.name || `${chainId}`} #{project.projectId}
                       </span>
                     )

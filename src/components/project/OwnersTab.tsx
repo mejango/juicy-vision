@@ -14,6 +14,7 @@ import { CHAINS } from '../../constants'
 import { ownersSubtabsFor, type OwnersSubtabId } from './flavor'
 import type { Project } from '../../services/bendystraw'
 import { AccountsSubtab } from './owners/AccountsSubtab'
+import ChainLogo from '../ui/ChainLogo'
 
 export interface OwnersTabProps {
   project: Project
@@ -162,7 +163,10 @@ export default function OwnersTab({
                             : 'border-gray-200 text-gray-600 hover:border-gray-400'
                         }`}
                       >
-                        {chain.shortName}
+                        <span className="inline-flex items-center gap-1.5">
+                          <ChainLogo chainId={chainId} size={14} />
+                          {chain.shortName}
+                        </span>
                       </a>
                     )
                   })}

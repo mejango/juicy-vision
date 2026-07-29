@@ -29,6 +29,7 @@ import { resolveEnsName, truncateAddress } from "../utils/ens";
 import { getWalletSession } from "../services/siwe";
 import { formatBalanceUsd, formatBalanceNative } from "../utils/currency";
 import { IpfsImage } from "../components/ui/IpfsMedia";
+import ChainLogo from "../components/ui/ChainLogo";
 
 // Chat components
 import { ChatInput } from "../components/chat";
@@ -822,10 +823,11 @@ export default function ProjectDashboard({
                             className="flex justify-between gap-4 py-0.5"
                           >
                             <span
-                              className={
+                              className={`inline-flex items-center gap-1.5 ${
                                 isDark ? "text-gray-400" : "text-gray-500"
-                              }
+                              }`}
                             >
+                              <ChainLogo chainId={pb.chainId} size={14} />
                               {chainName}
                             </span>
                             <span

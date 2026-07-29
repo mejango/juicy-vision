@@ -10,6 +10,7 @@ import { useRelayrStatus } from '../hooks/relayr'
 import { useAllChainBalances } from '../components/wallet/useAllChainBalances'
 import ActivityItem from '../components/chat/ActivityItem'
 import { IpfsImage } from '../components/ui/IpfsMedia'
+import ChainLogo from '../components/ui/ChainLogo'
 import {
   fetchAccountActivityEvents,
   fetchAccountOperatedPermissions,
@@ -209,9 +210,10 @@ function InFlightActivity({
               </span>
               {chain && (
                 <span
-                  className="text-[8px] font-bold px-1 py-0.5 rounded"
+                  className="inline-flex items-center gap-1 text-[8px] font-bold px-1 py-0.5 rounded"
                   style={{ backgroundColor: `${chain.color}80`, color: 'rgba(255,255,255,0.85)' }}
                 >
+                  <ChainLogo chainId={tx.chainId} size={12} />
                   {chain.shortName}
                 </span>
               )}
@@ -234,6 +236,7 @@ function InFlightActivity({
                   const csChain = chainInfo(cs.chainId)
                   return (
                     <span key={cs.chainId} className="flex items-center gap-1 text-[10px]">
+                      <ChainLogo chainId={cs.chainId} size={12} />
                       <span>{csChain?.shortName || cs.chainId}</span>
                       <span className={theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}>
                         {cs.status}
@@ -627,7 +630,10 @@ export default function AccountView({ address }: AccountViewProps) {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {balances.map(b => (
                 <div key={b.chainId} className="text-xs">
-                  <div className={`text-[10px] font-bold ${mutedClass}`}>{b.chainName}</div>
+                  <div className={`flex items-center gap-1 text-[10px] font-bold ${mutedClass}`}>
+                    <ChainLogo chainId={b.chainId} size={12} />
+                    {b.chainName}
+                  </div>
                   <div>{parseFloat(b.eth).toFixed(4)} ETH</div>
                   <div>{parseFloat(b.usdc).toFixed(2)} USDC</div>
                 </div>
@@ -740,9 +746,10 @@ export default function AccountView({ address }: AccountViewProps) {
                         <span key={c.chainId} className="flex items-center gap-1 text-[10px]">
                           {chain && (
                             <span
-                              className="text-[8px] font-bold px-1 py-0.5 rounded"
+                              className="inline-flex items-center gap-1 text-[8px] font-bold px-1 py-0.5 rounded"
                               style={{ backgroundColor: `${chain.color}80`, color: 'rgba(255,255,255,0.85)' }}
                             >
+                              <ChainLogo chainId={c.chainId} size={12} />
                               {chain.shortName}
                             </span>
                           )}
@@ -805,9 +812,10 @@ export default function AccountView({ address }: AccountViewProps) {
                       </button>
                       {chain && (
                         <span
-                          className="text-[8px] font-bold px-1 py-0.5 rounded"
+                          className="inline-flex items-center gap-1 text-[8px] font-bold px-1 py-0.5 rounded"
                           style={{ backgroundColor: `${chain.color}80`, color: 'rgba(255,255,255,0.85)' }}
                         >
+                          <ChainLogo chainId={row.chainId} size={12} />
                           {chain.shortName}
                         </span>
                       )}
@@ -894,9 +902,10 @@ export default function AccountView({ address }: AccountViewProps) {
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {chain && (
                           <span
-                            className="text-[8px] font-bold px-1 py-0.5 rounded"
+                            className="inline-flex items-center gap-1 text-[8px] font-bold px-1 py-0.5 rounded"
                             style={{ backgroundColor: `${chain.color}80`, color: 'rgba(255,255,255,0.85)' }}
                           >
+                            <ChainLogo chainId={row.chainId} size={12} />
                             {chain.shortName}
                           </span>
                         )}
@@ -951,9 +960,10 @@ export default function AccountView({ address }: AccountViewProps) {
                       </button>
                       {chain && (
                         <span
-                          className="text-[8px] font-bold px-1 py-0.5 rounded"
+                          className="inline-flex items-center gap-1 text-[8px] font-bold px-1 py-0.5 rounded"
                           style={{ backgroundColor: `${chain.color}80`, color: 'rgba(255,255,255,0.85)' }}
                         >
+                          <ChainLogo chainId={row.chainId} size={12} />
                           {chain.shortName}
                         </span>
                       )}

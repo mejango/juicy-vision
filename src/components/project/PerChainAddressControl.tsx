@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from 'react'
 import { isAddress } from 'viem'
 import { CHAINS } from '../../constants'
 import { resolveEnsToAddress, truncateAddress } from '../../utils/ens'
+import ChainLogo from '../ui/ChainLogo'
 
 interface PerChainAddressControlProps {
   chains: Array<{ chainId: number }>
@@ -62,7 +63,10 @@ function PerChainRow(props: {
 
   return (
     <div className="flex items-start gap-2">
-      <span className={`text-xs w-24 shrink-0 pt-2 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+      <span
+        className={`text-xs w-24 shrink-0 pt-2 inline-flex items-center gap-1.5 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}
+      >
+        <ChainLogo chainId={props.chainId} size={14} />
         {chainLabel(props.chainId)}
       </span>
       <div className="flex-1 min-w-0">

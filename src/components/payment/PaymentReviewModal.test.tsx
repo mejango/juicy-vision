@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import PaymentReviewModal from './PaymentReviewModal'
 import { requestPaymentReview, type PaymentReview } from '../../utils/paymentReview'
 import { parseTxLinkUrl } from '../../utils/txlink'
+import { chainMarks } from '../../test/test-utils'
 
 vi.mock('../../stores', () => ({
   useThemeStore: () => ({ theme: 'light' }),
@@ -58,6 +59,8 @@ describe('PaymentReviewModal', () => {
     expect(screen.getByText('×2')).toBeInTheDocument()
     expect(screen.getByText(/approve\(0x130f5d/)).toBeInTheDocument()
     expect(screen.getByTestId('technical-details')).toHaveTextContent(`${review.terminal} · pay`)
+    // The chain being paid on carries its brand mark beside the name.
+    expect(chainMarks().length).toBeGreaterThan(0)
 
     fireEvent.click(screen.getByRole('checkbox'))
     fireEvent.click(screen.getByRole('button', { name: 'Continue to wallet' }))

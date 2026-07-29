@@ -11,6 +11,7 @@
 
 import { useEffect, useState } from 'react'
 import { useThemeStore } from '../../../stores'
+import ChainLogo from '../../ui/ChainLogo'
 import { ExplainerMessage } from '../../ui/ExplainerMessage'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import {
@@ -210,6 +211,7 @@ function PowerModal({
                 }
                 className="w-4 h-4"
               />
+              <ChainLogo chainId={chainId} size={14} />
               <span className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{chainName(chainId)}</span>
             </label>
           ))}

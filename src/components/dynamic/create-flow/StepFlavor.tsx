@@ -25,6 +25,7 @@ import {
   tickerLabel,
 } from "./state";
 import NetworkModeSelect from "../../../components/common/NetworkModeSelect";
+import ChainLogo from "../../ui/ChainLogo";
 import {
   EnsAddressInput,
   FieldBlock,
@@ -103,7 +104,7 @@ function uncoveredPairs(state: CreateFlowState): [number, number][] {
 }
 
 // ---------------------------------------------------------------------------
-// Chain pill — Pill styling + the chain's color dot
+// Chain pill — Pill styling + the chain's brand mark
 // ---------------------------------------------------------------------------
 
 function ChainPill(props: {
@@ -124,10 +125,7 @@ function ChainPill(props: {
             : "border-gray-300 text-gray-500 hover:border-gray-400"
       }`}
     >
-      <span
-        className="w-2 h-2 rounded-full shrink-0"
-        style={{ backgroundColor: CHAINS[props.id]?.color }}
-      />
+      <ChainLogo chainId={props.id} size={14} />
       {CHAINS[props.id]?.shortName || String(props.id)}
     </button>
   );

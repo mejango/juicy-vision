@@ -4,6 +4,7 @@
  */
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
+import { chainMarks } from '../../test/test-utils'
 import { MemoryRouter } from 'react-router-dom'
 import ActivityItem from './ActivityItem'
 import type { ActivityEvent } from '../../services/bendystraw/client'
@@ -44,5 +45,25 @@ describe('ActivityItem project link', () => {
     // Clicking elsewhere in the row still queues the chat prompt.
     fireEvent.click(screen.getByText(/JuiceboxDAO/).closest('div')!.parentElement!)
     expect(onProjectClick).toHaveBeenCalledOnce()
+  })
+
+  it('shows the chain mark inside the tinted chain badge', () => {
+    const payEvent = {
+      ...EVENT,
+      type: 'pay',
+      amount: '1000000000000000000',
+      txHash: '0xabc',
+      from: '0x1111111111111111111111111111111111111111',
+    } as unknown as ActivityEvent
+
+    render(
+      <MemoryRouter>
+        <ActivityItem event={payEvent} />
+      </MemoryRouter>,
+    )
+
+    const badge = screen.getByText('ETH')
+    expect(badge).toHaveAttribute('style', expect.stringContaining('background-color'))
+    expect(chainMarks(badge)).toHaveLength(1)
   })
 })

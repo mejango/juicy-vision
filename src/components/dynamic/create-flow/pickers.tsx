@@ -6,6 +6,7 @@
 
 import { useRef, useState, type ReactNode } from 'react'
 import { CHAINS } from '../../../constants'
+import ChainLogo from '../../ui/ChainLogo'
 import type { CreateFlowState, RecipientRow } from './state'
 import {
   CurrencySelect, EnsAddressInput, Hint, InfoNote, NumberInput, Select, TextInput, useIsDark,
@@ -199,6 +200,7 @@ export function PerChainControl(props: {
     <div className={`mt-2 border p-2 ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
       {props.state.chainIds.map((chainId) => (
         <div key={chainId} className="flex items-center gap-2 mb-1.5">
+          <ChainLogo chainId={chainId} size={14} />
           <span className={`text-xs w-20 shrink-0 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
             {CHAINS[chainId]?.shortName || chainId}
           </span>
@@ -310,6 +312,7 @@ export function PerChainPayoutRowControl(props: {
     <div className={`mt-2 border p-2 ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
       {props.state.chainIds.map((chainId) => (
         <div key={chainId} className="flex items-center gap-2 mb-1.5 flex-wrap">
+          <ChainLogo chainId={chainId} size={14} />
           <span className={`text-xs w-20 shrink-0 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
             {CHAINS[chainId]?.shortName || chainId}
           </span>

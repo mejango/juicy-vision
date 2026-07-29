@@ -9,6 +9,7 @@ import { useAuthStore } from '../../stores/authStore'
 import { useManagedWallet } from '../../hooks'
 import { CHAINS } from '../../constants'
 import { IpfsImage } from '../ui/IpfsMedia'
+import ChainLogo from '../ui/ChainLogo'
 import {
   getOwnerConversations,
   getSupporterConversations,
@@ -605,9 +606,10 @@ export default function ChatHistorySidebar({ isOpen, onClose, currentChatId }: C
                                 }`}>
                                   {project.name || `Project #${project.projectId}`}
                                 </span>
-                                <span className={`text-xs shrink-0 px-1.5 py-0.5 rounded ${
+                                <span className={`inline-flex items-center gap-1.5 text-xs shrink-0 px-1.5 py-0.5 rounded ${
                                   theme === 'dark' ? 'bg-white/10 text-gray-400' : 'bg-gray-100 text-gray-500'
                                 }`}>
+                                  <ChainLogo chainId={project.chainId} size={14} />
                                   {CHAINS[project.chainId as keyof typeof CHAINS]?.name || `Chain ${project.chainId}`}
                                 </span>
                               </div>

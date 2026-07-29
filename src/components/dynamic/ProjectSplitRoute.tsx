@@ -4,6 +4,7 @@ import { fetchConnectedChains, fetchProject, type ConnectedChain, type Project }
 import { ProjectLink } from './ProjectLink'
 import { getSafetyPublicClient } from '../../utils/transactionSafety'
 import { requireRecognizedRuntimeSplitHook } from '../../utils/projectTrust'
+import ChainLogo from '../ui/ChainLogo'
 
 const CHAIN_SLUGS: Record<number, string> = {
   1: 'eth',
@@ -136,7 +137,11 @@ export function ProjectSplitRoute({
               projectId={connected.projectId}
               className="hover:underline"
             >
-              {CHAIN_NAMES[connected.chainId] || `Chain ${connected.chainId}`} · #{connected.projectId}
+              <span className="inline-flex items-center gap-1">
+                <ChainLogo chainId={connected.chainId} size={12} />
+                {CHAIN_NAMES[connected.chainId] || `Chain ${connected.chainId}`}
+              </span>
+              {` · #${connected.projectId}`}
             </ProjectLink>
           ))}
         </div>

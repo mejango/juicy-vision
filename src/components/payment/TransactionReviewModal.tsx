@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { decodeFunctionData, formatEther, toFunctionSelector, type AbiFunction } from 'viem'
 import { ALL_VIEM_CHAINS } from '../../constants/chains'
 import DialogShell from '../ui/DialogShell'
+import ChainLogo from '../ui/ChainLogo'
 import { useThemeStore } from '../../stores'
 import { getAddressLabel } from '../../utils/technicalDetails'
 import {
@@ -54,7 +55,10 @@ function PrettyCall({ call, index, total, isDark }: {
     <section className={`border p-4 ${isDark ? 'border-white/15 bg-white/5' : 'border-gray-200 bg-gray-50'}`}>
       <div className={`flex flex-wrap justify-between gap-2 text-[11px] uppercase ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
         <span>{total > 1 ? `Call ${index + 1} of ${total}` : 'Exact call'}</span>
-        <span>{chainName} · {call.chainId}</span>
+        <span className="inline-flex items-center gap-1">
+          <ChainLogo chainId={call.chainId} size={12} />
+          {chainName} · {call.chainId}
+        </span>
       </div>
       {call.label && <h3 className="mt-3 text-sm font-semibold">{call.label}</h3>}
       <dl className="mt-3 space-y-3 text-xs">

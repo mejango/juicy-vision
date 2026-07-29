@@ -10,6 +10,7 @@ import { isUsdcCurrency } from '../../utils/technicalDetails'
 import { truncateAddress } from '../../utils'
 import { CHAINS, MAINNET_CHAINS } from '../../constants'
 import NFTTierCard from './NFTTierCard'
+import ChainLogo from '../ui/ChainLogo'
 import { CustomersSubtab } from '../project/shop/CustomersSubtab'
 
 type ShopSubtab = 'inventory' | 'customers'
@@ -232,6 +233,7 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
             isDark ? 'bg-white/10 text-gray-300 hover:bg-white/20' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
           }`}
         >
+          <ChainLogo chainId={selectedChainIdNum} size={14} />
           {selectedChainInfo?.shortName ?? `Chain ${selectedChainIdNum}`}
           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -257,7 +259,7 @@ export default function ShopTab({ projectId, chainId, isOwner, isRevnet, connect
                       : isDark ? 'text-gray-300 hover:bg-white/5' : 'text-gray-600 hover:bg-gray-50'
                   }`}
                 >
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: info.color }} />
+                  <ChainLogo chainId={chain.chainId} size={14} />
                   {info.name}
                 </button>
               )

@@ -30,6 +30,7 @@ import { CHAINS, MAINNET_CHAINS } from '../../constants'
 import { ChainMappingWarning } from './ChainMappingWarning'
 import { ProjectSplitRoute } from './ProjectSplitRoute'
 import { resolveSplitEnsNames } from './resolveSplitEnsNames'
+import ChainLogo from '../ui/ChainLogo'
 
 interface FundsSectionProps {
   projectId: string
@@ -301,10 +302,7 @@ function PerChainBreakdown({
             const pbSymbol = pb.symbol ?? defaultSymbol
             return (
               <div key={pb.chainId} className="flex items-center gap-3">
-                <span
-                  className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                  style={{ backgroundColor: chainInfo.color }}
-                />
+                <ChainLogo chainId={pb.chainId} size={14} />
                 <span className={`text-xs w-10 ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
                   {chainInfo.shortName}
                 </span>
@@ -349,10 +347,7 @@ function PayoutSplitsBreakdown({
             return (
               <div key={cd.chainId}>
                 <div className="flex items-center gap-2 mb-1">
-                  <span
-                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: chainInfo.color }}
-                  />
+                  <ChainLogo chainId={cd.chainId} size={14} />
                   <span className={`text-xs font-medium ${isDark ? 'text-gray-300' : 'text-gray-600'}`}>
                     {chainInfo.shortName}
                   </span>

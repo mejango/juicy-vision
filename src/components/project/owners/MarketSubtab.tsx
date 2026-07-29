@@ -34,6 +34,7 @@ import {
 } from 'recharts'
 import { useThemeStore } from '../../../stores'
 import { CHAINS } from '../../../constants'
+import ChainLogo from '../../ui/ChainLogo'
 import { ExplainerMessage } from '../../ui/ExplainerMessage'
 import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import type { GuardedTxPhase } from '../../../services/projectTx'
@@ -471,7 +472,12 @@ function SplitHookChainBlock({
   if (!row.state) {
     return (
       <div className={`border-t pt-2 ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
-        <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{chainName}</div>
+        <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+          <span className="inline-flex items-center gap-1.5">
+            <ChainLogo chainId={row.chainId} size={14} />
+            {chainName}
+          </span>
+        </div>
         <p className={`text-sm ${mutedText}`}>Could not read the split hook on {chainName}.</p>
       </div>
     )
@@ -563,7 +569,12 @@ function SplitHookChainBlock({
 
   return (
     <div className={`border-t pt-2 ${isDark ? 'border-white/10' : 'border-gray-100'}`}>
-      <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>{chainName}</div>
+      <div className={`text-xs font-medium mb-1 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+        <span className="inline-flex items-center gap-1.5">
+          <ChainLogo chainId={row.chainId} size={14} />
+          {chainName}
+        </span>
+      </div>
       {kv('Pool', state.hasPool ? 'Deployed' : 'Not deployed yet')}
       {kv(`Accumulated ${symbol}`, formatBalance(state.accumulated, 18, symbol))}
       {state.hasPool && state.tokenId > 0n

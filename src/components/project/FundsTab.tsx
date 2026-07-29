@@ -19,6 +19,7 @@ import {
 } from '../../services/fundsSnapshot'
 import { resolveProjectChains } from '../../utils/projectChains'
 import { truncateAddress } from '../../utils/ens'
+import ChainLogo from '../ui/ChainLogo'
 import { ExplainerMessage } from '../ui/ExplainerMessage'
 import { ChainMappingWarning } from '../dynamic/ChainMappingWarning'
 import { ProjectSplitRoute } from '../dynamic/ProjectSplitRoute'
@@ -49,10 +50,9 @@ function chainName(chainId: number): string {
 }
 
 function ChainCell({ chainId, isDark }: { chainId: number; isDark: boolean }) {
-  const info = CHAINS[chainId]
   return (
-    <span className="flex items-center gap-2 whitespace-nowrap">
-      {info && <span className="w-1.5 h-1.5 flex-shrink-0" style={{ backgroundColor: info.color }} />}
+    <span className="flex items-center gap-1.5 whitespace-nowrap">
+      <ChainLogo chainId={chainId} size={14} />
       <span className={isDark ? 'text-gray-300' : 'text-gray-700'}>{chainName(chainId)}</span>
     </span>
   )
