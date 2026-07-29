@@ -3,12 +3,8 @@
  * website/src/discover.js renderBackOfficeSection (:10577).
  *
  * Card order (website parity):
- *   revnet:  Account → [Safe queue — deferred] → Edits → Buyback & swap router → Permissions
- *   custom:  Account → [Safe queue — deferred] → Edits → Powers → Buyback & swap router → Permissions
- *
- * The "Pending Multisig Transactions" (Safe queue/sign/execute) cards are
- * DEFERRED — they need the Safe transaction-service integration. Placeholders
- * are marked below where they slot in.
+ *   revnet:  Account → Safe queue → Edits → Buyback & swap router → Permissions
+ *   custom:  Account → Safe queue → Edits → Powers → Buyback & swap router → Permissions
  *
  * Edits rows re-open the existing edit flows owned by the dashboard
  * (project metadata / token rename / splits) via the onEdit* props.
@@ -23,6 +19,7 @@ import { PermissionsCard } from './backoffice/PermissionsCard'
 import { PowersCard } from './backoffice/PowersCard'
 import { BuybackRouterCard } from './backoffice/BuybackRouterCard'
 import { BackOfficeCard } from './backoffice/shared'
+import { SafeQueueCards } from './backoffice/SafeQueueCards'
 
 export interface BackOfficeTabProps {
   project: Project
@@ -126,10 +123,12 @@ export default function BackOfficeTab({
       {/* 1. Account — who controls the project on each chain. */}
       <AccountCard resolveProjectId={resolveProjectId} chainIds={resolvedChainIds} isRevnet={isRevnet} />
 
-      {/* 2. Pending Multisig Transactions (Safe queue) — DEFERRED.
-          Website: renderPendingSafeTxsCard / renderRevnetPendingSafeTxs slot
-          here (revnet: one card per operator Safe; custom: one card when the
-          owner is a Safe). Needs the Safe transaction-service integration. */}
+      {/* 2. Pending Multisig Transactions — one queue per controlling Safe/chain. */}
+      <SafeQueueCards
+        resolveProjectId={resolveProjectId}
+        chainIds={resolvedChainIds}
+        isRevnet={isRevnet}
+      />
 
       {/* 3. Edits — everyday flows mirrored from their home surfaces. */}
       <EditsCard rows={editRows} isDark={isDark} />

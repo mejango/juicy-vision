@@ -666,27 +666,25 @@ export default function ProjectCard({
   const selectedPaymentOption = paymentTokenOptions.find(
     (option) => option.symbol === selectedToken,
   );
-  // Add-to-balance works for any onchain currency — including a swap-via-router token
-  // (the router swaps it into the accepted token, then adds it to the balance).
-  // Add-to-balance is direct-token-only: juicy's executor rejects routed
-  // add-to-balance (executeAddToBalanceTransaction requires a directly accepted
-  // accounting token). Offering it for routed tokens would be a broken button —
-  // TODO(parity): enable once the executor supports routed add-to-balance.
-  const canContributeOnly =
+  // Routed add-to-balance has no minimum-output argument, so every client
+  // refuses that unbounded swap. Keep the action menu available so the UI can
+  // explain the limitation and point to a directly accepted token.
+  const canSelectPaymentMode =
     selectedToken !== "PAY_CREDITS" &&
-    selectedPaymentOption?.route === "direct" &&
     selectedTierIds.length === 0;
-  const addsToBalance = contributionOnly && canContributeOnly;
+  const canAddToBalance =
+    canSelectPaymentMode && selectedPaymentOption?.route === "direct";
+  const addsToBalance = contributionOnly && canAddToBalance;
   // First directly-accepted token — the currency a swap-via-router top-up lands in.
   const acceptedDirectOption = paymentTokenOptions.find(
     (option) => option.route === "direct",
   );
   useEffect(() => {
-    if (!canContributeOnly) {
+    if (!canAddToBalance) {
       setContributionOnly(false);
       setActionDropdownOpen(false);
     }
-  }, [canContributeOnly]);
+  }, [canAddToBalance]);
   // Cache for on-chain metadata (productName, categoryName) by tierId
   const [tierMetadata, setTierMetadata] = useState<
     Record<number, OnChainTierMetadata>
@@ -2392,19 +2390,19 @@ export default function ProjectCard({
           <button
             type="button"
             aria-label={`Payment action: ${addsToBalance ? "Add to balance" : "Pay"}`}
-            aria-haspopup={canContributeOnly ? "menu" : undefined}
-            aria-expanded={canContributeOnly ? actionDropdownOpen : undefined}
+            aria-haspopup={canSelectPaymentMode ? "menu" : undefined}
+            aria-expanded={canSelectPaymentMode ? actionDropdownOpen : undefined}
             onClick={() => {
-              if (isPaymentLocked || !canContributeOnly) return;
+              if (isPaymentLocked || !canSelectPaymentMode) return;
               setActionDropdownOpen(!actionDropdownOpen);
               setChainDropdownOpen(false);
               setTokenDropdownOpen(false);
             }}
-            disabled={Boolean(isPaymentLocked) || !canContributeOnly}
+            disabled={Boolean(isPaymentLocked) || !canSelectPaymentMode}
             className={`flex items-center gap-1 font-semibold underline underline-offset-2 ${selectorColor} ${disabledColor}`}
           >
             {addsToBalance ? "Add to balance" : "Pay"}
-            {canContributeOnly && (
+            {canSelectPaymentMode && (
               <svg
                 className={`h-3 w-3 transition-transform ${actionDropdownOpen ? "rotate-180" : ""}`}
                 fill="none"
@@ -2420,20 +2418,29 @@ export default function ProjectCard({
               </svg>
             )}
           </button>
-          {actionDropdownOpen && canContributeOnly && (
+          {actionDropdownOpen && canSelectPaymentMode && (
             <div
               className={`absolute left-0 top-full z-30 mt-1 min-w-[170px] border py-1 shadow-lg ${isDark ? "border-white/10 bg-juice-dark" : "border-gray-200 bg-white"}`}
               role="menu"
             >
               {[
-                { label: "Pay", contributionOnly: false },
-                { label: "Add to balance", contributionOnly: true },
+                { label: "Pay", contributionOnly: false, disabled: false },
+                {
+                  label:
+                    selectedPaymentOption?.route === "routed"
+                      ? `Add to balance · select ${acceptedDirectOption?.label ?? "a direct token"}`
+                      : "Add to balance",
+                  contributionOnly: true,
+                  disabled: !canAddToBalance,
+                },
               ].map((option) => (
                 <button
                   key={option.label}
                   type="button"
                   role="menuitem"
+                  disabled={option.disabled}
                   onClick={() => {
+                    if (option.disabled) return;
                     setContributionOnly(option.contributionOnly);
                     setActionDropdownOpen(false);
                   }}
@@ -2442,6 +2449,10 @@ export default function ProjectCard({
                       ? isDark
                         ? "bg-white/10 text-white"
                         : "bg-gray-100 text-gray-900"
+                      : option.disabled
+                        ? isDark
+                          ? "cursor-not-allowed text-gray-600"
+                          : "cursor-not-allowed text-gray-400"
                       : isDark
                         ? "text-gray-300 hover:bg-white/5"
                         : "text-gray-700 hover:bg-gray-50"
