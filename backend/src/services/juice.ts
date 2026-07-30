@@ -23,7 +23,7 @@ import {
   isAddressEqual,
 } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { arbitrum, base, mainnet, optimism } from 'viem/chains';
+import { arbitrum, base, mainnet, optimism } from '../constants/chains.ts';
 import { CONTRACTS, NATIVE_TOKEN as SHARED_NATIVE_TOKEN } from '@shared/chains.ts';
 import { resolvePayPreviewOutcome, TERMINAL_PREVIEW_PAY_ABI } from '@shared/terminalPreview.ts';
 import { fetchPrimaryTerminal, getPublicClient } from './chainReader.ts';

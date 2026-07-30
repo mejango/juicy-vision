@@ -1,8 +1,17 @@
 import { createConfig, http, fallback, custom, type Config } from 'wagmi'
-import { mainnet, optimism, base, arbitrum, sepolia, optimismSepolia, baseSepolia, arbitrumSepolia } from 'viem/chains'
 import { injected, walletConnect, safe } from 'wagmi/connectors'
 import { IS_TESTNET, IS_LOCAL_ONLY_BROWSER_TEST, CHAIN_IDS } from './environment'
-import { RPC_ENDPOINTS } from '../constants/chains'
+import {
+  RPC_ENDPOINTS,
+  arbitrum,
+  arbitrumSepolia,
+  base,
+  baseSepolia,
+  mainnet,
+  optimism,
+  optimismSepolia,
+  sepolia,
+} from '../constants/chains'
 
 const walletConnectProjectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 'juicy-vision'
 

@@ -22,7 +22,7 @@ import {
   optimism,
   optimismSepolia,
   sepolia,
-} from 'viem/chains';
+} from '../constants/chains.ts';
 import {
   CANONICAL_USDC_BY_CHAIN,
   CONTRACTS,

@@ -1,4 +1,5 @@
-import { mainnet, optimism, base, arbitrum, sepolia, optimismSepolia, baseSepolia, arbitrumSepolia } from 'viem/chains'
+import { JB_CHAINS, type JBChainId } from '@bananapus/nana-sdk-core'
+import type { Chain } from 'viem'
 import { IS_TESTNET, IS_LOCAL_ONLY_BROWSER_TEST, CHAIN_IDS } from '../config/environment'
 import {
   CONTRACTS,
@@ -11,6 +12,23 @@ import {
 // CHAIN CONFIGURATION
 // =============================================================================
 // Environment-aware chain configuration. Uses Sepolia testnets when IS_TESTNET is true.
+
+type SupportedChain<ChainId extends JBChainId> = Chain & { id: ChainId }
+
+function supportedChain<const ChainId extends JBChainId>(
+  chainId: ChainId,
+): SupportedChain<ChainId> {
+  return JB_CHAINS[chainId].chain as SupportedChain<ChainId>
+}
+
+export const mainnet = supportedChain(1)
+export const optimism = supportedChain(10)
+export const arbitrum = supportedChain(42161)
+export const base = supportedChain(8453)
+export const sepolia = supportedChain(11155111)
+export const optimismSepolia = supportedChain(11155420)
+export const arbitrumSepolia = supportedChain(421614)
+export const baseSepolia = supportedChain(84532)
 
 // Mainnet chain IDs (always available, even in staging mode for cross-network queries)
 export const MAINNET_CHAIN_IDS = {

@@ -31,7 +31,7 @@ import {
   unpinChat as unpinChatInDb,
 } from './chatCategorization.ts';
 import { type Address, createPublicClient, http, parseUnits } from 'viem';
-import { arbitrum, base, mainnet, optimism } from 'viem/chains';
+import { arbitrum, base, mainnet, optimism } from '../constants/chains.ts';
 import { getIdentityByAddress } from './identity.ts';
 
 // ============================================================================

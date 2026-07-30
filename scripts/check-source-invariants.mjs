@@ -71,6 +71,17 @@ function sourceFiles(root) {
   return files
 }
 
+for (const path of [...sourceFiles('src'), ...sourceFiles('backend/src')]) {
+  if (
+    !/\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path) &&
+    /from\s+['"]viem\/chains['"]/.test(read(path))
+  ) {
+    failures.push(
+      `${path}: production code must use the SDK's supported chain definitions, not the all-chain viem barrel`,
+    )
+  }
+}
+
 for (const path of ['Dockerfile.frontend', 'backend/Dockerfile', 'backend/src/db/Dockerfile.postgres']) {
   const references = [...read(path).matchAll(/^FROM\s+(\S+)/gm)].map(match => match[1])
   if (references.length === 0) failures.push(`${path}: expected at least one container base image`)

@@ -1,6 +1,6 @@
 // Uniswap V3 service for pool discovery and price history
 import { createPublicClient, http, type Address } from 'viem'
-import { mainnet, optimism, arbitrum, base } from 'viem/chains'
+import { arbitrum, base, mainnet, optimism } from '../../constants/chains'
 
 // Subgraph IDs per chain (from The Graph - matching revnet-app)
 const UNISWAP_SUBGRAPH_IDS: Record<number, string> = {

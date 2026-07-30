@@ -1,5 +1,5 @@
 import { createPublicClient, http, getAddress } from 'viem'
-import { mainnet } from 'viem/chains'
+import { mainnet } from '../constants/chains'
 import { STORAGE_KEYS } from '../constants'
 import { IS_LOCAL_ONLY_BROWSER_TEST } from '../config/environment'
 

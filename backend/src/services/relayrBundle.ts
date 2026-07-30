@@ -29,7 +29,7 @@ import {
   optimism,
   optimismSepolia,
   sepolia,
-} from 'viem/chains';
+} from '../constants/chains.ts';
 import { getConfig } from '../utils/config.ts';
 import { logger } from '../utils/logger.ts';
 import { createHash } from 'node:crypto';

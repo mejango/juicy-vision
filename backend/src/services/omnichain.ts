@@ -7,7 +7,7 @@
  */
 
 import { type Address, type Chain, createPublicClient, formatUnits, http, zeroAddress } from 'viem';
-import { arbitrum, base, mainnet, optimism } from 'viem/chains';
+import { arbitrum, base, mainnet, optimism } from '../constants/chains.ts';
 import { CONTRACTS } from '@shared/chains.ts';
 import { logger } from '../utils/logger.ts';
 import { getConfig } from '../utils/config.ts';

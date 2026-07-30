@@ -1,6 +1,6 @@
 import { type Address, createPublicClient, http } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
-import { arbitrum, base, mainnet, optimism } from 'viem/chains';
+import { arbitrum, base, mainnet, optimism } from '../constants/chains.ts';
 import { CANONICAL_USDC_BY_CHAIN } from '@shared/chains.ts';
 import { execute, query } from '../db/index.ts';
 import { getConfig } from '../utils/config.ts';
