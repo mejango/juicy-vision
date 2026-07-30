@@ -1,6 +1,11 @@
 import { GraphQLClient, type RequestDocument, type Variables } from '../graphqlClient'
 import { createPublicClient, erc20Abi, http, isAddress } from 'viem'
-import type { JBChainId } from '@bananapus/nana-sdk-core'
+import {
+  bendystrawProjectRefsFilter as projectRefsWhere,
+  matchesBendystrawProjectRef as matchesProjectRef,
+  type BendystrawProjectRef,
+  type JBChainId,
+} from '@bananapus/nana-sdk-core'
 import { tokenCurrencyId } from '@bananapus/nana-sdk-core/v6'
 import { useSettingsStore, useDebugStore } from '../../stores'
 import { VIEM_CHAINS, ZERO_ADDRESS, REV_OWNER, JB_CONTRACTS, JB_ROUTER_TERMINAL, JB_ROUTER_TERMINAL_REGISTRY, RPC_ENDPOINTS, USDC_ADDRESSES, MAINNET_VIEM_CHAINS, MAINNET_RPC_ENDPOINTS, NATIVE_TOKEN, type SupportedChainId } from '../../constants'
@@ -21,6 +26,8 @@ import {
   type TokenHoldingRow,
   type NftHoldingRow,
 } from './accountHoldings'
+
+type VersionedProjectRef = Required<BendystrawProjectRef>
 
 // Mainnet chain IDs - used to detect when to route to mainnet API in staging
 const MAINNET_CHAIN_IDS = [1, 10, 8453, 42161] as const
@@ -331,8 +338,12 @@ function getClient(options?: { network?: 'mainnet' }): GraphQLClient {
     const params = options?.network ? `?network=${options.network}` : ''
     return new GraphQLClient(`${apiUrl}/proxy/bendystraw${params}`)
   }
-  // Fallback to direct endpoint (requires user to configure in settings)
-  const endpoint = useSettingsStore.getState().bendystrawEndpoint
+  // In testnet builds, mainnet account/project reads must still hit the
+  // mainnet indexer. The old direct-mode fallback ignored this option and
+  // silently queried the testnet schema for mainnet chain IDs.
+  const endpoint = options?.network === 'mainnet'
+    ? 'https://bendystraw.xyz/graphql'
+    : useSettingsStore.getState().bendystrawEndpoint
   return new GraphQLClient(endpoint)
 }
 
@@ -1229,11 +1240,14 @@ export async function fetchAccountTokenHoldings(
 export async function fetchAccountNftHoldings(
   address: string
 ): Promise<HoldingsPage<NftHoldingRow>> {
-  const items: NftHoldingRow[] = []
+  type IndexedNftHoldingRow = Omit<NftHoldingRow, 'hook'> & {
+    hook: { address?: unknown } | null
+  }
+  const items: IndexedNftHoldingRow[] = []
   let totalCount = 0
   do {
     const data = await safeRequest<{
-      nfts: { totalCount?: number; items: NftHoldingRow[] }
+      nfts: { totalCount?: number; items: IndexedNftHoldingRow[] }
     }>(ACCOUNT_NFTS_QUERY, {
       owner: address.toLowerCase(),
       limit: ACCOUNT_HOLDINGS_PAGE_SIZE,
@@ -1244,7 +1258,16 @@ export async function fetchAccountNftHoldings(
     items.push(...page)
     if (!page.length) break
   } while (items.length < totalCount)
-  return { rows: dedupeNftHoldings(items), totalCount, truncated: false }
+  const normalized = items.flatMap((item): NftHoldingRow[] => {
+    const hook = item.hook?.address
+    if (typeof hook !== 'string' || !isAddress(hook, { strict: false })) return []
+    return [{ ...item, hook }]
+  })
+  return {
+    rows: dedupeNftHoldings(normalized),
+    totalCount,
+    truncated: normalized.length < totalCount,
+  }
 }
 
 // Read the holder's current claimed-token plus credit balance from JBTokens.
@@ -2412,9 +2435,16 @@ export async function fetchOwnersCount(
           items: Array<{ address: string; chainId: number; balance: string }>
         }
       }>(TOKEN_HOLDERS_QUERY, {
-        projectId: parseInt(projectId),
-        chainIds: [chainId],
-        version,
+        where: {
+          AND: [
+            projectRefsWhere([{
+              chainId,
+              projectId: parseInt(projectId),
+              version,
+            }]),
+            { balance_gt: '0' },
+          ],
+        },
         limit: 1,
         offset: 0,
       })
@@ -4135,9 +4165,9 @@ function parseParticipantPage(
 
 async function fetchAllParticipantRows(
   client: ReturnType<typeof getClient>,
-  projectId: number,
-  chainIds: number[],
+  refs: VersionedProjectRef[],
 ): Promise<Array<{ address: string; chainId: number; balance: string; volumeUsd: string }>> {
+  const chainIds = refs.map(ref => ref.chainId)
   const expectedChains = new Set(chainIds)
   const items: Array<{ address: string; chainId: number; balance: string; volumeUsd: string }> = []
   const seen = new Set<string>()
@@ -4148,15 +4178,30 @@ async function fetchAllParticipantRows(
     const data = await client.request<{
       participants: {
         totalCount: number
-        items: Array<{ address: string; chainId: number; balance: string; volumeUsd?: string }>
+        items: Array<{
+          address: string
+          chainId: number
+          projectId: number
+          version: number
+          balance: string
+          volumeUsd?: string
+        }>
       }
     }>(TOKEN_HOLDERS_QUERY, {
-      projectId,
-      chainIds,
-      version: 6,
+      where: {
+        AND: [
+          projectRefsWhere(refs),
+          { balance_gt: '0' },
+        ],
+      },
       limit: PARTICIPANT_QUERY_LIMIT,
       offset,
     })
+    for (const row of data.participants.items) {
+      if (!matchesProjectRef(row, refs)) {
+        throw new Error('Member data returned a row for the wrong deployment')
+      }
+    }
     const page = parseParticipantPage(data.participants, expectedChains)
     const totalCount = data.participants.totalCount
     if (expectedTotal == null) expectedTotal = totalCount
@@ -4213,9 +4258,9 @@ function aggregateParticipants(
   return { participants, totalSupply }
 }
 
-// Fetch participants from all connected chains and aggregate them. Match the
-// versioned `chainId_in` query used by website/; Bendystraw's singular chainId
-// participant filter returns an internal error for otherwise valid V6 projects.
+// Fetch participants from every exact connected deployment and aggregate them.
+// Project ids are chain-local, so the query uses explicit AND branches for
+// each (chainId, projectId, version) tuple.
 export async function fetchMultiChainParticipants(
   connectedChains: Array<{ chainId: number; projectId: number }>,
   limit: number = 100,
@@ -4235,18 +4280,14 @@ export async function fetchMultiChainParticipants(
   }
 
   try {
-    const chainsByProject = new Map<number, number[]>()
-    for (const { chainId, projectId } of connectedChains) {
-      const chainIds = chainsByProject.get(projectId) ?? []
-      chainIds.push(chainId)
-      chainsByProject.set(projectId, chainIds)
-    }
-
+    const refs = connectedChains.map(({ chainId, projectId }) => ({
+      chainId,
+      projectId,
+      version: 6,
+    }))
+    const client = getClient(getNetworkOption(refs[0].chainId))
     const [participantGroupsResult, suppliesResult] = await Promise.allSettled([
-      Promise.all([...chainsByProject.entries()].map(async ([projectId, chainIds]) => {
-        const client = getClient(getNetworkOption(chainIds[0]))
-        return fetchAllParticipantRows(client, projectId, chainIds)
-      })),
+      Promise.all([fetchAllParticipantRows(client, refs)]),
       Promise.all(connectedChains.map(async ({ chainId, projectId }) => {
         const supply = await fetchProjectTokenSupply(String(projectId), chainId)
         if (!isRawAmount(supply)) {
@@ -4325,7 +4366,6 @@ export async function fetchHoldersDistribution(
 ): Promise<HoldersDistribution> {
   if (connectedChains.length === 0) throw new Error('Member data unavailable: no verified project scope')
 
-  const chainsByProject = new Map<number, number[]>()
   const seenChains = new Set<number>()
   for (const { chainId, projectId } of connectedChains) {
     if (!Number.isSafeInteger(chainId) || chainId <= 0
@@ -4334,16 +4374,12 @@ export async function fetchHoldersDistribution(
       throw new Error('Member data unavailable: connected project mapping is invalid')
     }
     seenChains.add(chainId)
-    const list = chainsByProject.get(projectId) ?? []
-    list.push(chainId)
-    chainsByProject.set(projectId, list)
   }
 
   try {
-    const pages = await Promise.all([...chainsByProject.entries()].map(async ([projectId, chainIds]) => {
-      const client = getClient(getNetworkOption(chainIds[0]))
-      return fetchAllParticipantRows(client, projectId, chainIds)
-    }))
+    const refs = connectedChains.map(({ chainId, projectId }) => ({ chainId, projectId, version: 6 }))
+    const client = getClient(getNetworkOption(refs[0].chainId))
+    const pages = [await fetchAllParticipantRows(client, refs)]
 
     // Live supply per chain; a failure hides share %s (never treat indexed as 100%).
     const supplies = await Promise.all(connectedChains.map(async ({ chainId, projectId }) => {

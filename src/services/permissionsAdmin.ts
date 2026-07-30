@@ -218,6 +218,8 @@ export function canEditPermissions(isRevnet: boolean): boolean {
 
 export interface PermissionHolderItem {
   chainId: number
+  projectId?: number
+  version?: number
   account: string
   operator: string
   permissions: unknown[] | null
@@ -237,16 +239,16 @@ export const PERMISSION_HOLDERS_QUERY = `
   query PermissionHolders(
     $projectId: Int!
     $version: Int!
-    $chainIds: [Int!]
+    $chainId: Int!
     $limit: Int!
     $offset: Int!
   ) {
     permissionHolders(
-      where: { projectId: $projectId, version: $version, chainId_in: $chainIds }
+      where: { projectId: $projectId, version: $version, chainId: $chainId }
       limit: $limit
       offset: $offset
     ) {
-      items { chainId account operator permissions isRevnetOperator }
+      items { chainId projectId version account operator permissions isRevnetOperator }
       totalCount
     }
   }
@@ -356,13 +358,20 @@ export async function fetchPermissionOperators(
           {
             projectId: Number(cp.projectId),
             version: 6,
-            chainIds: [cp.chainId],
+            chainId: cp.chainId,
             limit: 250,
             offset: items.length,
           },
           getNetworkOption(cp.chainId),
         )
         const page = data.permissionHolders?.items ?? []
+        if (page.some(row =>
+          row.chainId !== cp.chainId ||
+          row.projectId !== Number(cp.projectId) ||
+          row.version !== 6
+        )) {
+          throw new Error('Bendystraw returned permissions for the wrong deployment')
+        }
         totalCount = data.permissionHolders?.totalCount ?? page.length
         items.push(...page)
         if (!page.length) break

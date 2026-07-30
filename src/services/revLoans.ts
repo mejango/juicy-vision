@@ -304,6 +304,8 @@ export interface IndexedLoan {
   /** On-chain loan id (revnetId * 1e18 + loanNumber). CHURNS on partial repay/reallocate. */
   id: string
   chainId: number
+  projectId: number
+  version: number
   borrowAmount: string
   collateral: string
   beneficiary: string
@@ -317,9 +319,9 @@ export interface IndexedLoan {
 }
 
 export const LOANS_QUERY = `
-  query Loans($projectId: Int!, $version: Int!, $chainIds: [Int!], $limit: Int!, $offset: Int!) {
+  query Loans($projectId: Int!, $chainId: Int!, $version: Int!, $limit: Int!, $offset: Int!) {
     loans(
-      where: { projectId: $projectId, version: $version, chainId_in: $chainIds }
+      where: { projectId: $projectId, chainId: $chainId, version: $version }
       orderBy: "createdAt"
       orderDirection: "desc"
       limit: $limit
@@ -328,6 +330,8 @@ export const LOANS_QUERY = `
       items {
         id
         chainId
+        projectId
+        version
         borrowAmount
         collateral
         beneficiary
@@ -374,11 +378,14 @@ export async function fetchProjectLoans(chainProjects: ReadonlyArray<LoanChainPr
         const data = await safeRequest<LoansResponse>(LOANS_QUERY, {
           projectId: pid,
           version: 6,
-          chainIds: [chainId],
+          chainId,
           limit: LOANS_PAGE_SIZE,
           offset: rows.length,
         }, getNetworkOption(chainId))
         const page = data.loans?.items || []
+        if (page.some(row => row.chainId !== chainId || row.projectId !== pid || row.version !== 6)) {
+          throw new Error('Bendystraw returned a loan for the wrong deployment')
+        }
         totalCount = data.loans?.totalCount ?? page.length
         rows.push(...page)
         if (!page.length) break

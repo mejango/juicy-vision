@@ -192,15 +192,14 @@ export default function ExtrasTab({
     try {
       setPayersError(false);
       const rows = await fetchProjectPayers(
-        parseInt(projectId),
-        chains.map((c) => c.chainId),
+        chains.map((c) => ({ chainId: c.chainId, projectId: c.projectId })),
       );
       setPayers(rows);
     } catch {
       setPayersError(true);
       setPayers(null);
     }
-  }, [projectId, chains]);
+  }, [chains]);
 
   useEffect(() => {
     loadPayers();

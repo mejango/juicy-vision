@@ -181,19 +181,12 @@ export const CONNECTED_CHAINS_QUERY = `
 // website/; its singular `chainId` filter currently fails at runtime.
 export const TOKEN_HOLDERS_QUERY = `
   query TokenHolders(
-    $projectId: Int!
-    $chainIds: [Int!]!
-    $version: Int!
+    $where: participantFilter!
     $limit: Int
     $offset: Int
   ) {
     participants(
-      where: {
-        projectId: $projectId
-        chainId_in: $chainIds
-        version: $version
-        balance_gt: "0"
-      }
+      where: $where
       limit: $limit
       offset: $offset
       orderBy: "balance"
@@ -203,6 +196,8 @@ export const TOKEN_HOLDERS_QUERY = `
       items {
         address
         chainId
+        projectId
+        version
         balance
         volume
         volumeUsd
@@ -693,7 +688,9 @@ export const ACCOUNT_NFTS_QUERY = `
       items {
         chainId
         projectId
-        hook
+        hook {
+          address
+        }
         tokenId
         tierId
       }

@@ -201,9 +201,15 @@ describe('describeLoanToken', () => {
 describe('fetchProjectLoans per-chain project id', () => {
   it('queries each chain with ITS OWN project id — never the home id off-home', async () => {
     // Divergent per-chain ids: #7 on chain 1 (home), #42 on chain 8453.
-    safeRequestMock.mockImplementation((_query: string, variables: { projectId: number; chainIds: number[] }) => ({
+    safeRequestMock.mockImplementation((_query: string, variables: { projectId: number; chainId: number }) => ({
       loans: {
-        items: [{ id: `${variables.chainIds[0]}-1`, chainId: variables.chainIds[0], createdAt: variables.chainIds[0] }],
+        items: [{
+          id: `${variables.chainId}-1`,
+          chainId: variables.chainId,
+          projectId: variables.projectId,
+          version: 6,
+          createdAt: variables.chainId,
+        }],
         totalCount: 1,
       },
     }))
@@ -213,15 +219,15 @@ describe('fetchProjectLoans per-chain project id', () => {
       { chainId: 8453, projectId: 42 },
     ])
 
-    const varsByChain = new Map<number, { projectId: number; chainIds: number[] }>()
+    const varsByChain = new Map<number, { projectId: number; chainId: number }>()
     for (const call of safeRequestMock.mock.calls) {
-      const vars = call[1] as { projectId: number; chainIds: number[] }
-      varsByChain.set(vars.chainIds[0], vars)
+      const vars = call[1] as { projectId: number; chainId: number }
+      varsByChain.set(vars.chainId, vars)
     }
     expect(varsByChain.get(1)?.projectId).toBe(7)
     expect(varsByChain.get(8453)?.projectId).toBe(42)
     // The off-home chain must be filtered to just its own chain, never lumped with home.
-    expect(varsByChain.get(8453)?.chainIds).toEqual([8453])
+    expect(varsByChain.get(8453)?.chainId).toBe(8453)
     // Both chains' loans are merged.
     expect(rows.map(row => row.chainId).sort()).toEqual([1, 8453])
   })

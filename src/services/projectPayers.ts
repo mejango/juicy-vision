@@ -35,6 +35,8 @@ export function getProjectPayerDeployer(chainId: number): `0x${string}` | null {
 
 export interface ProjectPayerRow {
   chainId: number
+  projectId: number
+  version: number
   address: string
   defaultAddToBalance: boolean
   defaultBeneficiary: string
@@ -49,9 +51,9 @@ export interface ProjectPayerRow {
 }
 
 export const PROJECT_PAYERS_QUERY = `
-  query ProjectPayers($projectId: Int!, $version: Int!, $chainIds: [Int!], $limit: Int!, $offset: Int!) {
+  query ProjectPayers($projectId: Int!, $chainId: Int!, $version: Int!, $limit: Int!, $offset: Int!) {
     projectPayers(
-      where: { projectId: $projectId, version: $version, chainId_in: $chainIds }
+      where: { projectId: $projectId, chainId: $chainId, version: $version }
       orderBy: "totalFacilitatedUsd"
       orderDirection: "desc"
       limit: $limit
@@ -59,6 +61,8 @@ export const PROJECT_PAYERS_QUERY = `
     ) {
       items {
         chainId
+        projectId
+        version
         address
         defaultAddToBalance
         defaultBeneficiary
@@ -81,24 +85,52 @@ interface ProjectPayersResponse {
 const PAGE_SIZE = 100
 
 /** Every indexed payer address for a project across its chains (V6 only). */
-export async function fetchProjectPayers(projectId: number, chainIds: number[]): Promise<ProjectPayerRow[]> {
-  if (!Number.isSafeInteger(projectId) || projectId < 1) throw new Error('Invalid project ID')
-  if (!chainIds.length) return []
-
-  const rows: ProjectPayerRow[] = []
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const data = await safeRequest<ProjectPayersResponse>(PROJECT_PAYERS_QUERY, {
-      projectId,
-      version: 6,
-      chainIds,
-      limit: PAGE_SIZE,
-      offset,
-    }, getNetworkOption(chainIds[0]))
-    const page = data.projectPayers?.items || []
-    rows.push(...page)
-    if (!page.length || rows.length >= (data.projectPayers?.totalCount ?? 0)) break
+export async function fetchProjectPayers(
+  chainProjects: ReadonlyArray<{ chainId: number; projectId: number }>,
+): Promise<ProjectPayerRow[]> {
+  const unique = new Map<string, { chainId: number; projectId: number }>()
+  for (const ref of chainProjects) {
+    if (!Number.isSafeInteger(ref.chainId) || ref.chainId < 1) throw new Error('Invalid chain ID')
+    if (!Number.isSafeInteger(ref.projectId) || ref.projectId < 1) throw new Error('Invalid project ID')
+    unique.set(`${ref.chainId}:${ref.projectId}`, ref)
   }
-  return rows
+
+  const pages = await Promise.all([...unique.values()].map(async ref => {
+    const rows: ProjectPayerRow[] = []
+    let expectedTotal: number | null = null
+    while (expectedTotal === null || rows.length < expectedTotal) {
+      const data = await safeRequest<ProjectPayersResponse>(PROJECT_PAYERS_QUERY, {
+        projectId: ref.projectId,
+        chainId: ref.chainId,
+        version: 6,
+        limit: PAGE_SIZE,
+        offset: rows.length,
+      }, getNetworkOption(ref.chainId))
+      const result = data.projectPayers
+      if (!result || !Array.isArray(result.items) || !Number.isSafeInteger(result.totalCount) || result.totalCount < 0) {
+        throw new Error('Indexed project payer data is incomplete')
+      }
+      if (expectedTotal !== null && result.totalCount !== expectedTotal) {
+        throw new Error('Indexed project payer data changed while loading')
+      }
+      expectedTotal = result.totalCount
+      if (!result.items.length && rows.length < expectedTotal) {
+        throw new Error('Indexed project payer data ended before its reported total')
+      }
+      for (const row of result.items) {
+        if (row.chainId !== ref.chainId || row.projectId !== ref.projectId || row.version !== 6) {
+          throw new Error('Bendystraw returned a project payer for the wrong deployment')
+        }
+        rows.push(row)
+      }
+    }
+    return rows
+  }))
+  return pages.flat().sort((a, b) => {
+    const left = BigInt(a.totalFacilitatedUsd)
+    const right = BigInt(b.totalFacilitatedUsd)
+    return left === right ? 0 : right > left ? 1 : -1
+  })
 }
 
 // ---------------------------------------------------------------------------

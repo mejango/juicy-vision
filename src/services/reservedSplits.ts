@@ -378,14 +378,21 @@ export async function readPendingReserved(projectId: number | string, chainId: n
   return defaultReadPending(String(projectId), chainId)
 }
 
-const RESERVED_DIST_QUERY = `query($projectId: Int!, $version: Int!, $chainIds: [Int!], $limit: Int!) {
-  sendReservedTokensToSplitsEvents(where: { projectId: $projectId, version: $version, chainId_in: $chainIds },
+const RESERVED_DIST_QUERY = `query($projectId: Int!, $chainId: Int!, $version: Int!, $limit: Int!) {
+  sendReservedTokensToSplitsEvents(where: { projectId: $projectId, chainId: $chainId, version: $version },
     orderBy: "timestamp", orderDirection: "desc", limit: $limit) {
-    items { tokenCount timestamp txHash chainId } } }`
+    items { tokenCount timestamp txHash chainId projectId version } } }`
 
 interface ReservedDistPage {
   sendReservedTokensToSplitsEvents: {
-    items: Array<{ tokenCount: string; timestamp: string | number; txHash: string; chainId: string | number }>
+    items: Array<{
+      tokenCount: string
+      timestamp: string | number
+      txHash: string
+      chainId: string | number
+      projectId: string | number
+      version: string | number
+    }>
   }
 }
 
@@ -402,23 +409,33 @@ export async function fetchReservedDistributions(
   // Per-chain project ids differ, so query each chain by its own id and merge —
   // a single projectId + chainId_in filter would read the wrong project off-home.
   const pages = await Promise.all(
-    chainProjects.map(cp =>
-      safeRequest<ReservedDistPage>(
+    chainProjects.map(async cp => ({
+      cp,
+      data: await safeRequest<ReservedDistPage>(
         RESERVED_DIST_QUERY,
-        { projectId: Number(cp.projectId), version: BENDYSTRAW_VERSION, chainIds: [cp.chainId], limit },
+        { projectId: Number(cp.projectId), chainId: cp.chainId, version: BENDYSTRAW_VERSION, limit },
         getNetworkOption(cp.chainId),
       ),
-    ),
+    })),
   )
-  const rows = pages.flatMap(data => {
+  const rows = pages.flatMap(({ cp, data }) => {
     const items = data?.sendReservedTokensToSplitsEvents?.items
     if (!Array.isArray(items)) return []
-    return items.map(item => ({
-      chainId: Number(item.chainId),
-      timestamp: Number(item.timestamp),
-      txHash: String(item.txHash),
-      tokenCount: BigInt(item.tokenCount || '0'),
-    }))
+    return items.map(item => {
+      if (
+        Number(item.chainId) !== cp.chainId ||
+        Number(item.projectId) !== Number(cp.projectId) ||
+        Number(item.version) !== BENDYSTRAW_VERSION
+      ) {
+        throw new Error('Bendystraw returned a reserved distribution for the wrong deployment')
+      }
+      return {
+        chainId: Number(item.chainId),
+        timestamp: Number(item.timestamp),
+        txHash: String(item.txHash),
+        tokenCount: BigInt(item.tokenCount || '0'),
+      }
+    })
   })
   return rows.sort((a, b) => b.timestamp - a.timestamp).slice(0, limit)
 }

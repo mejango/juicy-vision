@@ -190,7 +190,7 @@ describe('GraphQL Query Structure', () => {
     it('selects the hook — part of the token identity — plus the display fields', () => {
       expect(ACCOUNT_NFTS_QUERY).toContain('chainId')
       expect(ACCOUNT_NFTS_QUERY).toContain('projectId')
-      expect(ACCOUNT_NFTS_QUERY).toContain('hook')
+      expect(ACCOUNT_NFTS_QUERY).toMatch(/hook\s*\{\s*address\s*\}/)
       expect(ACCOUNT_NFTS_QUERY).toContain('tokenId')
       expect(ACCOUNT_NFTS_QUERY).toContain('tierId')
     })
@@ -249,15 +249,15 @@ describe('GraphQL Query Structure', () => {
       expect(TOKEN_HOLDERS_QUERY).toContain('query TokenHolders')
     })
 
-    it('filters for balance > 0', () => {
-      expect(TOKEN_HOLDERS_QUERY).toContain('balance_gt: "0"')
+    it('accepts the exact, positive-balance filter as a typed variable', () => {
+      expect(TOKEN_HOLDERS_QUERY).toContain('$where: participantFilter!')
+      expect(TOKEN_HOLDERS_QUERY).toContain('where: $where')
     })
 
     it('uses the working versioned multi-chain filter', () => {
-      expect(TOKEN_HOLDERS_QUERY).toContain('$chainIds: [Int!]!')
-      expect(TOKEN_HOLDERS_QUERY).toContain('chainId_in: $chainIds')
-      expect(TOKEN_HOLDERS_QUERY).toContain('version: $version')
-      expect(TOKEN_HOLDERS_QUERY).not.toMatch(/\bchainId:\s*\$chainId\b/)
+      expect(TOKEN_HOLDERS_QUERY).toContain('$where: participantFilter!')
+      expect(TOKEN_HOLDERS_QUERY).toContain('where: $where')
+      expect(TOKEN_HOLDERS_QUERY).not.toContain('chainId_in')
     })
 
     it('orders by balance descending', () => {
@@ -438,7 +438,6 @@ describe('Query Consistency', () => {
   it('all queries use consistent Int types for filter variables', () => {
     const queriesWithIntParams = [
       RECENT_PAY_EVENTS_QUERY,
-      TOKEN_HOLDERS_QUERY,
       PAY_EVENTS_HISTORY_QUERY,
       CASH_OUT_EVENTS_HISTORY_QUERY,
       REVNET_OPERATOR_QUERY,

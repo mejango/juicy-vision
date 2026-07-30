@@ -19,7 +19,10 @@ describe('GraphQLClient', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('/proxy/bendystraw', expect.objectContaining({
       method: 'POST',
-      credentials: 'same-origin',
+      headers: {
+        Accept: 'application/graphql-response+json, application/json',
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
         query: 'query Project($id: ID!) { project(id: $id) { id } }',
         variables: { id: '1' },
