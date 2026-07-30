@@ -2401,7 +2401,7 @@ export default function ProjectCard({
             disabled={Boolean(isPaymentLocked) || !canSelectPaymentMode}
             className={`flex items-center gap-1 font-semibold underline underline-offset-2 ${selectorColor} ${disabledColor}`}
           >
-            {addsToBalance ? "Add to balance" : "Pay"}
+            {addsToBalance ? "Add" : "Pay"}
             {canSelectPaymentMode && (
               <svg
                 className={`h-3 w-3 transition-transform ${actionDropdownOpen ? "rotate-180" : ""}`}
