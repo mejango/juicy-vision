@@ -423,17 +423,17 @@ export async function fetchReservedDistributions(
   return rows.sort((a, b) => b.timestamp - a.timestamp).slice(0, limit)
 }
 
-const AUTO_ISSUE_PAGE_LIMIT = 500
+const AUTO_ISSUE_PAGE_SIZE = 250
 
-const STORE_AUTO_ISSUANCE_QUERY = `query($projectId: Int!, $chainId: Int!, $version: Int!, $limit: Int!) {
+const STORE_AUTO_ISSUANCE_QUERY = `query($projectId: Int!, $chainId: Int!, $version: Int!, $limit: Int!, $offset: Int!) {
   storeAutoIssuanceAmountEvents(where: { projectId: $projectId, chainId: $chainId, version: $version },
-    orderBy: "timestamp", orderDirection: "desc", limit: $limit) {
-    items { timestamp txHash beneficiary stageId count } } }`
+    orderBy: "timestamp", orderDirection: "desc", limit: $limit, offset: $offset) {
+    items { timestamp txHash beneficiary stageId count } totalCount } }`
 
-const AUTO_ISSUE_EVENTS_QUERY = `query($projectId: Int!, $chainId: Int!, $version: Int!, $limit: Int!) {
+const AUTO_ISSUE_EVENTS_QUERY = `query($projectId: Int!, $chainId: Int!, $version: Int!, $limit: Int!, $offset: Int!) {
   autoIssueEvents(where: { projectId: $projectId, chainId: $chainId, version: $version },
-    orderBy: "timestamp", orderDirection: "desc", limit: $limit) {
-    items { timestamp txHash beneficiary stageId count } } }`
+    orderBy: "timestamp", orderDirection: "desc", limit: $limit, offset: $offset) {
+    items { timestamp txHash beneficiary stageId count } totalCount } }`
 
 interface AutoIssueEventsPage {
   [path: string]: {
@@ -444,6 +444,7 @@ interface AutoIssueEventsPage {
       stageId: string | number
       count: string
     }>
+    totalCount: number
   }
 }
 
@@ -454,13 +455,26 @@ async function fetchAutoIssueEvents(
   chainId: number,
 ) {
   const { safeRequest, getNetworkOption } = await import('./bendystraw/client')
-  const data = await safeRequest<AutoIssueEventsPage>(
-    query,
-    { projectId, chainId, version: BENDYSTRAW_VERSION, limit: AUTO_ISSUE_PAGE_LIMIT },
-    getNetworkOption(chainId),
-  )
-  const items = data?.[path]?.items
-  if (!Array.isArray(items)) throw new Error('Auto-issuance data is unavailable')
+  const items: AutoIssueEventsPage[string]['items'] = []
+  let totalCount = 0
+  do {
+    const data = await safeRequest<AutoIssueEventsPage>(
+      query,
+      {
+        projectId,
+        chainId,
+        version: BENDYSTRAW_VERSION,
+        limit: AUTO_ISSUE_PAGE_SIZE,
+        offset: items.length,
+      },
+      getNetworkOption(chainId),
+    )
+    const page = data?.[path]
+    if (!Array.isArray(page?.items)) throw new Error('Auto-issuance data is unavailable')
+    totalCount = page.totalCount ?? page.items.length
+    items.push(...page.items)
+    if (!page.items.length) break
+  } while (items.length < totalCount)
   return items
 }
 

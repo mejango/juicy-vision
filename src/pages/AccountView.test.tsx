@@ -448,8 +448,9 @@ describe('AccountView', () => {
     expect(screen.queryByTestId('in-flight-tx')).not.toBeInTheDocument()
   })
 
-  it('pages Load more by the from-branch consumed count, not the merged event count', async () => {
-    // Page 1: 25 from-branch rows plus 5 merged beneficiary rows (30 events).
+  it('pages Load more through the globally sorted sender and beneficiary feed', async () => {
+    // The service globally sorts every sender/beneficiary root before returning
+    // a 25-row window, so the component advances by the visible row count.
     const fromEvents = Array.from({ length: 25 }, (_, i) => ({
       id: `from-${i}`,
       chainId: 1,
@@ -469,8 +470,8 @@ describe('AccountView', () => {
       project: { projectId: 3, name: 'NANA', decimals: 18, currency: 1 },
     }))
     fetchAccountActivityEvents.mockResolvedValueOnce({
-      events: [...beneficiaryEvents, ...fromEvents],
-      fromCount: 25,
+      events: [...beneficiaryEvents, ...fromEvents].slice(0, 25),
+      totalCount: 31,
     })
     fetchAccountActivityEvents.mockResolvedValueOnce({
       events: [
@@ -484,22 +485,20 @@ describe('AccountView', () => {
           project: { projectId: 3, name: 'NANA', decimals: 18, currency: 1 },
         },
       ],
-      fromCount: 1,
+      totalCount: 31,
     })
 
     render(<AccountView address={OWNER} />)
-    expect(await screen.findAllByTestId('activity-item')).toHaveLength(30)
+    expect(await screen.findAllByTestId('activity-item')).toHaveLength(25)
 
     fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
     await waitFor(() =>
       expect(fetchAccountActivityEvents).toHaveBeenLastCalledWith(OWNER, {
         limit: 25,
-        // Offset advances by the 25 CONSUMED from-rows — not the 30 merged
-        // events — so no from-branch rows are skipped.
         offset: 25,
       })
     )
-    expect(await screen.findAllByTestId('activity-item')).toHaveLength(31)
+    expect(await screen.findAllByTestId('activity-item')).toHaveLength(26)
   })
 
   it('shows the credit/ERC-20 split alongside a holding total', async () => {

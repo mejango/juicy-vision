@@ -7,7 +7,7 @@
  *
  * "You"  = the connected wallet's owned items (per-item tally, thumbnailed),
  *          plus a Redeem link when the shop is configured for item cash outs.
- * "All"  = distinct customer count + items-sold total + ranked buyers (top 100),
+ * "All"  = distinct customer count + items-sold total + ranked buyers,
  *          each clickable: address → everything they own, item thumb → its owners.
  * "Recent purchases" = a bordered Item | Owner | When table (latest 25).
  *
@@ -149,6 +149,7 @@ export function CustomersSubtab({
   const [all, setAll] = useState<MintFetchResult | null>(null);
   const [allLoading, setAllLoading] = useState(false);
   const [allError, setAllError] = useState(false);
+  const [visibleCustomers, setVisibleCustomers] = useState(100);
 
   const [reloadNonce, setReloadNonce] = useState(0);
 
@@ -332,7 +333,7 @@ export function CustomersSubtab({
 
             {/* Ranked customers — address (→ everything they own) + item thumbs (→ that item's owners). */}
             <div className="overflow-x-auto">
-              {ranked.slice(0, 100).map((cust) => (
+              {ranked.slice(0, visibleCustomers).map((cust) => (
                 <div key={cust.address.toLowerCase()} className={rowClass}>
                   <button
                     type="button"
@@ -376,6 +377,15 @@ export function CustomersSubtab({
                 </div>
               ))}
             </div>
+            {visibleCustomers < ranked.length ? (
+              <button
+                type="button"
+                className={`mt-3 w-full border px-3 py-2 text-sm ${isDark ? "border-white/15 hover:bg-white/5" : "border-gray-200 hover:bg-gray-50"}`}
+                onClick={() => setVisibleCustomers((count) => count + 100)}
+              >
+                Load more customers ({ranked.length - visibleCustomers} remaining)
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>

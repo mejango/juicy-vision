@@ -235,7 +235,6 @@ export function sumAutoIssuanceByStage(
 // ---------------------------------------------------------------------------
 
 const AUTO_ISSUE_PAGE_SIZE = 100;
-const AUTO_ISSUE_MAX_EVENTS = 500;
 const BENDYSTRAW_VERSION = 6;
 
 const STORE_AUTO_ISSUANCE_QUERY = `query($projectId: Int!, $chainId: Int!, $version: Int!, $limit: Int!, $offset: Int!) {
@@ -279,7 +278,7 @@ async function fetchAutoIssuanceAllocations(
   const items: AutoIssuanceAllocation[] = [];
   let totalCount = 0;
   let offset = 0;
-  while (offset < AUTO_ISSUE_MAX_EVENTS) {
+  while (true) {
     const data = await client.request<StoreAutoIssuanceEventsPage>(
       STORE_AUTO_ISSUANCE_QUERY,
       {
@@ -304,8 +303,7 @@ async function fetchAutoIssuanceAllocations(
     }
     if (
       page.items.length === 0 ||
-      items.length >= totalCount ||
-      items.length >= AUTO_ISSUE_MAX_EVENTS
+      items.length >= totalCount
     )
       break;
     offset += page.items.length;

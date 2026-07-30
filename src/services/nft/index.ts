@@ -75,7 +75,7 @@ const HOOK_PAY_CREDITS_ABI = [{
   outputs: [{ name: '', type: 'uint256' }],
 }] as const
 
-const MAX_REVIEWABLE_TIER_ID = 1_000
+const TIER_PAGE_SIZE = 200
 
 // Raw JB721Tier tuple shape returned by the store's tiersOf/tierOf reads.
 interface JB721StoreTier {
@@ -161,27 +161,56 @@ function nftReadError(label: string, error: unknown): Error {
   return new Error(`${label} unavailable: ${detail}`)
 }
 
-async function completeTierReadSize(
+async function readAllActiveStoreTiers(
   client: Pick<PublicClient, 'readContract'>,
   storeAddress: `0x${string}`,
   hookAddress: `0x${string}`,
-  maxTiers: number,
-): Promise<bigint> {
-  if (!Number.isSafeInteger(maxTiers) || maxTiers < 1 || maxTiers > MAX_REVIEWABLE_TIER_ID) {
-    throw new Error(`Tier review limit must be between 1 and ${MAX_REVIEWABLE_TIER_ID}`)
-  }
+): Promise<JB721StoreTier[]> {
   const maxTierId = await client.readContract({
     address: storeAddress,
     abi: JB721TierStoreAbi,
     functionName: 'maxTierIdOf',
     args: [hookAddress],
   })
-  if (maxTierId > BigInt(maxTiers)) {
-    throw new Error(
-      `Collection has ${maxTierId} historical tier IDs; Juicy Vision safely reviews at most ${maxTiers}`,
-    )
+  if (maxTierId === 0n) return []
+
+  const tiers: JB721StoreTier[] = []
+  const seen = new Set<string>()
+  let startingId = 0n
+
+  for (;;) {
+    const raw = await client.readContract({
+      address: storeAddress,
+      abi: JB721TierStoreAbi,
+      functionName: 'tiersOf',
+      args: [
+        hookAddress,
+        [],
+        false,
+        startingId,
+        BigInt(startingId === 0n ? TIER_PAGE_SIZE : TIER_PAGE_SIZE + 1),
+      ],
+    })
+    const page = raw as readonly JB721StoreTier[]
+    if (page.length === 0) break
+    if (startingId !== 0n && BigInt(page[0].id) !== startingId) {
+      throw new Error('Tier inventory cursor changed while it was being read')
+    }
+    const fresh = startingId === 0n ? page : page.slice(1)
+    for (const tier of fresh) {
+      const id = BigInt(tier.id)
+      if (id < 1n || id > maxTierId || seen.has(id.toString())) {
+        throw new Error(`Tier store returned an invalid or duplicate tier ID: ${tier.id}`)
+      }
+      seen.add(id.toString())
+      tiers.push(tier)
+    }
+    if (fresh.length < TIER_PAGE_SIZE) break
+    const next = BigInt(fresh[fresh.length - 1].id)
+    if (next === startingId) throw new Error('Tier inventory returned a cyclic cursor')
+    startingId = next
   }
-  return maxTierId
+  return tiers
 }
 
 async function readPricingContext(
@@ -466,8 +495,7 @@ export async function get721ItemsCashOutEnabled(
  */
 export async function fetchNFTTiers(
   hookAddress: `0x${string}`,
-  chainId: number,
-  maxTiers: number = MAX_REVIEWABLE_TIER_ID
+  chainId: number
 ): Promise<NFTTier[]> {
   const { chain, rpcUrl } = nftChainConfig(chainId)
   const client = createPublicClient({
@@ -483,34 +511,17 @@ export async function fetchNFTTiers(
 
     if (!storeAddress || storeAddress === zeroAddress) throw new Error('721 hook store is missing')
 
-    const readSize = await completeTierReadSize(client, storeAddress, hookAddress, maxTiers)
-    if (readSize === 0n) return []
-
-    // Fetch all tiers without resolved URIs (fast, works on public RPCs)
+    // Fetch all tiers without resolved URIs in bounded RPC pages.
     console.log('[NFT] Fetching tiers from store:', storeAddress)
-    const tiers = await client.readContract({
-      address: storeAddress,
-      abi: JB721TierStoreAbi,
-      functionName: 'tiersOf',
-      args: [
-        hookAddress,
-        [], // All categories
-        false, // Don't include resolved URI (gas intensive for on-chain SVGs)
-        0n,
-        readSize,
-      ],
-    })
+    const tiers = await readAllActiveStoreTiers(client, storeAddress, hookAddress)
 
     console.log('[NFT] Fetched', tiers.length, 'tiers')
 
-    const seenTierIds = new Set<number>()
     return tiers.map((tier) => {
       const tierId = Number(tier.id)
-      if (!Number.isSafeInteger(tierId) || tierId < 1 || BigInt(tierId) > readSize) {
+      if (!Number.isSafeInteger(tierId) || tierId < 1) {
         throw new Error(`Tier store returned an invalid tier ID: ${tier.id}`)
       }
-      if (seenTierIds.has(tierId)) throw new Error(`Tier store returned duplicate tier ID ${tierId}`)
-      seenTierIds.add(tierId)
       return mapStoreTier(tier, pricing)
     })
   } catch (err) {
@@ -704,10 +715,9 @@ function normalizeTierMetadata(value: unknown): NFTTierMetadata | null {
  */
 export async function fetchResolvedNFTTiers(
   hookAddress: `0x${string}`,
-  chainId: number,
-  maxTiers: number = MAX_REVIEWABLE_TIER_ID
+  chainId: number
 ): Promise<ResolvedNFTTier[]> {
-  const tiers = await fetchNFTTiers(hookAddress, chainId, maxTiers)
+  const tiers = await fetchNFTTiers(hookAddress, chainId)
 
   // Batch metadata fetches to avoid rate limiting (5 concurrent requests)
   const BATCH_SIZE = 5
@@ -827,10 +837,9 @@ export async function fetchHookFlags(
  */
 export async function fetchNFTTiersWithPermissions(
   hookAddress: `0x${string}`,
-  chainId: number,
-  maxTiers: number = MAX_REVIEWABLE_TIER_ID
+  chainId: number
 ): Promise<NFTTierWithPermissions[]> {
-  const tiers = await fetchNFTTiers(hookAddress, chainId, maxTiers)
+  const tiers = await fetchNFTTiers(hookAddress, chainId)
   return tiers.map((tier) => ({
     ...tier,
     permissions: {

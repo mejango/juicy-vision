@@ -234,12 +234,20 @@ export interface ProjectOperator {
 }
 
 export const PERMISSION_HOLDERS_QUERY = `
-  query PermissionHolders($projectId: Int!, $version: Int!, $chainIds: [Int!]) {
+  query PermissionHolders(
+    $projectId: Int!
+    $version: Int!
+    $chainIds: [Int!]
+    $limit: Int!
+    $offset: Int!
+  ) {
     permissionHolders(
       where: { projectId: $projectId, version: $version, chainId_in: $chainIds }
-      limit: 100
+      limit: $limit
+      offset: $offset
     ) {
       items { chainId account operator permissions isRevnetOperator }
+      totalCount
     }
   }
 `
@@ -337,15 +345,32 @@ export async function fetchPermissionOperators(
   // V6 project ids are independent per chain — query each chain by ITS OWN id
   // and merge; a single projectId + chainId_in filter reads the wrong project off-home.
   const pages = await Promise.all(
-    chainProjects.map(cp =>
-      safeRequest<{ permissionHolders: { items: PermissionHolderItem[] } }>(
-        PERMISSION_HOLDERS_QUERY,
-        { projectId: Number(cp.projectId), version: 6, chainIds: [cp.chainId] },
-        getNetworkOption(cp.chainId),
-      ),
-    ),
+    chainProjects.map(async cp => {
+      const items: PermissionHolderItem[] = []
+      let totalCount = 0
+      do {
+        const data = await safeRequest<{
+          permissionHolders: { items: PermissionHolderItem[]; totalCount: number }
+        }>(
+          PERMISSION_HOLDERS_QUERY,
+          {
+            projectId: Number(cp.projectId),
+            version: 6,
+            chainIds: [cp.chainId],
+            limit: 250,
+            offset: items.length,
+          },
+          getNetworkOption(cp.chainId),
+        )
+        const page = data.permissionHolders?.items ?? []
+        totalCount = data.permissionHolders?.totalCount ?? page.length
+        items.push(...page)
+        if (!page.length) break
+      } while (items.length < totalCount)
+      return items
+    }),
   )
-  return aggregatePermissionHolders(pages.flatMap(d => d?.permissionHolders?.items ?? []))
+  return aggregatePermissionHolders(pages.flat())
 }
 
 /** Read the operator's CURRENT on-chain permission ids for (account, project) on one chain. */

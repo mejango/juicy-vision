@@ -8,6 +8,7 @@ import * as bendystraw from '../../services/bendystraw'
 vi.mock('../../services/bendystraw', () => ({
   fetchPayEventsPage: vi.fn(),
   fetchCashOutEventsPage: vi.fn(),
+  fetchProjectActivityEvents: vi.fn(),
   fetchProject: vi.fn(),
   fetchSuckerGroupBalance: vi.fn(),
 }))
@@ -59,6 +60,10 @@ describe('ActivityFeed', () => {
   beforeEach(() => {
     useThemeStore.setState({ theme: 'dark' })
     vi.clearAllMocks()
+    vi.mocked(bendystraw.fetchProjectActivityEvents).mockResolvedValue({
+      events: [],
+      totalCount: 0,
+    })
   })
 
   describe('loading state', () => {

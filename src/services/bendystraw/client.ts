@@ -40,6 +40,8 @@ import {
   PROJECTS_QUERY,
   PROJECTS_BY_OWNER_QUERY,
   ACTIVITY_EVENTS_QUERY,
+  PROJECT_ACTIVITY_EVENTS_QUERY,
+  SINGLE_PROJECT_ACTIVITY_EVENTS_QUERY,
   PROJECT_RULESET_QUERY,
   RECENT_PAY_EVENTS_QUERY,
   CONNECTED_CHAINS_QUERY,
@@ -825,6 +827,7 @@ export type ActivityEventType =
   | 'sendReservedTokens'
   | 'useAllowance'
   | 'mintNft'
+  | 'protocol'
   | 'unknown'
 
 export interface PayActivityEvent extends BaseActivityEvent {
@@ -903,6 +906,14 @@ export interface MintNftActivityEvent extends BaseActivityEvent {
   txHash: string
 }
 
+export interface ProtocolActivityEvent extends BaseActivityEvent {
+  type: 'protocol'
+  action: string
+  amount?: string
+  from: string
+  txHash: string
+}
+
 export interface UnknownActivityEvent extends BaseActivityEvent {
   type: 'unknown'
   from?: string
@@ -922,6 +933,7 @@ export type ActivityEvent =
   | SendReservedTokensActivityEvent
   | UseAllowanceActivityEvent
   | MintNftActivityEvent
+  | ProtocolActivityEvent
   | UnknownActivityEvent
 
 // Raw API response type (before transformation)
@@ -955,6 +967,19 @@ interface RawActivityEvent {
   sendReservedTokensToSplitsEvent?: { from: string; txHash: string }
   useAllowanceEvent?: { amount: string; from: string; txHash: string }
   mintNftEvent?: { from: string; txHash: string }
+  sendPayoutToSplitEvent?: { amount: string; beneficiary: string; from: string; txHash: string }
+  sendReservedTokensToSplitEvent?: { tokenCount: string; beneficiary: string; from: string; txHash: string }
+  borrowLoanEvent?: { borrowAmount: string; collateral: string; beneficiary: string; from: string; txHash: string }
+  repayLoanEvent?: { repayBorrowAmount: string; collateralCountToReturn: string; from: string; txHash: string }
+  liquidateLoanEvent?: { borrowAmount: string; collateral: string; from: string; txHash: string }
+  setUriEvent?: { caller: string; from: string; txHash: string }
+  projectTransferEvent?: { owner: string; from: string; txHash: string }
+  operatorPermissionsSetEvent?: { caller: string; from: string; txHash: string }
+  addNftTierEvent?: { caller: string; from: string; txHash: string }
+  removeNftTierEvent?: { caller: string; from: string; txHash: string }
+  swapEvent?: { terminalTokenAmount: string; caller: string; from: string; txHash: string }
+  buybackPoolEvent?: { caller: string; from: string; txHash: string }
+  bridgeClaimEvent?: { terminalTokenAmount: string; beneficiary: string; from: string; txHash: string }
 }
 
 // Raw payload field -> discriminated-union type tag, in match-priority order.
@@ -976,6 +1001,22 @@ const EVENT_TYPE_BY_FIELD = [
   ['mintNftEvent', 'mintNft'],
 ] as const
 
+const PROTOCOL_EVENT_BY_FIELD = [
+  ['sendPayoutToSplitEvent', 'Sent payout to split', 'amount'],
+  ['sendReservedTokensToSplitEvent', 'Sent reserved tokens to split', 'tokenCount'],
+  ['borrowLoanEvent', 'Borrowed', 'borrowAmount'],
+  ['repayLoanEvent', 'Repaid loan', 'repayBorrowAmount'],
+  ['liquidateLoanEvent', 'Liquidated loan', 'borrowAmount'],
+  ['setUriEvent', 'Updated project metadata', undefined],
+  ['projectTransferEvent', 'Transferred project', undefined],
+  ['operatorPermissionsSetEvent', 'Updated permissions', undefined],
+  ['addNftTierEvent', 'Added shop item', undefined],
+  ['removeNftTierEvent', 'Removed shop item', undefined],
+  ['swapEvent', 'Swapped tokens', 'terminalTokenAmount'],
+  ['buybackPoolEvent', 'Configured buyback pool', undefined],
+  ['bridgeClaimEvent', 'Claimed bridged funds', 'terminalTokenAmount'],
+] as const
+
 // Transform raw API event to discriminated union
 function transformEvent(raw: RawActivityEvent): ActivityEvent {
   const base = { id: raw.id, chainId: raw.chainId, timestamp: raw.timestamp, project: raw.project }
@@ -983,6 +1024,19 @@ function transformEvent(raw: RawActivityEvent): ActivityEvent {
   for (const [field, type] of EVENT_TYPE_BY_FIELD) {
     const payload = raw[field]
     if (payload) return { ...base, type, ...payload } as ActivityEvent
+  }
+  for (const [field, action, amountField] of PROTOCOL_EVENT_BY_FIELD) {
+    const payload = raw[field] as Record<string, string> | undefined
+    if (payload) {
+      return {
+        ...base,
+        type: 'protocol',
+        action,
+        amount: amountField ? payload[amountField] : undefined,
+        from: payload.beneficiary || payload.owner || payload.caller || payload.from || raw.from || '',
+        txHash: payload.txHash || raw.txHash || '',
+      }
+    }
   }
   return { ...base, type: 'unknown', from: raw.from, txHash: raw.txHash }
 }
@@ -1002,33 +1056,110 @@ export async function fetchActivityEvents(limit: number = 20, offset: number = 0
     .filter(event => event.type !== 'unknown')
 }
 
+export async function fetchProjectActivityEvents(
+  project: Pick<Project, 'projectId' | 'chainId' | 'suckerGroupId'>,
+  options: { limit?: number; offset?: number } = {},
+): Promise<{ events: ActivityEvent[]; totalCount: number }> {
+  const limit = options.limit ?? 25
+  const offset = options.offset ?? 0
+  requireHistoryLimit(limit)
+  if (!Number.isSafeInteger(offset) || offset < 0) {
+    throw new Error('Activity offset is invalid')
+  }
+  const grouped = Boolean(project.suckerGroupId)
+  const data = await safeRequest<{
+    activityEvents: { items: RawActivityEvent[]; totalCount: number }
+  }>(
+    grouped ? PROJECT_ACTIVITY_EVENTS_QUERY : SINGLE_PROJECT_ACTIVITY_EVENTS_QUERY,
+    grouped
+      ? { suckerGroupId: project.suckerGroupId, limit, offset }
+      : {
+          projectId: project.projectId,
+          chainId: project.chainId,
+          limit,
+          offset,
+        },
+    getNetworkOption(project.chainId),
+  )
+  const rows = data.activityEvents?.items ?? []
+  return {
+    events: rows.map(transformEvent),
+    totalCount: data.activityEvents?.totalCount ?? rows.length,
+  }
+}
+
 // Everything one account has done OR received across projects. Same mainnet
 // routing as fetchActivityEvents: the account feed shows real protocol
 // activity even when the app runs in staging/testnet mode.
 //
 // The top-level activityEvents filter has no beneficiary field, so the query
-// also hits the beneficiary-bearing event roots; the branches are merged and
-// deduped by sub-event id (mergeAccountActivityEvents), newest first. Offsets
-// page the from-branch ONLY — the beneficiary roots return their newest rows
-// on every page and the merge (plus the caller's id-dedupe) absorbs repeats.
-// `fromCount` reports how many from-branch rows this page consumed so callers
-// can pass the right offset for the next page: the merged event count includes
-// beneficiary rows the offset must NOT advance past.
+// also hits the beneficiary-bearing event roots. Each root is paged deeply
+// enough to produce the requested global merged window.
 export async function fetchAccountActivityEvents(
   address: string,
   options: { limit?: number; offset?: number } = {}
-): Promise<{ events: ActivityEvent[]; fromCount: number }> {
+): Promise<{ events: ActivityEvent[]; totalCount: number }> {
   const { limit = 25, offset = 0 } = options
-  const data = await safeRequest<AccountActivityQueryData>(
-    ACCOUNT_ACTIVITY_EVENTS_QUERY,
-    { address: address.toLowerCase(), limit, offset, orderBy: 'timestamp', orderDirection: 'desc' },
-    { network: 'mainnet' }
-  )
+  requireHistoryLimit(limit)
+  if (!Number.isSafeInteger(offset) || offset < 0) throw new Error('Activity offset is invalid')
 
-  const events = mergeAccountActivityEvents(data)
+  const roots = [
+    'activityEvents',
+    'beneficiaryPayEvents',
+    'beneficiaryCashOutEvents',
+    'beneficiaryMintTokensEvents',
+    'beneficiaryManualMintTokensEvents',
+    'beneficiaryAutoIssueEvents',
+  ] as const
+  const mergedData: AccountActivityQueryData = {}
+  let pageOffset = 0
+  while (true) {
+    const pageLimit = 250
+    const data = await safeRequest<AccountActivityQueryData>(
+      ACCOUNT_ACTIVITY_EVENTS_QUERY,
+      {
+        address: address.toLowerCase(),
+        limit: pageLimit,
+        offset: pageOffset,
+        orderBy: 'timestamp',
+        orderDirection: 'desc',
+      },
+      { network: 'mainnet' },
+    )
+    for (const root of roots) {
+      const source = data[root]
+      const target = mergedData[root] ?? { items: [] }
+      if (
+        target.totalCount != null
+        && source?.totalCount != null
+        && target.totalCount !== source.totalCount
+      ) {
+        throw new Error('Account activity changed while loading')
+      }
+      if (
+        (source?.items?.length ?? 0) === 0
+        && pageOffset < (source?.totalCount ?? 0)
+      ) {
+        throw new Error('Account activity ended before its reported total')
+      }
+      target.items!.push(...(source?.items ?? []))
+      target.totalCount = source?.totalCount ?? target.items!.length
+      ;(mergedData as Record<string, unknown>)[root] = target
+    }
+    pageOffset += pageLimit
+    if (roots.every(root => {
+      const page = mergedData[root]
+      return (page?.items?.length ?? 0) >= (page?.totalCount ?? 0)
+    })) break
+  }
+
+  const merged = mergeAccountActivityEvents(mergedData)
     .map(row => transformEvent(row as unknown as RawActivityEvent))
     .filter(event => event.type !== 'unknown')
-  return { events, fromCount: data?.activityEvents?.items?.length ?? 0 }
+  return {
+    events: merged.slice(offset, offset + limit),
+    totalCount: merged.length,
+  }
 }
 
 // One permission-holder grant row: `operator` may act for `account`'s project.
@@ -1044,33 +1175,52 @@ export interface AccountPermissionHolder {
 // Every grant naming `address` as operator, across all chains and projects.
 export async function fetchAccountOperatedPermissions(
   address: string,
-  options: { limit?: number } = {}
 ): Promise<AccountPermissionHolder[]> {
-  const { limit = 100 } = options
-  const data = await safeRequest<{ permissionHolders: { items: AccountPermissionHolder[] } }>(
-    ACCOUNT_PERMISSION_HOLDERS_QUERY,
-    { operator: address.toLowerCase(), version: 6, limit }
-  )
-  return data?.permissionHolders?.items ?? []
+  const items: AccountPermissionHolder[] = []
+  let totalCount = 0
+  do {
+    const data = await safeRequest<{
+      permissionHolders: { items: AccountPermissionHolder[]; totalCount: number }
+    }>(
+      ACCOUNT_PERMISSION_HOLDERS_QUERY,
+      {
+        operator: address.toLowerCase(),
+        version: 6,
+        limit: 250,
+        offset: items.length,
+      },
+    )
+    const page = data?.permissionHolders?.items ?? []
+    totalCount = data?.permissionHolders?.totalCount ?? page.length
+    items.push(...page)
+    if (!page.length) break
+  } while (items.length < totalCount)
+  return items
 }
 
-// Generous explicit window for the account-holdings queries — without it the
-// server applies its own (much smaller) default silently. totalCount surfaces
-// when a whale wallet exceeds the window.
-const ACCOUNT_HOLDINGS_LIMIT = 1000
+const ACCOUNT_HOLDINGS_PAGE_SIZE = 250
 
 // Every V6 project token balance the account holds, biggest first, deduped
 // per (chainId, projectId), plus the server total for truncation notices.
 export async function fetchAccountTokenHoldings(
   address: string
 ): Promise<HoldingsPage<TokenHoldingRow>> {
-  const data = await safeRequest<{ participants: { totalCount?: number; items: TokenHoldingRow[] } }>(
-    ACCOUNT_TOKEN_HOLDINGS_QUERY,
-    { account: address.toLowerCase(), limit: ACCOUNT_HOLDINGS_LIMIT }
-  )
-  const items = data?.participants?.items ?? []
-  const totalCount = data?.participants?.totalCount ?? items.length
-  return { rows: dedupeTokenHoldings(items), totalCount, truncated: items.length < totalCount }
+  const items: TokenHoldingRow[] = []
+  let totalCount = 0
+  do {
+    const data = await safeRequest<{
+      participants: { totalCount?: number; items: TokenHoldingRow[] }
+    }>(ACCOUNT_TOKEN_HOLDINGS_QUERY, {
+      account: address.toLowerCase(),
+      limit: ACCOUNT_HOLDINGS_PAGE_SIZE,
+      offset: items.length,
+    })
+    const page = data?.participants?.items ?? []
+    totalCount = data?.participants?.totalCount ?? page.length
+    items.push(...page)
+    if (!page.length) break
+  } while (items.length < totalCount)
+  return { rows: dedupeTokenHoldings(items), totalCount, truncated: false }
 }
 
 // Every V6 store item (721 token) the account currently owns, deduped by
@@ -1079,13 +1229,22 @@ export async function fetchAccountTokenHoldings(
 export async function fetchAccountNftHoldings(
   address: string
 ): Promise<HoldingsPage<NftHoldingRow>> {
-  const data = await safeRequest<{ nfts: { totalCount?: number; items: NftHoldingRow[] } }>(
-    ACCOUNT_NFTS_QUERY,
-    { owner: address.toLowerCase(), limit: ACCOUNT_HOLDINGS_LIMIT }
-  )
-  const items = data?.nfts?.items ?? []
-  const totalCount = data?.nfts?.totalCount ?? items.length
-  return { rows: dedupeNftHoldings(items), totalCount, truncated: items.length < totalCount }
+  const items: NftHoldingRow[] = []
+  let totalCount = 0
+  do {
+    const data = await safeRequest<{
+      nfts: { totalCount?: number; items: NftHoldingRow[] }
+    }>(ACCOUNT_NFTS_QUERY, {
+      owner: address.toLowerCase(),
+      limit: ACCOUNT_HOLDINGS_PAGE_SIZE,
+      offset: items.length,
+    })
+    const page = data?.nfts?.items ?? []
+    totalCount = data?.nfts?.totalCount ?? page.length
+    items.push(...page)
+    if (!page.length) break
+  } while (items.length < totalCount)
+  return { rows: dedupeNftHoldings(items), totalCount, truncated: false }
 }
 
 // Read the holder's current claimed-token plus credit balance from JBTokens.
@@ -1744,9 +1903,7 @@ export function clearProjectsByOwnerCache(ownerAddress?: string): void {
   if (ownerAddress) {
     // Clear specific address's cache entries (both owner and deployer keys)
     const addr = ownerAddress.toLowerCase()
-    projectsByOwnerCache.delete(`owner:${addr}:50`)
-    projectsByOwnerCache.delete(`deployer:${addr}:50`)
-    projectsByOwnerCache.delete(`merged:${addr}:50`)
+    projectsByOwnerCache.delete(`owner:${addr}:all`)
   } else {
     // Clear all cached entries
     projectsByOwnerCache.clear()
@@ -1757,11 +1914,9 @@ export function clearProjectsByOwnerCache(ownerAddress?: string): void {
 // Queries both owner and deployer fields and merges/deduplicates results
 export async function fetchProjectsByOwner(
   ownerAddress: string,
-  options: { limit?: number } = {}
 ): Promise<Project[]> {
-  const { limit = 50 } = options
   const addr = ownerAddress.toLowerCase()
-  const cacheKey = `owner:${addr}:${limit}`
+  const cacheKey = `owner:${addr}:all`
 
   try {
     // Try cache first
@@ -1769,12 +1924,20 @@ export async function fetchProjectsByOwner(
     if (cached) return cached
 
     // Query by owner only
-    const data = await safeRequest<{ projects: { items: Project[] } }>(
-      PROJECTS_BY_OWNER_QUERY,
-      { owner: addr, limit }
-    )
-
-    const projects = data?.projects?.items || []
+    const projects: Project[] = []
+    let totalCount = 0
+    do {
+      const data = await safeRequest<{
+        projects: { items: Project[]; totalCount: number }
+      }>(
+        PROJECTS_BY_OWNER_QUERY,
+        { owner: addr, limit: 250, offset: projects.length },
+      )
+      const page = data?.projects?.items ?? []
+      totalCount = data?.projects?.totalCount ?? page.length
+      projects.push(...page)
+      if (!page.length) break
+    } while (projects.length < totalCount)
 
     // Sort by createdAt descending
     projects.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
@@ -2252,7 +2415,8 @@ export async function fetchOwnersCount(
         projectId: parseInt(projectId),
         chainIds: [chainId],
         version,
-        limit: 1000,
+        limit: 1,
+        offset: 0,
       })
 
       if (!data.participants || !Number.isSafeInteger(data.participants.totalCount)) return null
@@ -2279,24 +2443,29 @@ export async function fetchOwnersCount(
       return fetchSingleChain()
     }
 
-    const data = await client.request<{
-      participants: {
-        totalCount: number
-        items: Array<{ address: string; chainId: number; balance: string }>
-      }
-    }>(SUCKER_GROUP_PARTICIPANTS_QUERY, {
-      suckerGroupId,
-      version,
-      limit: 1000,
-    })
-
-    if (!data.participants?.items || !Number.isSafeInteger(data.participants.totalCount)) return null
-    if (data.participants.totalCount > data.participants.items.length) {
-      // The query was truncated, so deduplicating the returned page would undercount.
-      return null
-    }
+    const participantRows: Array<{ address: string; chainId: number; balance: string }> = []
+    let totalCount = 0
+    do {
+      const data = await client.request<{
+        participants: {
+          totalCount: number
+          items: Array<{ address: string; chainId: number; balance: string }>
+        }
+      }>(SUCKER_GROUP_PARTICIPANTS_QUERY, {
+        suckerGroupId,
+        version,
+        limit: 250,
+        offset: participantRows.length,
+      })
+      const page = data.participants?.items ?? []
+      if (!Number.isSafeInteger(data.participants?.totalCount)) return null
+      totalCount = data.participants.totalCount
+      participantRows.push(...page)
+      if (!page.length) break
+    } while (participantRows.length < totalCount)
+    if (participantRows.length < totalCount) return null
     const uniqueWallets = new Set(
-      data.participants.items.map(p => p.address.toLowerCase())
+      participantRows.map(p => p.address.toLowerCase())
     )
     return uniqueWallets.size
   } catch (err) {
@@ -2623,30 +2792,39 @@ export async function fetchRevnetOperator(
 
   try {
     // Query permissionHolders for this project where isRevnetOperator is true
-    const data = await client.request<{
-      permissionHolders: {
-        totalCount: number
-        items: Array<{
-          operator: string
-          projectId: number
-          chainId: number
-          version: number
-          isRevnetOperator: boolean
-          permissions: unknown[]
-        }>
-      }
-    }>(REVNET_OPERATOR_QUERY, {
-      projectId: numericProjectId,
-      chainId,
-      version: 6,
-    })
-
-    const page = data.permissionHolders
-    if (!page || !Array.isArray(page.items) || !Number.isSafeInteger(page.totalCount)
-      || page.totalCount < 0 || page.totalCount !== page.items.length) {
-      throw new Error('Indexed Revnet operator data is incomplete')
+    type OperatorRow = {
+      operator: string
+      projectId: number
+      chainId: number
+      version: number
+      isRevnetOperator: boolean
+      permissions: unknown[]
     }
-    const candidates = page.items.filter(item =>
+    const indexedRows: OperatorRow[] = []
+    let totalCount = 0
+    do {
+      const data = await client.request<{
+        permissionHolders: { totalCount: number; items: OperatorRow[] }
+      }>(REVNET_OPERATOR_QUERY, {
+        projectId: numericProjectId,
+        chainId,
+        version: 6,
+        limit: 250,
+        offset: indexedRows.length,
+      })
+      const page = data.permissionHolders
+      if (!page || !Array.isArray(page.items) || !Number.isSafeInteger(page.totalCount)
+        || page.totalCount < 0) {
+        throw new Error('Indexed Revnet operator data is incomplete')
+      }
+      totalCount = page.totalCount
+      indexedRows.push(...page.items)
+      if (!page.items.length && indexedRows.length < totalCount) {
+        throw new Error('Indexed Revnet operator data ended before its reported total')
+      }
+    } while (indexedRows.length < totalCount)
+
+    const candidates = indexedRows.filter(item =>
       item?.isRevnetOperator === true
       && item.chainId === chainId
       && item.projectId === numericProjectId
@@ -2980,7 +3158,6 @@ export async function fetchAllRulesets(
     // allOf is newest-first and follows basedOnId. Page through the exact
     // deployed JBRulesets linked list so a large schedule is never truncated.
     const PAGE_SIZE = 100
-    const MAX_RULESETS = 1_000
     const result: SimpleRuleset[] = []
     const seen = new Set<string>()
     let startingId = 0n
@@ -3014,10 +3191,8 @@ export async function fetchAllRulesets(
       }
 
       const nextId = BigInt(page[page.length - 1].basedOnId)
-      if (page.length < PAGE_SIZE || nextId === 0n) break
-      if (result.length >= MAX_RULESETS || seen.has(nextId.toString())) {
-        throw new Error('Ruleset history exceeds the safe traversal limit')
-      }
+      if (nextId === 0n) break
+      if (seen.has(nextId.toString())) throw new Error('Ruleset history is cyclic')
       startingId = nextId
     }
 
@@ -3622,9 +3797,9 @@ async function fetchHistoryPage<TRaw, TItem = TRaw>(
   }
 }
 
-// Follow the cursor chain until exhausted or the safety limit trips.
+// Follow the validated cursor chain until the indexer reports completion.
 async function fetchAllHistoryPages<TRaw, TItem = TRaw>(
-  params: HistoryQueryParams<TRaw, TItem> & { maxItems: number },
+  params: HistoryQueryParams<TRaw, TItem>,
 ): Promise<TItem[]> {
   const all: TItem[] = []
   let cursor: string | null = null
@@ -3635,8 +3810,7 @@ async function fetchAllHistoryPages<TRaw, TItem = TRaw>(
     >({ ...params, after: cursor })
     all.push(...page.items)
     cursor = page.endCursor
-  } while (cursor && all.length < params.maxItems)
-  if (cursor) throw new Error(`${params.label} exceeds the safe page limit`)
+  } while (cursor)
   return all
 }
 
@@ -3719,7 +3893,6 @@ export async function fetchCashOutTaxSnapshots(
       field: 'cashOutTaxSnapshots',
       validate: item => normalizeCashOutTaxSnapshot(item, suckerGroupId),
       label: 'Cash-out tax history',
-      maxItems: 5000,
     })
   } catch (err) {
     console.error('Failed to fetch cash out tax snapshots:', err)
@@ -3744,7 +3917,6 @@ export async function fetchSuckerGroupMoments(
       field: 'suckerGroupMoments',
       validate: item => validateSuckerGroupMoment(item, suckerGroupId),
       label: 'Treasury history',
-      maxItems: 10000,
     })
   } catch (err) {
     console.error('Failed to fetch sucker group moments:', err)
@@ -3770,7 +3942,6 @@ export async function fetchPayEventsHistory(
       field: 'payEvents',
       validate: validatePayHistoryItem,
       label: 'Payment history',
-      maxItems: 10000,
     })
   } catch (err) {
     console.error('Failed to fetch pay events history:', err)
@@ -3918,9 +4089,6 @@ export interface AggregatedParticipant {
   percentage: number
 }
 
-// Bendystraw rejects participant limits above 1,000. This matches website/'s
-// defensive cap and is ample for a top-members view; the live total supply
-// still accounts for owners beyond the returned page as the "Others" slice.
 const PARTICIPANT_QUERY_LIMIT = 1_000
 
 function parseParticipantPage(
@@ -3963,6 +4131,51 @@ function parseParticipantPage(
     const volumeUsd = isRawAmount(item.volumeUsd) ? (item.volumeUsd as string) : '0'
     return { address: address.toLowerCase(), chainId, balance: item.balance, volumeUsd }
   })
+}
+
+async function fetchAllParticipantRows(
+  client: ReturnType<typeof getClient>,
+  projectId: number,
+  chainIds: number[],
+): Promise<Array<{ address: string; chainId: number; balance: string; volumeUsd: string }>> {
+  const expectedChains = new Set(chainIds)
+  const items: Array<{ address: string; chainId: number; balance: string; volumeUsd: string }> = []
+  const seen = new Set<string>()
+  let offset = 0
+  let expectedTotal: number | null = null
+
+  while (expectedTotal == null || offset < expectedTotal) {
+    const data = await client.request<{
+      participants: {
+        totalCount: number
+        items: Array<{ address: string; chainId: number; balance: string; volumeUsd?: string }>
+      }
+    }>(TOKEN_HOLDERS_QUERY, {
+      projectId,
+      chainIds,
+      version: 6,
+      limit: PARTICIPANT_QUERY_LIMIT,
+      offset,
+    })
+    const page = parseParticipantPage(data.participants, expectedChains)
+    const totalCount = data.participants.totalCount
+    if (expectedTotal == null) expectedTotal = totalCount
+    else if (totalCount !== expectedTotal) throw new Error('Member data changed while loading')
+    if (page.length === 0 && offset < totalCount) {
+      throw new Error('Member data ended before its reported total')
+    }
+
+    for (const item of page) {
+      const key = `${item.chainId}:${item.address}`
+      if (seen.has(key)) throw new Error('Member data contains duplicate balances across pages')
+      seen.add(key)
+      items.push(item)
+    }
+    offset += page.length
+  }
+
+  if (items.length !== expectedTotal) throw new Error('Member data count does not match its reported total')
+  return items
 }
 
 function aggregateParticipants(
@@ -4032,18 +4245,7 @@ export async function fetchMultiChainParticipants(
     const [participantGroupsResult, suppliesResult] = await Promise.allSettled([
       Promise.all([...chainsByProject.entries()].map(async ([projectId, chainIds]) => {
         const client = getClient(getNetworkOption(chainIds[0]))
-        const data = await client.request<{
-          participants: {
-            totalCount: number
-            items: Array<{ address: string; chainId: number; balance: string }>
-          }
-        }>(TOKEN_HOLDERS_QUERY, {
-          projectId,
-          chainIds,
-          version: 6,
-          limit: PARTICIPANT_QUERY_LIMIT,
-        })
-        return parseParticipantPage(data.participants, new Set(chainIds))
+        return fetchAllParticipantRows(client, projectId, chainIds)
       })),
       Promise.all(connectedChains.map(async ({ chainId, projectId }) => {
         const supply = await fetchProjectTokenSupply(String(projectId), chainId)
@@ -4086,7 +4288,7 @@ export interface HoldersDistribution {
   totalSupply: bigint | null
   /** Sum of the returned holders' balances (donut denominator). */
   totalBalance: bigint
-  /** True when the indexer reported more holder rows than were returned. */
+  /** Retained for callers; complete pagination means this is always false. */
   truncated: boolean
 }
 
@@ -4140,16 +4342,7 @@ export async function fetchHoldersDistribution(
   try {
     const pages = await Promise.all([...chainsByProject.entries()].map(async ([projectId, chainIds]) => {
       const client = getClient(getNetworkOption(chainIds[0]))
-      const data = await client.request<{
-        participants: {
-          totalCount: number
-          items: Array<{ address: string; chainId: number; balance: string; volumeUsd?: string }>
-        }
-      }>(TOKEN_HOLDERS_QUERY, { projectId, chainIds, version: 6, limit: PARTICIPANT_QUERY_LIMIT })
-      return {
-        items: parseParticipantPage(data.participants, new Set(chainIds)),
-        totalCount: Number(data.participants.totalCount) || 0,
-      }
+      return fetchAllParticipantRows(client, projectId, chainIds)
     }))
 
     // Live supply per chain; a failure hides share %s (never treat indexed as 100%).
@@ -4163,11 +4356,10 @@ export async function fetchHoldersDistribution(
     }))
     const totalSupply = supplies.some(s => s == null) ? null : supplies.reduce<bigint>((sum, s) => sum + (s as bigint), 0n)
 
-    const items = pages.flatMap(p => p.items)
-    const indexedTotal = pages.reduce((sum, p) => sum + p.totalCount, 0)
+    const items = pages.flat()
     const holders = aggregateHolders(items)
     const totalBalance = holders.reduce((sum, h) => sum + h.balance, 0n)
-    return { holders, totalSupply, totalBalance, truncated: indexedTotal > items.length }
+    return { holders, totalSupply, totalBalance, truncated: false }
   } catch (err) {
     throw new Error(`Member data unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
   }
@@ -4208,7 +4400,6 @@ export async function fetchProjectMoments(
       field: 'projectMoments',
       validate: validateProjectMoment,
       label: 'Project history',
-      maxItems: 10_000,
     })
   } catch (err) {
     console.error('Failed to fetch project moments:', err)

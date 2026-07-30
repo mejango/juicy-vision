@@ -5,12 +5,15 @@ import { useThemeStore } from '../../stores'
 import {
   fetchPayEventsPage,
   fetchCashOutEventsPage,
+  fetchProjectActivityEvents,
   fetchProject,
   fetchSuckerGroupBalance,
   type PayEventHistoryItem,
   type CashOutEventHistoryItem,
+  type ActivityEvent as ProtocolActivityEvent,
 } from '../../services/bendystraw'
 import { formatBalanceNative } from '../../utils/currency'
+import { getEventInfo } from '../../utils/activityEvents'
 import { MAINNET_CHAINS } from '../../constants'
 
 interface ActivityFeedProps {
@@ -21,13 +24,16 @@ interface ActivityFeedProps {
 }
 
 type ActivityEvent = {
-  type: 'pay' | 'cashout'
+  id?: string
+  type: 'pay' | 'cashout' | 'other'
+  chainId: number
   txHash: string
   timestamp: number
   from: string
   amount: string
   tokenAmount?: string
   memo?: string
+  action?: string
 }
 
 const PAGE_SIZE = 15
@@ -86,6 +92,9 @@ export default function ActivityFeed({
 
   const [payEvents, setPayEvents] = useState<PayEventHistoryItem[]>([])
   const [cashOutEvents, setCashOutEvents] = useState<CashOutEventHistoryItem[]>([])
+  const [protocolEvents, setProtocolEvents] = useState<ProtocolActivityEvent[]>([])
+  const [protocolOffset, setProtocolOffset] = useState(0)
+  const [protocolTotal, setProtocolTotal] = useState(0)
   const [projectName, setProjectName] = useState<string>('')
   // Ecosystem convention: amounts render in the accounting token when the
   // project has exactly ONE token kind across its chains, USD otherwise.
@@ -94,6 +103,7 @@ export default function ActivityFeed({
   const [accounting, setAccounting] = useState<{ currency: number; decimals: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [activityError, setActivityError] = useState(false)
+  const [activityPartial, setActivityPartial] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE)
 
@@ -106,8 +116,6 @@ export default function ActivityFeed({
   const containerRef = useRef<HTMLDivElement>(null)
 
   const chainIdNum = parseInt(chainId)
-  const explorerUrl = (MAINNET_CHAINS[chainIdNum] || MAINNET_CHAINS[1]).explorer
-
   useEffect(() => {
     async function loadActivity() {
       setLoading(true)
@@ -118,8 +126,12 @@ export default function ActivityFeed({
       setCashOutHasMore(true)
       setPayEvents([])
       setCashOutEvents([])
+      setProtocolEvents([])
+      setProtocolOffset(0)
+      setProtocolTotal(0)
       setAccounting(null)
       setActivityError(false)
+      setActivityPartial(false)
 
       try {
         // Fetch project info, currency info, and first page of events in parallel.
@@ -156,6 +168,21 @@ export default function ActivityFeed({
         setCashOutEvents(cashOutPage.items)
         setCashOutCursor(cashOutPage.endCursor)
         setCashOutHasMore(cashOutPage.hasNextPage)
+
+        if (typeof fetchProjectActivityEvents === 'function') {
+          try {
+            const protocolPage = await fetchProjectActivityEvents(project, {
+              limit: PAGE_SIZE * 2,
+              offset: 0,
+            })
+            setProtocolEvents(protocolPage.events)
+            setProtocolOffset(protocolPage.events.length)
+            setProtocolTotal(protocolPage.totalCount)
+          } catch (error) {
+            console.error('Failed to load complete project activity:', error)
+            setActivityPartial(true)
+          }
+        }
       } catch (err) {
         console.error('Failed to load activity:', err)
         setActivityError(true)
@@ -180,6 +207,7 @@ export default function ActivityFeed({
     for (const e of payEvents) {
       combined.push({
         type: 'pay',
+        chainId: chainIdNum,
         txHash: e.txHash,
         timestamp: e.timestamp,
         from: e.from,
@@ -193,6 +221,7 @@ export default function ActivityFeed({
     for (const e of cashOutEvents) {
       combined.push({
         type: 'cashout',
+        chainId: chainIdNum,
         txHash: e.txHash,
         timestamp: e.timestamp,
         from: e.from,
@@ -201,30 +230,71 @@ export default function ActivityFeed({
       })
     }
 
+    for (const event of protocolEvents) {
+      const info = getEventInfo(event)
+      combined.push({
+        id: event.id,
+        type:
+          event.type === 'pay'
+            ? 'pay'
+            : event.type === 'cashOut'
+              ? 'cashout'
+              : 'other',
+        chainId: event.chainId,
+        txHash: info.txHash,
+        timestamp: event.timestamp,
+        from: info.from,
+        amount: info.amount ?? '',
+        action: info.action,
+      })
+    }
+
     // Sort by timestamp descending (most recent first)
-    return combined.sort((a, b) => b.timestamp - a.timestamp)
-  }, [payEvents, cashOutEvents, accounting])
+    const unique = new Map<string, ActivityEvent>()
+    for (const event of combined.sort((a, b) => b.timestamp - a.timestamp)) {
+      const key =
+        event.type === 'other' && event.id
+          ? `id:${event.id}`
+          : `${event.chainId}:${event.txHash.toLowerCase()}:${event.type}`
+      const existing = unique.get(key)
+      // Selected-chain pay/cash-out pages carry richer token and memo fields.
+      if (!existing || event.tokenAmount || event.memo) unique.set(key, event)
+    }
+    return Array.from(unique.values()).sort((a, b) => b.timestamp - a.timestamp)
+  }, [payEvents, cashOutEvents, protocolEvents, accounting, chainIdNum])
 
   const displayedEvents = events.slice(0, displayCount)
   // Has more if there are more events to display OR if server has more data
   const hasMoreToDisplay = displayCount < events.length
-  const hasMoreFromServer = payHasMore || cashOutHasMore
+  const hasMoreFromServer =
+    payHasMore || cashOutHasMore || protocolOffset < protocolTotal
   const hasMore = hasMoreToDisplay || hasMoreFromServer
   // Reached end when nothing more to display and server is exhausted
   const reachedEnd = !hasMore && events.length > 0
 
   // Fetch more events from server
   const fetchMoreFromServer = useCallback(async () => {
-    if (loadingMore || (!payHasMore && !cashOutHasMore)) return
+    if (
+      loadingMore ||
+      (!payHasMore && !cashOutHasMore && protocolOffset >= protocolTotal)
+    ) return
 
     setLoadingMore(true)
     try {
-      const [payPage, cashOutPage] = await Promise.all([
+      const [payPage, cashOutPage, protocolPage] = await Promise.all([
         payHasMore
           ? fetchPayEventsPage(projectId, chainIdNum, 6, PAGE_SIZE, payCursor)
           : Promise.resolve(null),
         cashOutHasMore
           ? fetchCashOutEventsPage(projectId, chainIdNum, 6, PAGE_SIZE, cashOutCursor)
+          : Promise.resolve(null),
+        protocolOffset < protocolTotal && typeof fetchProjectActivityEvents === 'function'
+          ? fetchProject(projectId, chainIdNum).then(project =>
+              fetchProjectActivityEvents(project, {
+                limit: PAGE_SIZE,
+                offset: protocolOffset,
+              }),
+            )
           : Promise.resolve(null),
       ])
 
@@ -239,13 +309,30 @@ export default function ActivityFeed({
         setCashOutCursor(cashOutPage.endCursor)
         setCashOutHasMore(cashOutPage.hasNextPage)
       }
+      if (protocolPage) {
+        setProtocolEvents(prev => [...prev, ...protocolPage.events])
+        setProtocolOffset(prev => prev + protocolPage.events.length)
+        setProtocolTotal(protocolPage.totalCount)
+      }
     } catch (err) {
       console.error('Failed to load more activity:', err)
-      setActivityError(true)
+      if (events.length === 0) setActivityError(true)
+      else setActivityPartial(true)
     } finally {
       setLoadingMore(false)
     }
-  }, [loadingMore, payHasMore, cashOutHasMore, projectId, chainIdNum, payCursor, cashOutCursor])
+  }, [
+    loadingMore,
+    payHasMore,
+    cashOutHasMore,
+    protocolOffset,
+    protocolTotal,
+    projectId,
+    chainIdNum,
+    payCursor,
+    cashOutCursor,
+    events.length,
+  ])
 
   // Load more function - first show more from loaded events, then fetch from server
   const loadMore = useCallback(() => {
@@ -311,6 +398,7 @@ export default function ActivityFeed({
     switch (type) {
       case 'pay': return 'text-emerald-400'
       case 'cashout': return 'text-amber-400'
+      case 'other': return isDark ? 'text-gray-300' : 'text-gray-700'
     }
   }
 
@@ -324,7 +412,7 @@ export default function ActivityFeed({
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <a
-            href={`${explorerUrl}/address/${event.from}`}
+            href={`${(MAINNET_CHAINS[event.chainId] || MAINNET_CHAINS[1]).explorer}/address/${event.from}`}
             target="_blank"
             rel="noopener noreferrer"
             className={`text-sm font-medium font-mono hover:underline ${isDark ? 'text-white' : 'text-gray-900'}`}
@@ -334,9 +422,10 @@ export default function ActivityFeed({
           <span className={`text-sm ${getEventColor(event.type)}`}>
             {event.type === 'pay' && 'paid'}
             {event.type === 'cashout' && 'cashed out'}
+            {event.type === 'other' && (event.action ?? 'transaction')}
           </span>
           <a
-            href={`${explorerUrl}/tx/${event.txHash}`}
+            href={`${(MAINNET_CHAINS[event.chainId] || MAINNET_CHAINS[1]).explorer}/tx/${event.txHash}`}
             target="_blank"
             rel="noopener noreferrer"
             className={`text-sm font-medium hover:underline ${isDark ? 'text-white' : 'text-gray-900'}`}
@@ -382,6 +471,11 @@ export default function ActivityFeed({
             {displayedEvents.map((event, idx) => (
               <EventRow key={`${event.txHash}-${idx}`} event={event} idx={idx} />
             ))}
+            {activityPartial && (
+              <div className="px-4 py-3 text-center text-xs text-amber-500">
+                Some chains or event types are temporarily unavailable.
+              </div>
+            )}
             {/* Infinite scroll indicator */}
             {loadingMore && (
               <div className={`px-4 py-3 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -435,6 +529,11 @@ export default function ActivityFeed({
               {displayedEvents.map((event, idx) => (
                 <EventRow key={`${event.txHash}-${idx}`} event={event} idx={idx} />
               ))}
+              {activityPartial && (
+                <div className="px-4 py-3 text-center text-xs text-amber-500">
+                  Some chains or event types are temporarily unavailable.
+                </div>
+              )}
               {/* Infinite scroll indicator */}
               {loadingMore && (
                 <div className={`px-4 py-3 text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>

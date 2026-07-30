@@ -348,7 +348,6 @@ interface LoansResponse {
 }
 
 const LOANS_PAGE_SIZE = 100
-const LOANS_MAX_ROWS = 500
 
 /** A chain the project lives on, with the project's id ON THAT CHAIN (V6 ids differ per chain). */
 export interface LoanChainProject {
@@ -370,18 +369,20 @@ export async function fetchProjectLoans(chainProjects: ReadonlyArray<LoanChainPr
       const pid = Number(projectId)
       if (!Number.isSafeInteger(pid) || pid < 1) throw new Error('Invalid project ID')
       const rows: IndexedLoan[] = []
-      for (let offset = 0; offset < LOANS_MAX_ROWS; offset += LOANS_PAGE_SIZE) {
+      let totalCount = 0
+      do {
         const data = await safeRequest<LoansResponse>(LOANS_QUERY, {
           projectId: pid,
           version: 6,
           chainIds: [chainId],
           limit: LOANS_PAGE_SIZE,
-          offset,
+          offset: rows.length,
         }, getNetworkOption(chainId))
         const page = data.loans?.items || []
+        totalCount = data.loans?.totalCount ?? page.length
         rows.push(...page)
-        if (rows.length >= (data.loans?.totalCount ?? 0) || page.length < LOANS_PAGE_SIZE) break
-      }
+        if (!page.length) break
+      } while (rows.length < totalCount)
       return rows
     }),
   )

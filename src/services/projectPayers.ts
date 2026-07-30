@@ -79,7 +79,6 @@ interface ProjectPayersResponse {
 }
 
 const PAGE_SIZE = 100
-const MAX_ROWS = 500
 
 /** Every indexed payer address for a project across its chains (V6 only). */
 export async function fetchProjectPayers(projectId: number, chainIds: number[]): Promise<ProjectPayerRow[]> {
@@ -87,7 +86,7 @@ export async function fetchProjectPayers(projectId: number, chainIds: number[]):
   if (!chainIds.length) return []
 
   const rows: ProjectPayerRow[] = []
-  for (let offset = 0; offset < MAX_ROWS; offset += PAGE_SIZE) {
+  for (let offset = 0; ; offset += PAGE_SIZE) {
     const data = await safeRequest<ProjectPayersResponse>(PROJECT_PAYERS_QUERY, {
       projectId,
       version: 6,
@@ -97,7 +96,7 @@ export async function fetchProjectPayers(projectId: number, chainIds: number[]):
     }, getNetworkOption(chainIds[0]))
     const page = data.projectPayers?.items || []
     rows.push(...page)
-    if (rows.length >= (data.projectPayers?.totalCount ?? 0) || page.length < PAGE_SIZE) break
+    if (!page.length || rows.length >= (data.projectPayers?.totalCount ?? 0)) break
   }
   return rows
 }

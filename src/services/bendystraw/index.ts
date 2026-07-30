@@ -6,6 +6,7 @@ export {
   getProjectIdFromReceipt,
   getProjectIdsFromReceipts,
   fetchActivityEvents,
+  fetchProjectActivityEvents,
   fetchAccountActivityEvents,
   fetchAccountOperatedPermissions,
   fetchAccountTokenHoldings,

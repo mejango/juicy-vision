@@ -43,13 +43,15 @@ export const PROJECT_QUERY = `
 
 // Query projects owned by a specific address
 export const PROJECTS_BY_OWNER_QUERY = `
-  query ProjectsByOwner($owner: String!, $limit: Int) {
+  query ProjectsByOwner($owner: String!, $limit: Int!, $offset: Int!) {
     projects(
       where: { owner: $owner, version: 6 }
       limit: $limit
+      offset: $offset
       orderBy: "createdAt"
       orderDirection: "desc"
     ) {
+      totalCount
       items {
         id
         projectId
@@ -80,6 +82,7 @@ export const PROJECTS_QUERY = `
       orderBy: $orderBy
       orderDirection: $orderDirection
     ) {
+      totalCount
       items {
         id
         projectId
@@ -177,7 +180,13 @@ export const CONNECTED_CHAINS_QUERY = `
 // participant resolver requires the versioned `chainId_in` shape used by
 // website/; its singular `chainId` filter currently fails at runtime.
 export const TOKEN_HOLDERS_QUERY = `
-  query TokenHolders($projectId: Int!, $chainIds: [Int!]!, $version: Int!, $limit: Int) {
+  query TokenHolders(
+    $projectId: Int!
+    $chainIds: [Int!]!
+    $version: Int!
+    $limit: Int
+    $offset: Int
+  ) {
     participants(
       where: {
         projectId: $projectId
@@ -186,6 +195,7 @@ export const TOKEN_HOLDERS_QUERY = `
         balance_gt: "0"
       }
       limit: $limit
+      offset: $offset
       orderBy: "balance"
       orderDirection: "desc"
     ) {
@@ -203,7 +213,12 @@ export const TOKEN_HOLDERS_QUERY = `
 
 // Query to get participants across all chains via suckerGroupId
 export const SUCKER_GROUP_PARTICIPANTS_QUERY = `
-  query SuckerGroupParticipants($suckerGroupId: String!, $version: Int!, $limit: Int) {
+  query SuckerGroupParticipants(
+    $suckerGroupId: String!
+    $version: Int!
+    $limit: Int
+    $offset: Int
+  ) {
     participants(
       where: {
         suckerGroupId: $suckerGroupId
@@ -211,6 +226,7 @@ export const SUCKER_GROUP_PARTICIPANTS_QUERY = `
         balance_gt: "0"
       }
       limit: $limit
+      offset: $offset
       orderBy: "balance"
       orderDirection: "desc"
     ) {
@@ -401,7 +417,7 @@ export const PROJECT_MOMENTS_QUERY = `
 // Candidate Revnet operators come from indexed permission-holder events. The
 // current operator is verified against the live REVOwner contract before use.
 export const REVNET_OPERATOR_QUERY = `
-  query RevnetOperator($projectId: Int!, $chainId: Int!, $version: Int!) {
+  query RevnetOperator($projectId: Int!, $chainId: Int!, $version: Int!, $limit: Int!, $offset: Int!) {
     permissionHolders(
       where: {
         projectId: $projectId
@@ -409,7 +425,8 @@ export const REVNET_OPERATOR_QUERY = `
         version: $version
         isRevnetOperator: true
       }
-      limit: 10
+      limit: $limit
+      offset: $offset
     ) {
       totalCount
       items {
@@ -452,6 +469,7 @@ export const ACCOUNT_ACTIVITY_EVENTS_QUERY = `
       orderBy: $orderBy
       orderDirection: $orderDirection
     ) {
+      totalCount
       items {
         id
         chainId
@@ -533,11 +551,13 @@ ${ACCOUNT_ACTIVITY_PROJECT_FIELDS}
       }
     }
     beneficiaryPayEvents: payEvents(
-      where: { AND: [{ beneficiary: $address }, { version: 6 }] }
+      where: { AND: [{ beneficiary: $address }, { from_not: $address }, { version: 6 }] }
       orderBy: "timestamp"
       orderDirection: "desc"
       limit: $limit
+      offset: $offset
     ) {
+      totalCount
       items {
         id
         chainId
@@ -551,11 +571,13 @@ ${ACCOUNT_ACTIVITY_PROJECT_FIELDS}
       }
     }
     beneficiaryCashOutEvents: cashOutTokensEvents(
-      where: { AND: [{ beneficiary: $address }, { version: 6 }] }
+      where: { AND: [{ beneficiary: $address }, { from_not: $address }, { version: 6 }] }
       orderBy: "timestamp"
       orderDirection: "desc"
       limit: $limit
+      offset: $offset
     ) {
+      totalCount
       items {
         id
         chainId
@@ -568,11 +590,13 @@ ${ACCOUNT_ACTIVITY_PROJECT_FIELDS}
       }
     }
     beneficiaryMintTokensEvents: mintTokensEvents(
-      where: { AND: [{ beneficiary: $address }, { version: 6 }] }
+      where: { AND: [{ beneficiary: $address }, { from_not: $address }, { version: 6 }] }
       orderBy: "timestamp"
       orderDirection: "desc"
       limit: $limit
+      offset: $offset
     ) {
+      totalCount
       items {
         id
         chainId
@@ -585,11 +609,13 @@ ${ACCOUNT_ACTIVITY_PROJECT_FIELDS}
       }
     }
     beneficiaryManualMintTokensEvents: manualMintTokensEvents(
-      where: { AND: [{ beneficiary: $address }, { version: 6 }] }
+      where: { AND: [{ beneficiary: $address }, { from_not: $address }, { version: 6 }] }
       orderBy: "timestamp"
       orderDirection: "desc"
       limit: $limit
+      offset: $offset
     ) {
+      totalCount
       items {
         id
         chainId
@@ -602,11 +628,13 @@ ${ACCOUNT_ACTIVITY_PROJECT_FIELDS}
       }
     }
     beneficiaryAutoIssueEvents: autoIssueEvents(
-      where: { AND: [{ beneficiary: $address }, { version: 6 }] }
+      where: { AND: [{ beneficiary: $address }, { from_not: $address }, { version: 6 }] }
       orderBy: "timestamp"
       orderDirection: "desc"
       limit: $limit
+      offset: $offset
     ) {
+      totalCount
       items {
         id
         chainId
@@ -627,12 +655,13 @@ ${ACCOUNT_ACTIVITY_PROJECT_FIELDS}
 // unclaimed credits vs claimed ERC-20. totalCount lets the view surface
 // truncation when the account holds more rows than the window.
 export const ACCOUNT_TOKEN_HOLDINGS_QUERY = `
-  query AccountTokenHoldings($account: String!, $limit: Int) {
+  query AccountTokenHoldings($account: String!, $limit: Int, $offset: Int) {
     participants(
       where: { address: $account, balance_gt: "0", version: 6 }
       orderBy: "balance"
       orderDirection: "desc"
       limit: $limit
+      offset: $offset
     ) {
       totalCount
       items {
@@ -652,12 +681,13 @@ export const ACCOUNT_TOKEN_HOLDINGS_QUERY = `
 // The hook address is selected because it is part of the token's identity —
 // JB721 tokenIds repeat across every collection on a chain.
 export const ACCOUNT_NFTS_QUERY = `
-  query AccountNfts($owner: String!, $limit: Int) {
+  query AccountNfts($owner: String!, $limit: Int, $offset: Int) {
     nfts(
       where: { owner: $owner, version: 6 }
       orderBy: "createdAt"
       orderDirection: "desc"
       limit: $limit
+      offset: $offset
     ) {
       totalCount
       items {
@@ -674,11 +704,13 @@ export const ACCOUNT_NFTS_QUERY = `
 // Every project an account can operate on someone's behalf: permissionHolders
 // filtered by operator. Grouping by (chainId, projectId) happens client-side.
 export const ACCOUNT_PERMISSION_HOLDERS_QUERY = `
-  query AccountPermissionHolders($operator: String!, $version: Int!, $limit: Int) {
+  query AccountPermissionHolders($operator: String!, $version: Int!, $limit: Int!, $offset: Int!) {
     permissionHolders(
       where: { operator: $operator, version: $version }
       limit: $limit
+      offset: $offset
     ) {
+      totalCount
       items {
         chainId
         projectId
@@ -691,6 +723,48 @@ export const ACCOUNT_PERMISSION_HOLDERS_QUERY = `
   }
 `
 
+const ACTIVITY_EVENT_SELECTION = `
+  id
+  chainId
+  timestamp
+  from
+  txHash
+  project {
+    projectId
+    name
+    handle
+    logoUri
+    decimals
+    currency
+  }
+  payEvent { amount amountUsd from txHash }
+  projectCreateEvent { from txHash }
+  cashOutTokensEvent { reclaimAmount from txHash }
+  addToBalanceEvent { amount from txHash }
+  mintTokensEvent { tokenCount beneficiary from txHash }
+  manualMintTokensEvent { tokenCount: beneficiaryTokenCount beneficiary from txHash }
+  autoIssueEvent { tokenCount: count beneficiary from txHash }
+  burnEvent { amount from txHash }
+  deployErc20Event { symbol from txHash }
+  sendPayoutsEvent { amount from txHash }
+  sendReservedTokensToSplitsEvent { from txHash }
+  useAllowanceEvent { amount from txHash }
+  mintNftEvent { from txHash }
+  sendPayoutToSplitEvent { amount beneficiary from txHash }
+  sendReservedTokensToSplitEvent { tokenCount beneficiary from txHash }
+  borrowLoanEvent { borrowAmount collateral beneficiary from txHash }
+  repayLoanEvent { repayBorrowAmount collateralCountToReturn from txHash }
+  liquidateLoanEvent { borrowAmount collateral from txHash }
+  setUriEvent { caller from txHash }
+  projectTransferEvent { owner from txHash }
+  operatorPermissionsSetEvent { caller from txHash }
+  addNftTierEvent { caller from txHash }
+  removeNftTierEvent { caller from txHash }
+  swapEvent { terminalTokenAmount caller from txHash }
+  buybackPoolEvent { caller from txHash }
+  bridgeClaimEvent { terminalTokenAmount beneficiary from txHash }
+`
+
 export const ACTIVITY_EVENTS_QUERY = `
   query ActivityEvents($limit: Int, $offset: Int, $orderBy: String, $orderDirection: String) {
     activityEvents(
@@ -701,74 +775,47 @@ export const ACTIVITY_EVENTS_QUERY = `
       orderDirection: $orderDirection
     ) {
       items {
-        id
-        chainId
-        timestamp
-        from
-        txHash
-        project {
-          projectId
-          name
-          handle
-          logoUri
-          decimals
-          currency
-        }
-        payEvent {
-          amount
-          amountUsd
-          from
-          txHash
-        }
-        projectCreateEvent {
-          from
-          txHash
-        }
-        cashOutTokensEvent {
-          reclaimAmount
-          from
-          txHash
-        }
-        addToBalanceEvent {
-          amount
-          from
-          txHash
-        }
-        mintTokensEvent {
-          tokenCount
-          beneficiary
-          from
-          txHash
-        }
-        burnEvent {
-          amount
-          from
-          txHash
-        }
-        deployErc20Event {
-          symbol
-          from
-          txHash
-        }
-        sendPayoutsEvent {
-          amount
-          from
-          txHash
-        }
-        sendReservedTokensToSplitsEvent {
-          from
-          txHash
-        }
-        useAllowanceEvent {
-          amount
-          from
-          txHash
-        }
-        mintNftEvent {
-          from
-          txHash
-        }
+        ${ACTIVITY_EVENT_SELECTION}
       }
+    }
+  }
+`
+
+export const PROJECT_ACTIVITY_EVENTS_QUERY = `
+  query ProjectActivityEvents(
+    $suckerGroupId: String!
+    $limit: Int!
+    $offset: Int!
+  ) {
+    activityEvents(
+      where: { suckerGroupId: $suckerGroupId, version: 6 }
+      limit: $limit
+      offset: $offset
+      orderBy: "timestamp"
+      orderDirection: "desc"
+    ) {
+      items { ${ACTIVITY_EVENT_SELECTION} }
+      totalCount
+    }
+  }
+`
+
+export const SINGLE_PROJECT_ACTIVITY_EVENTS_QUERY = `
+  query SingleProjectActivityEvents(
+    $projectId: Int!
+    $chainId: Int!
+    $limit: Int!
+    $offset: Int!
+  ) {
+    activityEvents(
+      where: { projectId: $projectId, chainId: $chainId, version: 6 }
+      limit: $limit
+      offset: $offset
+      orderBy: "timestamp"
+      orderDirection: "desc"
+    ) {
+      items { ${ACTIVITY_EVENT_SELECTION} }
+      totalCount
     }
   }
 `

@@ -134,9 +134,9 @@ describe('GraphQL Query Structure', () => {
       expect(ACCOUNT_ACTIVITY_EVENTS_QUERY).toContain('beneficiaryAutoIssueEvents: autoIssueEvents(')
     })
 
-    it('pins beneficiary + version 6 in an explicit AND group on every branch', () => {
+    it('pins beneficiary, excludes sender duplicates, and pins version 6 on every branch', () => {
       const groups = ACCOUNT_ACTIVITY_EVENTS_QUERY.match(
-        /AND: \[\{ beneficiary: \$address \}, \{ version: 6 \}\]/g,
+        /AND: \[\{ beneficiary: \$address \}, \{ from_not: \$address \}, \{ version: 6 \}\]/g,
       )
       expect(groups).toHaveLength(5)
     })

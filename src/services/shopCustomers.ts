@@ -150,7 +150,6 @@ export function ownersOfTier(rows: MintRow[], tierId: number): TierOwner[] {
 // --- Fetch wrappers (thin marshalling; not unit tested) ------------------
 
 const NFT_MINTS_PAGE = 200
-const NFT_MINTS_MAX = 1000
 
 function nftMintsQuery(withBeneficiary: boolean): string {
   return (
@@ -169,7 +168,7 @@ interface RawMintEvents {
 
 /**
  * All store-item purchases across a project's chains, newest first. Optionally
- * filtered to one beneficiary ("You"). Paginated (200/page) and capped (1000).
+ * filtered to one beneficiary ("You"). Paginated to completion.
  */
 export async function fetchNftMints(chains: ShopChain[], beneficiary?: string): Promise<MintFetchResult> {
   const query = nftMintsQuery(!!beneficiary)
@@ -179,8 +178,7 @@ export async function fetchNftMints(chains: ShopChain[], beneficiary?: string): 
       let rows: MintRow[] = []
       let total = 0
       let offset = 0
-      try {
-        for (;;) {
+      for (;;) {
           const vars: Record<string, unknown> = {
             projectId: Number(chain.projectId),
             chainId,
@@ -203,12 +201,9 @@ export async function fetchNftMints(chains: ShopChain[], beneficiary?: string): 
             chainId: Number(m.chainId ?? chainId),
           })))
           offset += items.length
-          if (!items.length || rows.length >= total || rows.length >= NFT_MINTS_MAX) break
-        }
-      } catch {
-        return { rows: [] as MintRow[], total: 0, capped: false }
+        if (!items.length || rows.length >= total) break
       }
-      return { rows, total, capped: rows.length >= NFT_MINTS_MAX }
+      return { rows, total, capped: false }
     }),
   )
   let rows: MintRow[] = []

@@ -32,13 +32,18 @@ export interface AccountActivityRawRow {
   [key: string]: unknown
 }
 
+export interface AccountActivityQueryRoot<T> {
+  items?: T[]
+  totalCount?: number
+}
+
 export interface AccountActivityQueryData {
-  activityEvents?: { items?: AccountActivityRawRow[] }
-  beneficiaryPayEvents?: { items?: AccountActivitySubEventRow[] }
-  beneficiaryCashOutEvents?: { items?: AccountActivitySubEventRow[] }
-  beneficiaryMintTokensEvents?: { items?: AccountActivitySubEventRow[] }
-  beneficiaryManualMintTokensEvents?: { items?: AccountActivitySubEventRow[] }
-  beneficiaryAutoIssueEvents?: { items?: AccountActivitySubEventRow[] }
+  activityEvents?: AccountActivityQueryRoot<AccountActivityRawRow>
+  beneficiaryPayEvents?: AccountActivityQueryRoot<AccountActivitySubEventRow>
+  beneficiaryCashOutEvents?: AccountActivityQueryRoot<AccountActivitySubEventRow>
+  beneficiaryMintTokensEvents?: AccountActivityQueryRoot<AccountActivitySubEventRow>
+  beneficiaryManualMintTokensEvents?: AccountActivityQueryRoot<AccountActivitySubEventRow>
+  beneficiaryAutoIssueEvents?: AccountActivityQueryRoot<AccountActivitySubEventRow>
 }
 
 /** root field → the sub-event key its rows land under on a merged activity row.

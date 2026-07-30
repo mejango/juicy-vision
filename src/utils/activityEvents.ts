@@ -134,6 +134,16 @@ export function getEventInfo(event: ActivityEvent): EventInfo {
         from: event.from,
         fromContext: 'Minted by',
       }
+    case 'protocol':
+      return {
+        action: event.action,
+        amount: event.amount
+          ? formatAmount(event.amount, decimals, currency)
+          : undefined,
+        txHash: event.txHash,
+        from: event.from,
+        fromContext: 'By',
+      }
     case 'unknown':
     default:
       return {

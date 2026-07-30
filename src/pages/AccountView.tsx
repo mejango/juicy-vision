@@ -285,15 +285,12 @@ export default function AccountView({ address }: AccountViewProps) {
   const setViewAs = useViewAsStore(s => s.setViewAs)
   const isViewingAsThis = !!viewAs && viewAs.toLowerCase() === address.toLowerCase()
 
-  // Activity. `fromOffset` tracks how many FROM-BRANCH rows have been
-  // consumed — the server offset pages only that branch, while `events` also
-  // contains merged beneficiary rows the offset must not advance past.
   const [events, setEvents] = useState<ActivityEvent[]>([])
-  const [fromOffset, setFromOffset] = useState(0)
   const [activityLoading, setActivityLoading] = useState(true)
   const [activityError, setActivityError] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null)
 
   // Owned projects
   const [owned, setOwned] = useState<OwnedRow[]>([])
@@ -345,7 +342,6 @@ export default function AccountView({ address }: AccountViewProps) {
   useEffect(() => {
     let cancelled = false
     setEvents([])
-    setFromOffset(0)
     setActivityLoading(true)
     setActivityError(null)
     setHasMore(false)
@@ -353,8 +349,7 @@ export default function AccountView({ address }: AccountViewProps) {
       .then(page => {
         if (cancelled) return
         setEvents(page.events)
-        setFromOffset(page.fromCount)
-        setHasMore(page.fromCount >= ACTIVITY_PAGE_SIZE)
+        setHasMore(page.events.length < page.totalCount)
       })
       .catch(err => {
         if (!cancelled) setActivityError(err instanceof Error ? err.message : 'Activity unavailable')
@@ -369,25 +364,23 @@ export default function AccountView({ address }: AccountViewProps) {
 
   const loadMore = useCallback(async () => {
     setLoadingMore(true)
+    setLoadMoreError(null)
     try {
-      // Page by the from-branch consumed count, NOT events.length — the merged
-      // feed also contains beneficiary rows the server offset would skip past.
       const page = await fetchAccountActivityEvents(address, {
         limit: ACTIVITY_PAGE_SIZE,
-        offset: fromOffset,
+        offset: events.length,
       })
       setEvents(prev => {
         const known = new Set(prev.map(e => e.id))
         return [...prev, ...page.events.filter(e => !known.has(e.id))]
       })
-      setFromOffset(prev => prev + page.fromCount)
-      setHasMore(page.fromCount >= ACTIVITY_PAGE_SIZE)
+      setHasMore(events.length + page.events.length < page.totalCount)
     } catch {
-      setHasMore(false)
+      setLoadMoreError('Could not load more activity. Try again.')
     } finally {
       setLoadingMore(false)
     }
-  }, [address, fromOffset])
+  }, [address, events])
 
   // Owned projects: direct ownership plus projects owned by Safes the account co-owns
   useEffect(() => {
@@ -410,7 +403,12 @@ export default function AccountView({ address }: AccountViewProps) {
       const safeRows: OwnedRow[] = []
       await Promise.all(
         uniqueSafes.map(async safe => {
-          const projects = await fetchProjectsByOwner(safe).catch(() => [] as Project[])
+          const projects = await fetchProjectsByOwner(safe).catch(() => {
+            if (!cancelled) {
+              setOwnedError('Some Safe-owned projects could not be loaded.')
+            }
+            return [] as Project[]
+          })
           for (const p of projects) {
             safeRows.push({
               chainId: p.chainId,
@@ -705,6 +703,9 @@ export default function AccountView({ address }: AccountViewProps) {
                   {loadingMore ? t('account.loading', 'Loading…') : t('account.loadMore', 'Load more')}
                 </button>
               )}
+              {loadMoreError ? (
+                <div className="mt-2 text-xs text-red-500">{loadMoreError}</div>
+              ) : null}
             </>
           )}
         </div>
@@ -873,8 +874,9 @@ export default function AccountView({ address }: AccountViewProps) {
           ) : owned.length === 0 ? (
             <div className={`text-xs ${mutedClass}`}>{t('account.noOwned', 'No projects owned')}</div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {owned.map(row => {
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {owned.map(row => {
                 const chain = chainInfo(row.chainId)
                 return (
                   <button
@@ -921,8 +923,10 @@ export default function AccountView({ address }: AccountViewProps) {
                     </div>
                   </button>
                 )
-              })}
-            </div>
+                })}
+              </div>
+              {ownedError ? <div className="mt-2 text-xs text-amber-500">{ownedError}</div> : null}
+            </>
           )}
         </div>
 

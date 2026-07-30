@@ -38,6 +38,7 @@ import { OpenLoanModal } from './OpenLoanModal'
 import MoveChainsModal from './MoveChainsModal'
 import { AddLiquidityModal } from './AddLiquidityModal'
 import { RemoveLiquidityModal } from './RemoveLiquidityModal'
+import { BurnTokensModal, type BurnTokensRow } from './BurnTokensModal'
 
 export interface AccountsSubtabProps {
   project: Project
@@ -443,6 +444,7 @@ export function AccountsSubtab({
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [claimOpen, setClaimOpen] = useState(false)
+  const [burnOpen, setBurnOpen] = useState(false)
   const [loanOpen, setLoanOpen] = useState(false)
   const [moveOpen, setMoveOpen] = useState(false)
   const [addLpOpen, setAddLpOpen] = useState(false)
@@ -495,6 +497,12 @@ export function AccountsSubtab({
   }, [reload])
 
   const held = (rows ?? []).filter(row => row.balance != null && row.balance > 0n)
+  const burnRows: BurnTokensRow[] = held.flatMap(row => {
+    const chainProject = youChains.find(cp => cp.chainId === row.chainId)
+    return chainProject && row.balance != null
+      ? [{ chainId: row.chainId, projectId: chainProject.projectId, balance: row.balance }]
+      : []
+  })
   const balanceComplete = (rows ?? []).every(row => row.balance != null) && rows != null
   // Each row's project id ON its chain (V6 ids differ per chain) — carried into
   // the claim so it targets the right project off-home, never the home id.
@@ -751,6 +759,7 @@ export function AccountsSubtab({
         {activeAddress ? (
           <div className="flex flex-wrap gap-2 mt-4">
             {actionButton('Cash out', onCashOut)}
+            {burnRows.length ? actionButton('Burn', () => setBurnOpen(true)) : null}
             {loanAvailable ? actionButton('Get a loan', onOpenLoan ?? (() => setLoanOpen(true))) : null}
             {moveChainsAvailable ? actionButton('Move between chains', onMoveChains ?? (() => setMoveOpen(true))) : null}
             {addLiquidityAvailable ? actionButton('Add market liquidity', onAddLiquidity ?? (() => setAddLpOpen(true))) : null}
@@ -798,6 +807,13 @@ export function AccountsSubtab({
         tokenSymbol={project.tokenSymbol}
         rows={claimRows}
         onClaimed={reload}
+      />
+      <BurnTokensModal
+        isOpen={burnOpen}
+        onClose={() => setBurnOpen(false)}
+        rows={burnRows}
+        tokenSymbol={symbol}
+        onBurned={reload}
       />
       {loanAvailable ? (
         <OpenLoanModal

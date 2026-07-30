@@ -1,17 +1,25 @@
 import { uniswapV4PriceFromSqrtPriceX96 } from '@bananapus/nana-sdk-core/v6'
 import { NATIVE_TOKEN, USDC_ADDRESSES, type SupportedChainId } from '../../constants'
+import { downsampleTimeSeries } from '../../utils/downsample'
 import { getNetworkOption, safeRequest } from './client'
 
 const PAGE_SIZE = 1_000
-const MAX_SWAPS = 3_000
+const MAX_DISPLAY_POINTS = 3_000
 
 const BUYBACK_POOLS_QUERY = `
-  query IndexedBuybackPools($projectId: Int!, $chainId: Int!, $version: Int!) {
+  query IndexedBuybackPools(
+    $projectId: Int!
+    $chainId: Int!
+    $version: Int!
+    $limit: Int!
+    $offset: Int!
+  ) {
     buybackPoolEvents(
       where: { projectId: $projectId, chainId: $chainId, version: $version }
       orderBy: "timestamp"
       orderDirection: "desc"
-      limit: 100
+      limit: $limit
+      offset: $offset
     ) {
       items {
         timestamp
@@ -20,6 +28,7 @@ const BUYBACK_POOLS_QUERY = `
         initialSqrtPriceX96
         projectTokenIsCurrency0
       }
+      totalCount
     }
   }
 `
@@ -77,6 +86,8 @@ export type IndexedAmmPriceHistory = {
   hasPool: boolean
   poolId?: string | null
   points: IndexedAmmPricePoint[]
+  sourceCount?: number
+  sampled?: boolean
 }
 
 export function priceFromSqrtPriceX96(
@@ -119,24 +130,36 @@ export async function fetchIndexedAmmPriceHistory({
     version: 6,
   }
   const options = getNetworkOption(chainId)
-  const poolData = await safeRequest<{
-    buybackPoolEvents: { items: RawPool[] }
-  }>(BUYBACK_POOLS_QUERY, variables, options)
-  const pool = (poolData.buybackPoolEvents?.items ?? []).find(
+  const pools: RawPool[] = []
+  let poolTotalCount = 0
+  while (pools.length < poolTotalCount || pools.length === 0) {
+    const poolData = await safeRequest<{
+      buybackPoolEvents: { items: RawPool[]; totalCount: number }
+    }>(
+      BUYBACK_POOLS_QUERY,
+      { ...variables, limit: PAGE_SIZE, offset: pools.length },
+      options,
+    )
+    const items = poolData.buybackPoolEvents?.items ?? []
+    poolTotalCount = poolData.buybackPoolEvents?.totalCount ?? items.length
+    pools.push(...items)
+    if (items.length === 0 || pools.length >= poolTotalCount) break
+  }
+  const pool = pools.find(
     item => item.terminalToken.toLowerCase() === terminalToken,
   )
   if (!pool) return { hasPool: false, poolId: null, points: [] }
 
   const swaps: RawSwap[] = []
   let totalCount = 0
-  while (swaps.length < MAX_SWAPS) {
+  while (swaps.length < totalCount || swaps.length === 0) {
     const page = await safeRequest<{
       swapEvents: { items: RawSwap[]; totalCount: number }
     }>(
       SWAPS_QUERY,
       {
         ...variables,
-        limit: Math.min(PAGE_SIZE, MAX_SWAPS - swaps.length),
+        limit: PAGE_SIZE,
         offset: swaps.length,
       },
       options,
@@ -188,5 +211,17 @@ export async function fetchIndexedAmmPriceHistory({
   }
 
   points.sort((a, b) => a.timestamp - b.timestamp)
-  return { hasPool: true, poolId: pool.poolId, points }
+  const sampledPoints = downsampleTimeSeries(
+    points,
+    MAX_DISPLAY_POINTS,
+    point => point.timestamp,
+    point => point.price,
+  )
+  return {
+    hasPool: true,
+    poolId: pool.poolId,
+    points: sampledPoints,
+    sourceCount: points.length,
+    sampled: sampledPoints.length < points.length,
+  }
 }
