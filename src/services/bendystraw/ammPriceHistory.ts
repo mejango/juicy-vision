@@ -1,6 +1,6 @@
+import { downsampleTimeSeries } from '@bananapus/nana-sdk-core'
 import { uniswapV4PriceFromSqrtPriceX96 } from '@bananapus/nana-sdk-core/v6'
 import { NATIVE_TOKEN, USDC_ADDRESSES, type SupportedChainId } from '../../constants'
-import { downsampleTimeSeries } from '../../utils/downsample'
 import { getNetworkOption, safeRequest } from './client'
 
 const PAGE_SIZE = 1_000
