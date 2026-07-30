@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useMemo, useCallback, memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../../stores'
+import { deterministicShuffle } from '../../utils/deterministicShuffle'
 
 interface WelcomeScreenProps {
   onSuggestionClick: (text: string) => void
@@ -2787,16 +2788,6 @@ function buildRows(suggestions: string[]): RowData[] {
   return rows
 }
 
-// Random shuffle - stochastic each page load
-function shuffle<T>(array: T[]): T[] {
-  const result = [...array]
-  for (let i = result.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[result[i], result[j]] = [result[j], result[i]]
-  }
-  return result
-}
-
 // Pre-computed chip data for performance
 interface ChipData {
   displayText: string
@@ -2839,13 +2830,14 @@ const CHIP_CLASSES: Record<string, { dark: string; light: string }> = {
 }
 
 // Badge <span> class + label per badgeType
-const BADGE_META: Record<BadgeType, { cls: string; tKey: string; label: string }> = {
-  id: { cls: 'text-[10px] uppercase tracking-wide font-semibold text-yellow-400', tKey: 'badges.id', label: 'id' },
-  bold: { cls: 'text-[10px] uppercase tracking-wide font-semibold text-purple-400', tKey: 'badges.bold', label: 'bold' },
-  popular: { cls: 'text-[10px] uppercase tracking-wide font-semibold text-juice-cyan', tKey: 'badges.popular', label: 'popular' },
-  pro: { cls: 'text-[10px] uppercase tracking-wide font-semibold text-yellow-400', tKey: 'badges.pro', label: 'pro' },
-  demo: { cls: 'text-[10px] uppercase tracking-wide font-semibold text-pink-400', tKey: 'badges.demo', label: 'demo' },
-  fun: { cls: 'text-[10px] uppercase tracking-wide font-semibold text-green-400', tKey: 'badges.fun', label: 'fun' },
+const BADGE_CLASS = 'text-[10px] uppercase tracking-wide font-semibold'
+const BADGE_META: Record<BadgeType, { tKey: string; label: string }> = {
+  id: { tKey: 'badges.id', label: 'id' },
+  bold: { tKey: 'badges.bold', label: 'bold' },
+  popular: { tKey: 'badges.popular', label: 'popular' },
+  pro: { tKey: 'badges.pro', label: 'pro' },
+  demo: { tKey: 'badges.demo', label: 'demo' },
+  fun: { tKey: 'badges.fun', label: 'fun' },
 }
 
 // Memoized chip component to avoid re-renders during scroll
@@ -2906,7 +2898,7 @@ const ChipButton = memo(function ChipButton({
     >
       {displayText}
       {badgeType && BADGE_META[badgeType] && (
-        <span className={BADGE_META[badgeType].cls}>
+        <span className={BADGE_CLASS}>
           {t(BADGE_META[badgeType].tKey, BADGE_META[badgeType].label)}
         </span>
       )}
@@ -2940,10 +2932,10 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
     }
   }, [])
 
-  // Shuffled base list - random on each page load
+  // Keep the visual mix stable across hydration, screenshots, and browsers.
   const shuffledBase = useMemo(() => {
-    return shuffle([...welcomeSuggestions, ...traitLabels])
-  }, []) // Empty deps = shuffle once on mount
+    return deterministicShuffle([...welcomeSuggestions, ...traitLabels])
+  }, [])
 
   // Filter suggestions based on selected traits
   const filteredSuggestions = useMemo(() => {
