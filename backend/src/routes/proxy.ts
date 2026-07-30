@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { bendystrawProxyHost, resolveBendystrawProxyRequest } from '../services/bendystrawProxy.ts';
 import { getConfig } from '../utils/config.ts';
 
 export const proxyRouter = new Hono();
@@ -16,13 +17,16 @@ proxyRouter.post('/bendystraw', async (c) => {
   }
 
   try {
-    const body = await c.req.json();
+    const body = resolveBendystrawProxyRequest(await c.req.json());
+    if (!body) {
+      return c.json({ error: 'Unknown or invalid Bendystraw operation' }, 400);
+    }
 
-    // Construct the authenticated endpoint (testnet uses a separate indexer)
-    // Allow ?network=mainnet to force mainnet (e.g., for the activity feed on staging)
-    const networkParam = c.req.query('network');
-    const useMainnet = networkParam === 'mainnet';
-    const host = (config.isTestnet && !useMainnet) ? 'testnet.bendystraw.xyz' : 'bendystraw.xyz';
+    // The frontend's SDK resolver supplies an explicit, fail-closed network.
+    const host = bendystrawProxyHost(c.req.query('network'));
+    if (!host) {
+      return c.json({ error: 'Unsupported Bendystraw network' }, 400);
+    }
     const endpoint = `https://${host}/${config.bendystrawApiKey}/graphql`;
 
     const response = await fetch(endpoint, {

@@ -21,7 +21,8 @@ Deno.test('default system prompt embeds the knowledge base exactly once', () => 
 Deno.test('an enhanced prompt that already embeds the knowledge base is not doubled', () => {
   // Same shape contextManager.buildEnhancedSystemPrompt produces: base prompt
   // followed by the Knowledge Base section.
-  const enhanced = `base prompt\n\n---\n\n# Knowledge Base\n${OMNICHAIN_CONTEXT}\n\n---\n\nmore context`;
+  const enhanced =
+    `base prompt\n\n---\n\n# Knowledge Base\n${OMNICHAIN_CONTEXT}\n\n---\n\nmore context`;
   const prompt = buildSystemPromptSync(enhanced, true);
   assertEquals(occurrences(prompt, OMNICHAIN_CONTEXT), 1);
   // The enhanced prompt's other sections survive untouched.

@@ -5,6 +5,7 @@
  * Used for payment verification and project data.
  */
 
+import { resolveBendystrawNetwork } from '@bananapus/nana-sdk-core';
 import { getConfig } from '../utils/config.ts';
 import { getProjectOwner } from './chainReader.ts';
 
@@ -131,13 +132,14 @@ interface GraphQLResponse<T> {
   errors?: Array<{ message: string }>;
 }
 
-const MAINNET_CHAIN_IDS = new Set([1, 10, 8453, 42161]);
-const TESTNET_CHAIN_IDS = new Set([11155111, 11155420, 84532, 421614]);
-
 export function bendystrawHostForChain(chainId: number): string {
-  if (MAINNET_CHAIN_IDS.has(chainId)) return 'bendystraw.xyz';
-  if (TESTNET_CHAIN_IDS.has(chainId)) return 'testnet.bendystraw.xyz';
-  throw new Error(`Unsupported Bendystraw chain: ${chainId}`);
+  try {
+    return resolveBendystrawNetwork({ chainId }) === 'mainnet'
+      ? 'bendystraw.xyz'
+      : 'testnet.bendystraw.xyz';
+  } catch {
+    throw new Error(`Unsupported Bendystraw chain: ${chainId}`);
+  }
 }
 
 export function bendystrawEndpointForChain(apiKey: string, chainId: number): string {

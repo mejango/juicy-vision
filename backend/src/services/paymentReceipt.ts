@@ -118,7 +118,7 @@ export function verifyProtectedPaymentReceipt(params: {
           isAddressEqual(event.args.caller, CONTRACTS.JBMultiTerminal as Address) ||
           // Any known-good buyback hook counts: projects can be registry-pinned
           // to the pre-upgrade instance, which mints through the same path.
-          KNOWN_BUYBACK_HOOKS.some(hook => isAddressEqual(event.args.caller, hook as Address))
+          KNOWN_BUYBACK_HOOKS.some((hook) => isAddressEqual(event.args.caller, hook as Address))
         )
       ) {
         controllerIssued += event.args.beneficiaryTokenCount;

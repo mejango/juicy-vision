@@ -253,33 +253,16 @@ interface StoreAutoIssuanceEventsPage {
   };
 }
 
-// Mirrors bendystraw/client.ts getClient + getNetworkOption: proxy through the
-// backend when configured, else the user's configured direct endpoint.
-async function bendystrawClientFor(chainId: number) {
-  const { GraphQLClient } = await import("./graphqlClient");
-  const { IS_TESTNET } = await import("../config/environment");
-  const isMainnetChain = [1, 10, 8453, 42161].includes(chainId);
-  const network = IS_TESTNET && isMainnetChain ? "mainnet" : undefined;
-  const apiUrl = import.meta.env.VITE_API_URL;
-  if (apiUrl) {
-    return new GraphQLClient(
-      `${apiUrl}/proxy/bendystraw${network ? `?network=${network}` : ""}`,
-    );
-  }
-  const { useSettingsStore } = await import("../stores");
-  return new GraphQLClient(useSettingsStore.getState().bendystrawEndpoint);
-}
-
 async function fetchAutoIssuanceAllocations(
   projectId: number,
   chainId: number,
 ): Promise<AutoIssuanceAllocation[]> {
-  const client = await bendystrawClientFor(chainId);
+  const { getNetworkOption, safeRequest } = await import("./bendystraw/client");
   const items: AutoIssuanceAllocation[] = [];
   let totalCount = 0;
   let offset = 0;
   while (true) {
-    const data = await client.request<StoreAutoIssuanceEventsPage>(
+    const data = await safeRequest<StoreAutoIssuanceEventsPage>(
       STORE_AUTO_ISSUANCE_QUERY,
       {
         projectId,
@@ -288,6 +271,7 @@ async function fetchAutoIssuanceAllocations(
         limit: AUTO_ISSUE_PAGE_SIZE,
         offset,
       },
+      getNetworkOption(chainId),
     );
     const page = data?.storeAutoIssuanceAmountEvents;
     if (!page || !Array.isArray(page.items))

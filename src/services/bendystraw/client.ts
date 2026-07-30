@@ -1,8 +1,11 @@
 import { GraphQLClient, type RequestDocument, type Variables } from '../graphqlClient'
 import { createPublicClient, erc20Abi, http, isAddress } from 'viem'
 import {
+  bendystrawCacheTtl,
   bendystrawProjectRefsFilter as projectRefsWhere,
   matchesBendystrawProjectRef as matchesProjectRef,
+  resolveBendystrawNetwork,
+  type BendystrawNetwork,
   type BendystrawProjectRef,
   type JBChainId,
 } from '@bananapus/nana-sdk-core'
@@ -29,18 +32,11 @@ import {
 
 type VersionedProjectRef = Required<BendystrawProjectRef>
 
-// Mainnet chain IDs - used to detect when to route to mainnet API in staging
-const MAINNET_CHAIN_IDS = [1, 10, 8453, 42161] as const
-
 /**
- * Get network option for API routing.
- * In staging (IS_TESTNET mode), mainnet chain IDs need to route to mainnet API.
+ * Resolve every chain-scoped read through the SDK's fail-closed network map.
  */
-export function getNetworkOption(chainId: number): { network: 'mainnet' } | undefined {
-  if (IS_TESTNET && MAINNET_CHAIN_IDS.includes(chainId as typeof MAINNET_CHAIN_IDS[number])) {
-    return { network: 'mainnet' }
-  }
-  return undefined
+export function getNetworkOption(chainId: number): { network: BendystrawNetwork } {
+  return { network: resolveBendystrawNetwork({ chainId }) }
 }
 import {
   PROJECT_QUERY,
@@ -331,19 +327,22 @@ export interface Project {
   configurationError?: string
 }
 
-function getClient(options?: { network?: 'mainnet' }): GraphQLClient {
+function getClient(options?: { network: BendystrawNetwork }): GraphQLClient {
+  const defaultNetwork: BendystrawNetwork = IS_TESTNET ? 'testnet' : 'mainnet'
+  const network = options?.network ?? defaultNetwork
   // If backend API is configured, use the proxy endpoint to keep API keys secure
   const apiUrl = import.meta.env.VITE_API_URL
   if (apiUrl) {
-    const params = options?.network ? `?network=${options.network}` : ''
-    return new GraphQLClient(`${apiUrl}/proxy/bendystraw${params}`)
+    return new GraphQLClient(`${apiUrl}/proxy/bendystraw?network=${network}`)
   }
   // In testnet builds, mainnet account/project reads must still hit the
   // mainnet indexer. The old direct-mode fallback ignored this option and
   // silently queried the testnet schema for mainnet chain IDs.
-  const endpoint = options?.network === 'mainnet'
-    ? 'https://bendystraw.xyz/graphql'
-    : useSettingsStore.getState().bendystrawEndpoint
+  const endpoint = network === defaultNetwork
+    ? useSettingsStore.getState().bendystrawEndpoint
+    : network === 'mainnet'
+      ? 'https://bendystraw.xyz/graphql'
+      : 'https://testnet.bendystraw.xyz/graphql'
   return new GraphQLClient(endpoint)
 }
 
@@ -355,9 +354,15 @@ function getClient(options?: { network?: 'mainnet' }): GraphQLClient {
 export async function safeRequest<T>(
   document: RequestDocument,
   variables?: Variables,
-  options?: { network?: 'mainnet' }
+  options?: { chainId?: number; network?: BendystrawNetwork }
 ): Promise<T> {
-  const client = getClient(options)
+  const network = resolveBendystrawNetwork({
+    chainId: options?.chainId,
+    defaultNetwork: IS_TESTNET ? 'testnet' : 'mainnet',
+    network: options?.network,
+    variables,
+  })
+  const client = getClient({ network })
   const queryString = typeof document === 'string' ? document : String(document)
 
   const result = await bendystrawCircuit.call(async () => {
@@ -1916,10 +1921,14 @@ export async function fetchProjectWithRuleset(
 
 // Check if user is project owner
 // Cache for projects by owner/deployer
-const projectsByOwnerCache = createCache<Project[]>(CACHE_DURATIONS.SHORT)
+const projectsByOwnerCache = createCache<Project[]>(
+  bendystrawCacheTtl('standard'),
+)
 
 // Ruleset history cache - for regular projects (1 hour TTL)
-const rulesetHistoryCache = createCache<RulesetHistoryEntry[]>(CACHE_DURATIONS.LONG)
+const rulesetHistoryCache = createCache<RulesetHistoryEntry[]>(
+  bendystrawCacheTtl('stable'),
+)
 
 // Clear the projects by owner cache (call after deployment completes)
 export function clearProjectsByOwnerCache(ownerAddress?: string): void {
@@ -2789,7 +2798,7 @@ export async function getContractsForProject(
 }
 
 // Cache for Revnet operator addresses
-const revnetOperatorCache = createCache<string>(CACHE_DURATIONS.LONG)
+const revnetOperatorCache = createCache<string>(bendystrawCacheTtl('live'))
 const REV_OWNER_OPERATOR_ABI = [{
   name: 'isOperatorOf',
   type: 'function',

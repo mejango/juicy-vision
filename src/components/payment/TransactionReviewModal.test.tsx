@@ -76,4 +76,31 @@ describe('TransactionReviewModal', () => {
     await expect(queued).resolves.toBe(false)
     expect(document.body.style.overflow).toBe('')
   })
+
+  it('reports a clipboard failure without approving or changing the reviewed payload', async () => {
+    const user = userEvent.setup()
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async () => Promise.reject(new Error('denied')) },
+    })
+    render(<TransactionReviewModal />)
+    let pending!: Promise<boolean>
+
+    await act(async () => {
+      pending = requestTransactionReview({
+        ...review('Authorization review', 'Authorize'),
+        kind: 'authorization',
+        description: 'Review this exact authorization.',
+      })
+      await Promise.resolve()
+    })
+
+    expect(await screen.findByText('Review this exact authorization.')).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '[copy tx audit prompt]' }))
+    expect(screen.getByRole('button', { name: 'Could not copy prompt' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Authorize' })).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: 'Close' }))
+    await expect(pending).resolves.toBe(false)
+  })
 })

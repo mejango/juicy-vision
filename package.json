@@ -47,6 +47,7 @@
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "check:protocol": "node scripts/verify-protocol-parity.mjs",
     "schema:check": "node scripts/check-bendystraw-schema.mjs 32",
+    "bendystraw:registry": "node scripts/check-bendystraw-schema.mjs 32 --write-registry",
     "check:writes": "node scripts/check-wallet-write-inventory.mjs",
     "check:release-config": "node scripts/validate-release-config.mjs",
     "check:source": "node scripts/check-source-invariants.mjs",
@@ -57,7 +58,7 @@
     "test:all": "npm run typecheck && npm run test:ci && npm run test:e2e"
   },
   "dependencies": {
-    "@bananapus/nana-sdk-core": "1.8.0",
+    "@bananapus/nana-sdk-core": "1.9.0",
     "@safe-global/safe-apps-provider": "0.18.6",
     "@safe-global/safe-apps-sdk": "9.1.0",
     "@stripe/react-stripe-js": "^6.8.0",

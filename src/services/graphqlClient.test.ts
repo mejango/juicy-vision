@@ -1,5 +1,6 @@
+import { webcrypto } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { GraphQLClient } from './graphqlClient'
+import { bendystrawOperationId, GraphQLClient } from './graphqlClient'
 
 describe('GraphQLClient', () => {
   afterEach(() => {
@@ -7,6 +8,7 @@ describe('GraphQLClient', () => {
   })
 
   it('posts the document and variables and returns validated data', async () => {
+    vi.stubGlobal('crypto', webcrypto)
     const fetchMock = vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ data: { project: { id: '1' } } }),
       { status: 200, headers: { 'content-type': 'application/json' } },
@@ -14,7 +16,8 @@ describe('GraphQLClient', () => {
     vi.stubGlobal('fetch', fetchMock)
 
     const client = new GraphQLClient('/proxy/bendystraw')
-    await expect(client.request('query Project($id: ID!) { project(id: $id) { id } }', { id: '1' }))
+    const query = 'query Project($id: ID!) { project(id: $id) { id } }'
+    await expect(client.request(query, { id: '1' }))
       .resolves.toEqual({ project: { id: '1' } })
 
     expect(fetchMock).toHaveBeenCalledWith('/proxy/bendystraw', expect.objectContaining({
@@ -24,7 +27,7 @@ describe('GraphQLClient', () => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        query: 'query Project($id: ID!) { project(id: $id) { id } }',
+        operation: await bendystrawOperationId(query),
         variables: { id: '1' },
       }),
     }))
@@ -48,5 +51,23 @@ describe('GraphQLClient', () => {
 
     await expect(new GraphQLClient('/graphql').request('query { projects { id } }'))
       .rejects.toThrow('missing data')
+  })
+
+  it('rejects invalid variables and nested response shapes before callers can use them', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ data: { project: {} } }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ))
+    vi.stubGlobal('fetch', fetchMock)
+    const client = new GraphQLClient('/graphql')
+    const query = 'query Project($id: Int!) { project(id: $id) { id } }'
+
+    await expect(client.request(query, { id: 'wrong' }))
+      .rejects.toThrow('received invalid variables')
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    await expect(client.request(query, { id: 1 }))
+      .rejects.toThrow('returned invalid data')
+    expect(fetchMock).toHaveBeenCalledOnce()
   })
 })
