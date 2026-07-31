@@ -6,6 +6,8 @@
  * token is kept in the result so diagnostics never lose the selector.
  */
 
+import { classifyCashOutExecutionError } from '@bananapus/nana-sdk-core/v6'
+
 interface KnownTransactionError {
   matchers: string[]
   message: string
@@ -67,6 +69,13 @@ export function collectErrorText(value: unknown, seen = new Set<unknown>(), dept
  * the error is not recognized.
  */
 export function friendlyTransactionError(error: unknown): string | null {
+  const cashOut = classifyCashOutExecutionError(error)
+  if (cashOut?.code === 'BUYBACK_SLIPPAGE_EXCEEDED') {
+    return `The buyback pool moved below your protected minimum. Refresh the quote or choose a larger max slippage, then try again. [${cashOut.selector}]`
+  }
+  if (cashOut?.code === 'TERMINAL_UNDER_MIN') {
+    return `The live return fell below the minimum you reviewed. Refresh the quote and try again. [${cashOut.selector}]`
+  }
   const normalized = collectErrorText(error).join(' | ').toLowerCase()
   if (!normalized) return null
   for (const known of KNOWN_TRANSACTION_ERRORS) {

@@ -1,7 +1,18 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useAccount, useWalletClient } from 'wagmi'
-import { parseUnits, formatUnits, encodeFunctionData, createPublicClient, http, type Hex, type Address, type Chain, type PublicClient } from 'viem'
-import { buildCashOutTx } from '@bananapus/nana-sdk-core/v6'
+import { parseUnits, formatUnits, encodeFunctionData, createPublicClient, http, erc20Abi, type Hex, type Address, type Chain, type PublicClient } from 'viem'
+import {
+  buildPermit2ApproveTx,
+  buildUniswapV4ExactInputSwapTx,
+  cashOutPoolBufferBps,
+  chooseBestCashOutRoute,
+  prepareHookAwareCashOut,
+  quoteUniswapV4ExactInputSingle,
+  uniswapV4Deployment,
+  uniswapV4SwapDirection,
+  type BestCashOutRoute,
+  type CashOutPreviewSnapshot,
+} from '@bananapus/nana-sdk-core/v6'
 import { type JBChainId } from '@bananapus/nana-sdk-core'
 import { useThemeStore, useTransactionStore, useAuthStore } from '../../stores'
 import { useWalletBalances, useManagedWallet } from '../../hooks'
@@ -18,7 +29,8 @@ import { verifyCashOutParams } from '../../utils/transactionVerification'
 import { getPaymentTerminal } from '../../utils/paymentTerminal'
 import { simulateTransaction } from '../../utils/transactionSafety'
 import { assertCurrentProjectCashOutConfigurationTrusted, requireRecognizedRuntimeHook } from '../../utils/projectTrust'
-import { resolveCashOutPreviewOutcome, TERMINAL_PREVIEW_CASH_OUT_ABI, type CashOutPreviewOutcome } from '../../utils/terminalPreview'
+import { type CashOutPreviewOutcome } from '../../utils/terminalPreview'
+import { readPoolState, PERMIT2_ADDRESS } from '../../services/ammMarket'
 import DialogShell from '../ui/DialogShell'
 
 const FEELESS_ADDRESSES_ABI = [
@@ -35,16 +47,21 @@ const FEELESS_ADDRESSES_ABI = [
   },
 ] as const
 
-const FEE_FREE_SURPLUS_ABI = [
+const PERMIT2_ALLOWANCE_ABI = [
   {
-    name: 'feeFreeSurplusOf',
+    name: 'allowance',
     type: 'function',
     stateMutability: 'view',
     inputs: [
-      { name: 'projectId', type: 'uint256' },
+      { name: 'owner', type: 'address' },
       { name: 'token', type: 'address' },
+      { name: 'spender', type: 'address' },
     ],
-    outputs: [{ name: '', type: 'uint256' }],
+    outputs: [
+      { name: 'amount', type: 'uint160' },
+      { name: 'expiration', type: 'uint48' },
+      { name: 'nonce', type: 'uint48' },
+    ],
   },
 ] as const
 
@@ -59,71 +76,126 @@ const SLIPPAGE_PRESETS: { label: string; bps: bigint }[] = [
 ]
 const DEFAULT_SLIPPAGE_BPS = 100n
 
-async function readCashOutPreviewOutcome(params: { client: PublicClient; terminal: Address; holder: Address; projectId: bigint; cashOutCount: bigint; reclaimToken: Address; slippageBps: bigint }) {
-  const readPreview = (metadata: Hex) =>
-    params.client.readContract({
-      address: params.terminal,
-      abi: TERMINAL_PREVIEW_CASH_OUT_ABI,
-      functionName: 'previewCashOutFrom',
-      args: [params.holder, params.projectId, params.cashOutCount, params.reclaimToken, params.holder, metadata],
-    })
-  const [initialPreview, feeFreeSurplus, beneficiaryIsFeeless] = await Promise.all([
-    readPreview('0x'),
-    params.client.readContract({
-      address: params.terminal,
-      abi: FEE_FREE_SURPLUS_ABI,
-      functionName: 'feeFreeSurplusOf',
-      args: [params.projectId, params.reclaimToken],
-    }),
-    params.client.readContract({
-      address: JB_CONTRACTS.JBFeelessAddresses,
-      abi: FEELESS_ADDRESSES_ABI,
-      functionName: 'isFeelessFor',
-      args: [params.holder, params.projectId, params.holder],
-    }),
-  ])
-  const validateHooks = async (preview: typeof initialPreview) => {
-    for (const specification of preview[3]) {
+function bestRouteFingerprint(route: BestCashOutRoute): string {
+  const common = [
+    route.kind,
+    route.expectedReturn.toString(),
+    route.minimumReturn.toString(),
+  ]
+  if (route.kind === 'cash-out') {
+    return [...common, route.cashOut.route, route.cashOut.metadata.toLowerCase()].join('|')
+  }
+  return [
+    ...common,
+    route.poolKey.currency0.toLowerCase(),
+    route.poolKey.currency1.toLowerCase(),
+    route.poolKey.fee.toString(),
+    route.poolKey.tickSpacing.toString(),
+    route.poolKey.hooks.toLowerCase(),
+    route.zeroForOne,
+  ].join('|')
+}
+
+async function readCashOutPreviewOutcome(params: { client: PublicClient; chainId: JBChainId; terminal: Address; holder: Address; projectId: bigint; cashOutCount: bigint; reclaimToken: Address; slippageBps: bigint }) {
+  const beneficiaryIsFeeless = await params.client.readContract({
+    address: JB_CONTRACTS.JBFeelessAddresses,
+    abi: FEELESS_ADDRESSES_ABI,
+    functionName: 'isFeelessFor',
+    args: [params.holder, params.projectId, params.holder],
+  })
+  const prepared = await prepareHookAwareCashOut(params.client, {
+    chainId: params.chainId,
+    terminal: params.terminal,
+    holder: params.holder,
+    projectId: params.projectId,
+    cashOutCount: params.cashOutCount,
+    tokenToReclaim: params.reclaimToken,
+    beneficiary: params.holder,
+    buybackHookAddress: JB_BUYBACK_HOOK,
+    beneficiaryIsFeeless,
+    slippageBps: params.slippageBps,
+  })
+  const validateHooks = async (preview: CashOutPreviewSnapshot) => {
+    if (preview.rulesetId === null) throw new Error('Cash out preview returned no ruleset id')
+    for (const specification of preview.hookSpecifications) {
       if (!specification.noop) {
         await requireRecognizedRuntimeHook({
           client: params.client,
           projectId: params.projectId,
-          rulesetId: preview[0].id,
+          rulesetId: preview.rulesetId,
           hook: specification.hook,
         })
       }
     }
   }
-  const resolve = (preview: typeof initialPreview) =>
-    resolveCashOutPreviewOutcome({
-      reclaimAmount: preview[1],
-      cashOutTaxRate: preview[2],
-      hookSpecifications: preview[3],
-      buybackHookAddress: JB_BUYBACK_HOOK,
-      beneficiaryIsFeeless,
-      feeFreeSurplus,
-      slippageBps: params.slippageBps,
-    })
-
-  await validateHooks(initialPreview)
-  let preview = initialPreview
-  let outcome = resolve(initialPreview)
-  if (outcome.route === 'amm') {
-    const quotedOutcome = outcome
-    preview = await readPreview(outcome.metadata)
-    await validateHooks(preview)
-    const lockedOutcome = resolve(preview)
-    if (lockedOutcome.route !== 'amm' || lockedOutcome.minimumReturn !== quotedOutcome.minimumReturn || lockedOutcome.metadata.toLowerCase() !== quotedOutcome.metadata.toLowerCase()) {
-      throw new Error('The buyback cash out route changed')
-    }
-    // Keep the raw market quote for display while using the second preview to
-    // prove that the exact metadata/floor remains executable.
-    outcome = quotedOutcome
-  }
-  if (outcome.expectedReturn <= 0n || outcome.minimumReturn <= 0n) {
+  await validateHooks(prepared.preview)
+  if (prepared.lockedPreview) await validateHooks(prepared.lockedPreview)
+  if (prepared.route.expectedReturn <= 0n || prepared.route.minimumReturn <= 0n) {
     throw new Error('No funds are currently reclaimable for this cash out')
   }
-  return { preview, outcome }
+  return { preview: prepared.preview, outcome: prepared.route, prepared }
+}
+
+async function readBestCashOutPreview(params: {
+  client: PublicClient
+  chainId: JBChainId
+  terminal: Address
+  holder: Address
+  projectId: bigint
+  cashOutCount: bigint
+  reclaimToken: Address
+  slippageBps: bigint
+}) {
+  const terminal = await readCashOutPreviewOutcome(params)
+  let best: BestCashOutRoute = chooseBestCashOutRoute({
+    cashOut: terminal.outcome,
+    cashOutCount: params.cashOutCount,
+    slippageBps: params.slippageBps,
+  })
+  let directProjectToken: Address | null = null
+  // Direct-sale discovery is an optional optimization. Any pool, token, or
+  // quoter read failure must fail closed to the already verified terminal
+  // route instead of making an otherwise valid cash out unavailable.
+  try {
+    const pool = await readPoolState(params.chainId, params.projectId)
+    if (pool) {
+      const projectToken = pool.projectToken
+      const zeroForOne = uniswapV4SwapDirection({
+        poolKey: pool.key,
+        tokenIn: projectToken,
+        tokenOut: params.reclaimToken,
+      })
+      if (zeroForOne !== null) {
+        const claimedBalance = await params.client.readContract({
+          address: projectToken,
+          abi: erc20Abi,
+          functionName: 'balanceOf',
+          args: [params.holder],
+        })
+        if (claimedBalance >= params.cashOutCount) {
+          const directSwapQuote = await quoteUniswapV4ExactInputSingle(params.client, {
+            chainId: params.chainId,
+            poolKey: pool.key,
+            zeroForOne,
+            amountIn: params.cashOutCount,
+          })
+          best = chooseBestCashOutRoute({
+            cashOut: terminal.outcome,
+            directSwapQuote,
+            directSwapPoolKey: pool.key,
+            directSwapZeroForOne: zeroForOne,
+            spendableProjectTokenCount: claimedBalance,
+            cashOutCount: params.cashOutCount,
+            slippageBps: params.slippageBps,
+          })
+          if (best.kind === 'direct-swap') directProjectToken = projectToken
+        }
+      }
+    }
+  } catch (error) {
+    console.warn('Direct cash-out swap preview unavailable; using the terminal route.', error)
+  }
+  return { ...terminal, best, directProjectToken }
 }
 
 interface CashOutModalProps {
@@ -186,6 +258,7 @@ export default function CashOutModal({
   // Slippage floor + fee info sourced from the contract's previewCashOutFrom.
   // A cash out is never submitted without a positive, current preview.
   const [previewOutcome, setPreviewOutcome] = useState<CashOutPreviewOutcome | null>(null)
+  const [bestRoute, setBestRoute] = useState<BestCashOutRoute | null>(null)
   const [previewTaxRate, setPreviewTaxRate] = useState<number | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
@@ -215,10 +288,12 @@ export default function CashOutModal({
   const hasGasBalance = isManagedMode || guarded.isSafeMode || (balancesAvailable && chainGasBalance > 0n)
 
   const minReclaimed = previewOutcome?.terminalMinimum ?? 0n
-  const previewReturnFloat = previewOutcome ? Number(formatUnits(previewOutcome.expectedReturn, reclaimTokenDecimals)) : null
-  const minimumReturnFloat = previewOutcome && previewOutcome.minimumReturn > 0n ? Number(formatUnits(previewOutcome.minimumReturn, reclaimTokenDecimals)) : null
+  const previewReturnFloat = bestRoute ? Number(formatUnits(bestRoute.expectedReturn, reclaimTokenDecimals)) : null
+  const minimumReturnFloat = bestRoute && bestRoute.minimumReturn > 0n ? Number(formatUnits(bestRoute.minimumReturn, reclaimTokenDecimals)) : null
   const displayedReturn = previewReturnFloat
   const returnDecimals = reclaimTokenDecimals <= 6 ? 2 : 4
+  const directSwapSelected = bestRoute?.kind === 'direct-swap'
+  const poolBufferBps = cashOutPoolBufferBps(previewOutcome)
 
   // Verify transaction parameters
   const activeAddress = guarded.activeAddress
@@ -239,7 +314,7 @@ export default function CashOutModal({
 
   const hasWarnings = verificationResult.doubts.length > 0
   const hasCriticalDoubts = verificationResult.doubts.some((d) => d.severity === 'critical')
-  const hasSafePreview = cashOutCount !== null && !!previewOutcome && previewOutcome.expectedReturn > 0n && previewOutcome.minimumReturn > 0n && !previewError
+  const hasSafePreview = cashOutCount !== null && !!bestRoute && bestRoute.expectedReturn > 0n && bestRoute.minimumReturn > 0n && !previewError
   const canProceed = hasGasBalance && !hasCriticalDoubts && (!hasWarnings || warningsAcknowledged) && hasSafePreview && !previewLoading && !!terminalAddress && !terminalLoading && !submitting
 
   // Reset state when modal opens
@@ -251,6 +326,7 @@ export default function CashOutModal({
       setWarningsAcknowledged(false)
       setTerminalAddress(null)
       setPreviewOutcome(null)
+      setBestRoute(null)
       setPreviewTaxRate(null)
       setPreviewError(null)
       setSlippageBps(DEFAULT_SLIPPAGE_BPS)
@@ -311,6 +387,7 @@ export default function CashOutModal({
   useEffect(() => {
     if (!isOpen || !terminalAddress || !activeAddress || cashOutCount === null) {
       setPreviewOutcome(null)
+      setBestRoute(null)
       setPreviewTaxRate(null)
       setPreviewError(null)
       setPreviewLoading(false)
@@ -330,8 +407,9 @@ export default function CashOutModal({
           transport: http(rpcUrl),
         })
 
-        const result = await readCashOutPreviewOutcome({
+        const result = await readBestCashOutPreview({
           client: publicClient,
+          chainId: chainId as JBChainId,
           terminal: terminalAddress,
           holder: activeAddress as Address,
           projectId: BigInt(projectId),
@@ -341,10 +419,12 @@ export default function CashOutModal({
         })
         if (cancelled) return
         setPreviewOutcome(result.outcome)
-        setPreviewTaxRate(Number(result.preview[2]))
+        setBestRoute(result.best)
+        setPreviewTaxRate(Number(result.preview.cashOutTaxRate))
       } catch (err) {
         if (cancelled) return
         setPreviewOutcome(null)
+        setBestRoute(null)
         setPreviewTaxRate(null)
         setPreviewError(err instanceof Error ? err.message : 'Cash out preview is unavailable. No transaction will be sent.')
       } finally {
@@ -408,6 +488,7 @@ export default function CashOutModal({
         chain,
         transport: http(rpcUrl),
       })
+      const directSwapDeadline = BigInt(Math.floor(Date.now() / 1000) + 1_800)
       const prepareCashOut = async () => {
         const freshTerminal = await getPaymentTerminal(publicClient, chainId, BigInt(projectId), reclaimToken, 'accounting')
         if (freshTerminal.address.toLowerCase() !== terminalAddress.toLowerCase()) {
@@ -418,8 +499,9 @@ export default function CashOutModal({
           projectId: BigInt(projectId),
         })
 
-        const reviewed = await readCashOutPreviewOutcome({
+        const reviewed = await readBestCashOutPreview({
           client: publicClient,
+          chainId: chainId as JBChainId,
           terminal: freshTerminal.address,
           holder,
           projectId: BigInt(projectId),
@@ -427,55 +509,94 @@ export default function CashOutModal({
           reclaimToken,
           slippageBps,
         })
-        const cashOutTx = buildCashOutTx({
-          chainId: chainId as JBChainId,
-          terminal: freshTerminal.address,
-          holder,
-          projectId: BigInt(projectId),
-          cashOutCount,
-          tokenToReclaim: reclaimToken,
-          minTokensReclaimed: reviewed.outcome.terminalMinimum,
-          beneficiary: holder,
-          metadata: reviewed.outcome.metadata,
-        })
-        const data = encodeFunctionData({ abi: cashOutTx.abi, functionName: cashOutTx.functionName, args: cashOutTx.args })
-        await simulateTransaction({
-          chainId,
-          account: holder,
-          to: freshTerminal.address,
-          data,
-        })
+        const transaction = reviewed.best.kind === 'direct-swap'
+          ? buildUniswapV4ExactInputSwapTx({
+              chainId: chainId as JBChainId,
+              poolKey: reviewed.best.poolKey,
+              zeroForOne: reviewed.best.zeroForOne,
+              amountIn: cashOutCount,
+              minimumAmountOut: reviewed.best.minimumReturn,
+              recipient: holder,
+              deadline: directSwapDeadline,
+            })
+          : reviewed.prepared.transaction
+        const data = encodeFunctionData({ abi: transaction.abi, functionName: transaction.functionName, args: transaction.args })
+        // Terminal cash-outs can be simulated immediately. Direct swaps may
+        // still need ERC-20/Permit2 authorization, so the guarded runner
+        // simulates them after those approvals instead.
+        if (reviewed.best.kind === 'cash-out') {
+          await simulateTransaction({
+            chainId,
+            account: holder,
+            to: transaction.address,
+            data,
+            value: 0n,
+          })
+        }
         return {
-          target: freshTerminal.address,
+          target: transaction.address,
           data,
+          value: 'value' in transaction ? transaction.value : 0n,
           review: {
-            abi: cashOutTx.abi,
-            functionName: cashOutTx.functionName,
-            args: cashOutTx.args,
+            abi: transaction.abi,
+            functionName: transaction.functionName,
+            args: transaction.args,
           },
-          outcome: reviewed.outcome,
+          outcome: reviewed.best,
+          terminalOutcome: reviewed.outcome,
+          directProjectToken: reviewed.directProjectToken,
           quoteFingerprint: [
-            reviewed.preview[0].id.toString(),
-            reviewed.outcome.route,
-            reviewed.outcome.expectedReturn.toString(),
-            reviewed.outcome.minimumReturn.toString(),
-            reviewed.outcome.metadata.toLowerCase(),
-            ...reviewed.preview[3].map((specification) => [specification.hook.toLowerCase(), specification.noop, specification.amount.toString(), specification.metadata.toLowerCase()].join(':')),
+            reviewed.preview.rulesetId?.toString() ?? 'unknown',
+            bestRouteFingerprint(reviewed.best),
+            ...reviewed.preview.hookSpecifications.map((specification) => [specification.hook.toLowerCase(), specification.noop, specification.amount.toString(), specification.metadata.toLowerCase()].join(':')),
           ].join('|'),
         }
       }
       const prepared = await prepareCashOut()
       if (
-        !previewOutcome ||
-        prepared.outcome.route !== previewOutcome.route ||
-        prepared.outcome.expectedReturn !== previewOutcome.expectedReturn ||
-        prepared.outcome.minimumReturn !== previewOutcome.minimumReturn ||
-        prepared.outcome.metadata.toLowerCase() !== previewOutcome.metadata.toLowerCase()
+        !bestRoute ||
+        bestRouteFingerprint(prepared.outcome) !== bestRouteFingerprint(bestRoute)
       ) {
-        setPreviewOutcome(prepared.outcome)
+        setPreviewOutcome(prepared.terminalOutcome)
+        setBestRoute(prepared.outcome)
         setPreviewError('The cash out quote changed. Refreshing the review…')
         setPreviewRevision((revision) => revision + 1)
         return
+      }
+
+      if (prepared.outcome.kind === 'direct-swap') {
+        if (!prepared.directProjectToken) throw new Error('The direct pool token is unavailable')
+        const deployment = uniswapV4Deployment(chainId)
+        if (!deployment?.universalRouter) throw new Error('The direct swap router is unavailable')
+        const [permitAmount, permitExpiration] = await publicClient.readContract({
+          address: PERMIT2_ADDRESS,
+          abi: PERMIT2_ALLOWANCE_ABI,
+          functionName: 'allowance',
+          args: [holder, prepared.directProjectToken, deployment.universalRouter],
+        })
+        if (permitAmount < cashOutCount || Number(permitExpiration) <= Math.floor(Date.now() / 1000) + 1_800) {
+          const permit = buildPermit2ApproveTx({
+            chainId: chainId as JBChainId,
+            token: prepared.directProjectToken,
+            amount: cashOutCount,
+            expiration: Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60,
+          })
+          await guarded.run({
+            chainId,
+            to: permit.address,
+            data: encodeFunctionData({ abi: permit.abi, functionName: permit.functionName, args: permit.args }),
+            approval: { token: prepared.directProjectToken, spender: PERMIT2_ADDRESS, amount: cashOutCount },
+            review: {
+              title: 'Review swap authorization',
+              label: 'Authorize the direct pool sale for this exact token amount',
+              contractName: 'Permit2',
+              abi: permit.abi,
+              functionName: permit.functionName,
+              args: permit.args,
+            },
+            onPhase: phase => setStatus(phase === 'signing' ? 'signing' : 'pending'),
+          })
+        }
       }
 
       const txId = addTransaction({
@@ -490,11 +611,17 @@ export default function CashOutModal({
         chainId,
         to: prepared.target,
         data: prepared.data,
+        value: prepared.value,
+        approval: prepared.outcome.kind === 'direct-swap' && prepared.directProjectToken
+          ? { token: prepared.directProjectToken, spender: PERMIT2_ADDRESS, amount: cashOutCount }
+          : undefined,
         activityId: txId,
         review: {
-          title: 'Review cash out',
-          label: `Cash out ${tokenAmount} project tokens for the reviewed minimum`,
-          contractName: 'JBMultiTerminal',
+          title: prepared.outcome.kind === 'direct-swap' ? 'Review direct pool sale' : 'Review cash out',
+          label: prepared.outcome.kind === 'direct-swap'
+            ? `Sell ${tokenAmount} claimed project tokens through the better pool route`
+            : `Cash out ${tokenAmount} project tokens for the reviewed minimum`,
+          contractName: prepared.outcome.kind === 'direct-swap' ? 'Uniswap Universal Router' : 'JBMultiTerminal',
           ...prepared.review,
         },
         reverify: async () => {
@@ -502,7 +629,8 @@ export default function CashOutModal({
           if (
             finalPrepared.target.toLowerCase() !== prepared.target.toLowerCase() ||
             finalPrepared.quoteFingerprint !== prepared.quoteFingerprint ||
-            finalPrepared.data.toLowerCase() !== prepared.data.toLowerCase()
+            finalPrepared.data.toLowerCase() !== prepared.data.toLowerCase() ||
+            finalPrepared.value !== prepared.value
           ) {
             throw new Error('The cash out quote changed. Close this review and try again.')
           }
@@ -540,7 +668,7 @@ export default function CashOutModal({
     reclaimToken,
     onSubmitted,
     assertCurrentAccount,
-    previewOutcome,
+    bestRoute,
     slippageBps,
     guarded,
   ])
@@ -630,13 +758,13 @@ export default function CashOutModal({
               {/* Amount breakdown */}
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Burning</span>
+                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>{directSwapSelected ? 'Selling' : 'Burning'}</span>
                   <span className={`font-mono font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
                     {tokenNum.toLocaleString()} {tokenSymbol}
                   </span>
                 </div>
 
-                {(previewTaxRate ?? cashOutTaxRate) > 0 && (
+                {!directSwapSelected && (previewTaxRate ?? cashOutTaxRate) > 0 && (
                   <div className="flex justify-between items-center">
                     <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Cash-out curve rate</span>
                     <span className={`font-mono ${isDark ? 'text-yellow-400' : 'text-yellow-600'}`}>{((previewTaxRate ?? cashOutTaxRate) / 100).toFixed(2).replace(/\.?0+$/, '') || '0'}%</span>
@@ -645,7 +773,9 @@ export default function CashOutModal({
 
                 {displayedReturn != null && displayedReturn > 0 && (
                   <div className={`flex justify-between items-center pt-2 border-t ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
-                    <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>{previewOutcome?.route === 'amm' ? 'Buyback pool preview' : 'You receive'}</span>
+                    <span className={`font-medium ${isDark ? 'text-white' : 'text-gray-900'}`}>
+                      {directSwapSelected ? 'Direct pool sale' : previewOutcome?.route === 'amm' ? 'Buyback pool preview' : 'You receive'}
+                    </span>
                     <span className={`font-mono font-bold text-lg ${isDark ? 'text-green-400' : 'text-green-600'}`}>
                       {displayedReturn.toFixed(returnDecimals)} {currencySymbol}
                     </span>
@@ -653,7 +783,7 @@ export default function CashOutModal({
                 )}
                 <div className="flex justify-between items-center">
                   <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Max slippage</span>
-                  <div className="flex gap-1">
+                  <div className="flex items-center gap-1">
                     {SLIPPAGE_PRESETS.map((preset) => (
                       <button
                         key={preset.label}
@@ -670,8 +800,33 @@ export default function CashOutModal({
                         {preset.label}
                       </button>
                     ))}
+                    <label className={`flex h-[30px] w-[64px] items-center border px-1.5 text-xs font-mono ${isDark ? 'border-white/20 text-gray-300' : 'border-gray-200 text-gray-600'}`}>
+                      <span className="sr-only">Custom max slippage percent</span>
+                      <input
+                        type="number"
+                        min="0"
+                        max="99.99"
+                        step="0.1"
+                        inputMode="decimal"
+                        value={Number(slippageBps) / 100}
+                        onChange={(event) => {
+                          const percent = Number(event.target.value)
+                          if (Number.isFinite(percent) && percent >= 0 && percent < 100) {
+                            setSlippageBps(BigInt(Math.round(percent * 100)))
+                          }
+                        }}
+                        disabled={submitting}
+                        className="min-w-0 flex-1 bg-transparent text-right outline-none"
+                      />
+                      <span>%</span>
+                    </label>
                   </div>
                 </div>
+                {!directSwapSelected && previewOutcome?.route === 'amm' && poolBufferBps !== null && (
+                  <div className={`text-xs ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                    The pool preview already allows about {(Number(poolBufferBps) / 100).toFixed(2).replace(/\.00$/, '')}% for its fee and price impact. Your setting additionally covers movement before inclusion.
+                  </div>
+                )}
                 {minimumReturnFloat != null && minimumReturnFloat > 0 && (
                   <div className="flex justify-between items-center">
                     <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Transaction minimum</span>
@@ -684,7 +839,9 @@ export default function CashOutModal({
 
               {displayedReturn != null && displayedReturn > 0 && (
                 <div className={`p-3 text-xs ${isDark ? 'bg-white/5 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
-                  {previewOutcome?.route === 'amm'
+                  {directSwapSelected
+                    ? 'Your claimed project ERC-20s are sold directly through the better live pool route. This bypasses the terminal and its cash-out fee; internal credits remain eligible only for the terminal route.'
+                    : previewOutcome?.route === 'amm'
                     ? 'The recognized buyback hook routes this cash out through its pool because it beats the treasury return. Its on-chain metadata enforces the minimum shown.'
                     : `This is the exact preview after the current protocol fee${
                         previewOutcome?.treasuryProtocolFee ? ` (${formatUnits(previewOutcome.treasuryProtocolFee, reclaimTokenDecimals)} ${currencySymbol})` : ''
@@ -696,7 +853,9 @@ export default function CashOutModal({
               <GasBalanceStatus balance={chainGasBalance} hasGasBalance={hasGasBalance} loading={balancesLoading} available={balancesAvailable} managed={isManagedMode} isDark={isDark} />
 
               <div className={`p-3 text-sm ${isDark ? 'bg-white/5 text-gray-400' : 'bg-gray-50 text-gray-500'}`}>
-                Your tokens will be burned. The return comes from the live terminal quote for the active cash-out curve and hooks.
+                {directSwapSelected
+                  ? 'Your claimed tokens will be sold through the live pool. The transaction reverts if the pool cannot meet the reviewed minimum.'
+                  : 'Your tokens will be burned. The return comes from the live terminal quote for the active cash-out curve and hooks.'}
               </div>
 
               {/* Transaction Summary */}
@@ -737,13 +896,20 @@ export default function CashOutModal({
 
               {/* Technical Details */}
               <TechnicalDetails
-                contract="JB_MULTI_TERMINAL"
-                contractAddress={terminalAddress || '0x0000000000000000000000000000000000000000'}
-                functionName="cashOutTokensOf"
+                contract={directSwapSelected ? 'UNISWAP_UNIVERSAL_ROUTER' : 'JB_MULTI_TERMINAL'}
+                contractAddress={directSwapSelected ? (uniswapV4Deployment(chainId)?.universalRouter ?? '0x0000000000000000000000000000000000000000') : (terminalAddress || '0x0000000000000000000000000000000000000000')}
+                functionName={directSwapSelected ? 'execute' : 'cashOutTokensOf'}
                 chainId={chainId}
                 chainName={chainName}
                 projectId={projectId}
-                parameters={verificationResult.verifiedParams}
+                parameters={directSwapSelected && bestRoute?.kind === 'direct-swap'
+                  ? {
+                      amountIn: cashOutCount ?? 0n,
+                      minimumAmountOut: bestRoute.minimumReturn,
+                      currency0: bestRoute.poolKey.currency0,
+                      currency1: bestRoute.poolKey.currency1,
+                    }
+                  : verificationResult.verifiedParams}
                 isDark={isDark}
               />
             </>
@@ -754,7 +920,7 @@ export default function CashOutModal({
             <div className={`p-4 ${isDark ? 'bg-white/5' : 'bg-gray-50'}`}>
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>Burned</span>
+                  <span className={isDark ? 'text-gray-300' : 'text-gray-600'}>{directSwapSelected ? 'Sold' : 'Burned'}</span>
                   <span className={`font-mono ${isDark ? 'text-red-400' : 'text-red-600'}`}>
                     -{tokenNum.toLocaleString()} {tokenSymbol}
                   </span>
@@ -779,7 +945,7 @@ export default function CashOutModal({
                 disabled={!canProceed}
                 className="flex-1 py-3 font-bold bg-juice-cyan text-black hover:bg-juice-cyan/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Confirm Cash Out
+                {directSwapSelected ? 'Sell on Pool' : 'Confirm Cash Out'}
               </button>
             </div>
           )}

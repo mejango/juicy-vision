@@ -20,6 +20,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { formatUnits, type Address } from 'viem'
 import {
+  uniswapV4PriceRangeFromTicks,
+  uniswapV4TickRangeFromPrices,
+} from '@bananapus/nana-sdk-core/v6'
+import {
   Bar,
   BarChart,
   Cell,
@@ -159,18 +163,19 @@ const DEPTH_BANDS = 56
 function buildDepthBands(snapshot: LpPositionsSnapshot, floor: number, ceiling: number): DepthBand[] {
   const { state, positions } = snapshot
   if (!positions.length) return []
-  const decFactor = 10 ** (18 - state.pair.decimals)
-  const priceAtTick = (tick: number) => (state.pairIsC0 ? 1 / 1.0001 ** tick : 1.0001 ** tick) * decFactor
-  const tickAtPrice = (price: number) =>
-    Math.log(state.pairIsC0 ? decFactor / price : price / decFactor) / Math.log(1.0001)
 
   let pMin = Infinity
   let pMax = -Infinity
   for (const position of positions) {
-    const a = priceAtTick(position.tickLower)
-    const b = priceAtTick(position.tickUpper)
-    pMin = Math.min(pMin, a, b)
-    pMax = Math.max(pMax, a, b)
+    const range = uniswapV4PriceRangeFromTicks(
+      position.tickLower,
+      position.tickUpper,
+      state.pairIsC0,
+      state.pair.decimals,
+    )
+    if (!range) return []
+    pMin = Math.min(pMin, range.min)
+    pMax = Math.max(pMax, range.max)
   }
   for (const marker of [state.poolPrice, floor, ceiling]) {
     if (marker > 0) {
@@ -188,17 +193,27 @@ function buildDepthBands(snapshot: LpPositionsSnapshot, floor: number, ceiling: 
     const pHi = Math.exp(lMin + ((i + 1) / DEPTH_BANDS) * span)
     const logMid = lMin + ((i + 0.5) / DEPTH_BANDS) * span
     const mid = Math.exp(logMid)
-    const bandTickA = tickAtPrice(pLo)
-    const bandTickB = tickAtPrice(pHi)
-    const bandLo = Math.min(bandTickA, bandTickB)
-    const bandHi = Math.max(bandTickA, bandTickB)
+    const bandTicks = uniswapV4TickRangeFromPrices(
+      pLo,
+      pHi,
+      state.pairIsC0,
+      state.pair.decimals,
+    )
+    if (!bandTicks) return []
+    const bandLo = bandTicks.lower
+    const bandHi = bandTicks.upper
     let liq = 0
     let pairWei = 0n
     let tokenWei = 0n
     for (const position of positions) {
-      const edgeA = priceAtTick(position.tickLower)
-      const edgeB = priceAtTick(position.tickUpper)
-      if (mid >= Math.min(edgeA, edgeB) && mid <= Math.max(edgeA, edgeB)) liq += Number(position.liquidity)
+      const positionRange = uniswapV4PriceRangeFromTicks(
+        position.tickLower,
+        position.tickUpper,
+        state.pairIsC0,
+        state.pair.decimals,
+      )
+      if (!positionRange) continue
+      if (mid >= positionRange.min && mid <= positionRange.max) liq += Number(position.liquidity)
       const overlapLo = Math.max(bandLo, position.tickLower)
       const overlapHi = Math.min(bandHi, position.tickUpper)
       if (overlapLo < overlapHi && state.sqrtP > 0n) {
