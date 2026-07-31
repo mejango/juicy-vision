@@ -17,7 +17,7 @@ export type AcceptKind = 'eth' | 'usdc' | 'custom'
 export type SuckerType = 'native' | 'ccip' | 'both'
 export type AfterMode = 'wait' | 'terminal' | 'cycle'
 export type PayoutMode = 'none' | 'limited' | 'unlimited'
-export type TokenMode = 'custom' | 'none'
+type TokenMode = 'custom' | 'none'
 export type DeadlineKey = 'none' | '3hours' | '1day' | '3days' | '7days' | 'custom'
 
 export interface RecipientRow {
@@ -96,7 +96,7 @@ export interface StageState {
   deadlineOpen: boolean
 }
 
-export interface ItemSplitRecipient {
+interface ItemSplitRecipient {
   pct: number | string
   recip: string
   benef: string
@@ -135,7 +135,7 @@ export interface ItemState {
   }
 }
 
-export interface CustomTokenState {
+interface CustomTokenState {
   address: string
   name: string
   symbol: string
@@ -144,7 +144,7 @@ export interface CustomTokenState {
   error: string
 }
 
-export interface DetailsState {
+interface DetailsState {
   name: string
   ticker: string
   tagline: string
@@ -169,7 +169,7 @@ export interface DetailsState {
   customOpen: boolean
 }
 
-export interface CollectionState {
+interface CollectionState {
   name: string
   symbol: string
   nameTouched: boolean
@@ -559,7 +559,7 @@ export function lockedCurrencySym(state: CreateFlowState): string | null {
 
 export interface PayoutKind { key: string; symbol: string }
 
-export function createPayoutKinds(state: CreateFlowState): PayoutKind[] {
+function createPayoutKinds(state: CreateFlowState): PayoutKind[] {
   return state.accepts.map((k) => {
     if (k === 'custom') return { key: 'custom', symbol: state.customToken.symbol || 'TOKEN' }
     return k === 'usdc' ? { key: 'usdc', symbol: 'USDC' } : { key: 'eth', symbol: 'ETH' }

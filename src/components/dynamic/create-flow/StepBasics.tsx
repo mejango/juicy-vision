@@ -36,7 +36,9 @@ export default function StepBasics({ state, update }: StepProps) {
 
   return (
     <div>
-      <StepHead desc="You can edit these at any time." />
+      <StepHead
+        desc={`The ${state.projectType === 'revnet' ? 'revnet operator' : 'project owner'} can edit these after launch.`}
+      />
 
       <FieldBlock label="Name">
         <TextInput

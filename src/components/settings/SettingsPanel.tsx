@@ -20,7 +20,7 @@ interface JuicyIdentity {
   updatedAt: string
 }
 
-export interface AnchorPosition {
+interface AnchorPosition {
   top: number
   left: number
   width: number

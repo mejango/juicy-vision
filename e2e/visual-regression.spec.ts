@@ -1,5 +1,5 @@
-import { test, expect, devices, type Page } from '@playwright/test'
-import { test as authTest, seedTestUsers, setupRealAuth } from './fixtures/auth'
+import { test, expect, type Page } from '@playwright/test';
+import { test as authTest, seedTestUsers } from './fixtures/auth';
 
 /**
  * Visual Regression Testing Suite

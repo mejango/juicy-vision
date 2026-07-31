@@ -21,7 +21,7 @@ import ChainLogo from '../ui/ChainLogo'
 import { walletDappUrl, mobileWalletLinks, isMobileDevice } from '../../utils/walletLinks'
 import ViewAsMenuAction from '../common/ViewAsMenuAction'
 
-export interface AnchorPosition {
+interface AnchorPosition {
   top: number
   left: number
   width: number
@@ -29,7 +29,7 @@ export interface AnchorPosition {
 }
 
 // Payment context when opened from a pay intent
-export interface PaymentContext {
+interface PaymentContext {
   amount: string // Amount to pay (e.g., "0.01")
   token: 'ETH' | 'USDC'
   chainId: number

@@ -9,7 +9,7 @@
 // Ruleset Management Scenarios
 // ============================================================================
 
-export const RULESET_SCENARIOS = {
+const RULESET_SCENARIOS = {
   main: [
     'As a project owner, navigate to the rules tab and queue a new ruleset with a different reserved rate',
     'View pending rulesets on a project and understand when they will take effect',
@@ -28,7 +28,7 @@ export const RULESET_SCENARIOS = {
 // Payout Distribution Scenarios
 // ============================================================================
 
-export const PAYOUT_SCENARIOS = {
+const PAYOUT_SCENARIOS = {
   main: [
     'As a project owner, distribute available payouts to configured splits',
     'Check the split breakdown before distributing payouts',
@@ -47,7 +47,7 @@ export const PAYOUT_SCENARIOS = {
 // Search & Discovery Scenarios
 // ============================================================================
 
-export const SEARCH_SCENARIOS = {
+const SEARCH_SCENARIOS = {
   main: [
     'Search for a project by name using the search interface',
     'Browse featured or popular projects on the home page',
@@ -66,7 +66,7 @@ export const SEARCH_SCENARIOS = {
 // NFT Tier Edge Case Scenarios
 // ============================================================================
 
-export const NFT_TIER_SCENARIOS = {
+const NFT_TIER_SCENARIOS = {
   main: [
     'View all tiers on a project and their details',
     'Add a new tier with name, price, and supply limit',
@@ -87,7 +87,7 @@ export const NFT_TIER_SCENARIOS = {
 // Reserved Token Scenarios
 // ============================================================================
 
-export const RESERVED_TOKEN_SCENARIOS = {
+const RESERVED_TOKEN_SCENARIOS = {
   main: [
     'View reserved tokens available for distribution',
     'Send reserved tokens to a configured recipient',
@@ -106,7 +106,7 @@ export const RESERVED_TOKEN_SCENARIOS = {
 // Multi-Chain (Omnichain) Scenarios
 // ============================================================================
 
-export const OMNICHAIN_SCENARIOS = {
+const OMNICHAIN_SCENARIOS = {
   main: [
     'Switch between chains on a multi-chain project',
     'View aggregated balances across all chains',
@@ -125,7 +125,7 @@ export const OMNICHAIN_SCENARIOS = {
 // Chat & AI Scenarios
 // ============================================================================
 
-export const CHAT_SCENARIOS = {
+const CHAT_SCENARIOS = {
   main: [
     'Start a new conversation with the AI assistant',
     'Ask the AI to help create a new project step by step',
@@ -144,7 +144,7 @@ export const CHAT_SCENARIOS = {
 // Authentication Edge Cases
 // ============================================================================
 
-export const AUTH_EDGE_SCENARIOS = {
+const AUTH_EDGE_SCENARIOS = {
   main: [
     'Sign in with email and verify the session persists',
     'Sign out and verify all auth state is cleared',
@@ -163,7 +163,7 @@ export const AUTH_EDGE_SCENARIOS = {
 // Error Recovery Scenarios
 // ============================================================================
 
-export const ERROR_RECOVERY_SCENARIOS = {
+const ERROR_RECOVERY_SCENARIOS = {
   main: [
     'Trigger a network error and verify the app recovers gracefully',
     'Submit a transaction that fails and verify the error message',
@@ -209,30 +209,4 @@ export function getAllMainScenarios(): string[] {
     ...AUTH_EDGE_SCENARIOS.main,
     ...ERROR_RECOVERY_SCENARIOS.main,
   ]
-}
-
-/**
- * Get all edge case scenarios as a flat array
- */
-export function getAllEdgeScenarios(): string[] {
-  return [
-    ...RULESET_SCENARIOS.edge,
-    ...PAYOUT_SCENARIOS.edge,
-    ...SEARCH_SCENARIOS.edge,
-    ...NFT_TIER_SCENARIOS.edge,
-    ...RESERVED_TOKEN_SCENARIOS.edge,
-    ...OMNICHAIN_SCENARIOS.edge,
-    ...CHAT_SCENARIOS.edge,
-    ...AUTH_EDGE_SCENARIOS.edge,
-    ...ERROR_RECOVERY_SCENARIOS.edge,
-  ]
-}
-
-/**
- * Get a random scenario from a category
- */
-export function getRandomScenario(category: keyof typeof ALL_COMPREHENSIVE_SCENARIOS): string {
-  const scenarios = ALL_COMPREHENSIVE_SCENARIOS[category]
-  const all = [...scenarios.main, ...scenarios.edge]
-  return all[Math.floor(Math.random() * all.length)]
 }

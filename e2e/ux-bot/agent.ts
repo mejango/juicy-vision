@@ -2,14 +2,7 @@ import type { Page } from "@playwright/test";
 import { PlaywrightDriver } from "./driver";
 import { PageAnalyzer } from "./analyzer";
 import { ReportGenerator, printReportSummary } from "./reporter";
-import type {
-  AgentConfig,
-  AgentState,
-  UXReport,
-  UXIssue,
-  TestStep,
-  Action,
-} from "./types";
+import type { AgentConfig, AgentState, UXReport, UXIssue, TestStep } from "./types";
 
 /**
  * AI-powered UX testing agent.

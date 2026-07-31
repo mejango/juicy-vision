@@ -117,7 +117,7 @@ function bridgeEtaHint(tx: QueuedMovement): string | null {
   return 'a few min'
 }
 
-export function SettlementSubtab({ project, chainIds, chainProjects }: SettlementSubtabProps) {
+function SettlementSubtab({ project, chainIds, chainProjects }: SettlementSubtabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { activeAddress, run } = useGuardedTx()

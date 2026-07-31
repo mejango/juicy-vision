@@ -108,6 +108,3 @@ export const logger = {
    */
   context: createContextLogger,
 }
-
-export type Logger = typeof logger
-export type ContextLogger = ReturnType<typeof createContextLogger>

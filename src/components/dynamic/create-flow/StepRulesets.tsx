@@ -1246,10 +1246,10 @@ function StageCard({ stage, idx, state, update }: StageSectionProps) {
 // ---------------------------------------------------------------------------
 
 const AFTER_NOTES: Record<AfterMode, string> = {
-  wait: "The project idles safely — no issuance, payments paused, cash outs preserved — until you change it.",
+  wait: "The project idles safely — no issuance, payments paused, cash outs preserved — until the project owner changes it.",
   terminal: "Ruleset #1’s terms continue on forever, without cycling again.",
   cycle:
-    "Ruleset #1 repeats its cycle over and over until you change it. Changes will only be able to be made once a cycled ruleset ends.",
+    "Ruleset #1 repeats its cycle until the project owner changes it. Changes can only take effect once a cycled ruleset ends.",
 };
 
 /** Append an editable ruleset carrying sensible fields over from the previous one. */

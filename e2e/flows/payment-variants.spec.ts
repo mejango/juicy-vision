@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '../fixtures/auth'
+import { test, expect } from '../fixtures/auth';
 import { mockAuthEndpoints } from '../fixtures/auth'
 import { mockProjectEndpoints, mockTransactionEndpoints, createMockProject } from '../fixtures/api'
 
@@ -35,16 +35,6 @@ const PAYMENT_AMOUNTS = {
   large: '10.0',       // Large contribution
   whale: '100.0',      // Whale amount
   huge: '1000.0',      // Massive amount
-}
-
-// USDC amounts (no decimals confusion)
-const USDC_AMOUNTS = {
-  tiny: '1',           // $1
-  small: '10',         // $10
-  medium: '100',       // $100
-  standard: '1000',    // $1k
-  large: '10000',      // $10k
-  whale: '100000',     // $100k
 }
 
 test.describe('Payment Variants: Amount Levels', () => {
@@ -328,9 +318,6 @@ test.describe('Payment Variants: Multi-Currency', () => {
     test('switches from ETH to USDC', async ({ page }) => {
       await page.goto(`/${getChainSlug(1)}:901`)
       await page.waitForLoadState('networkidle')
-
-      // Look for currency selector
-      const currencySelector = page.locator('[data-testid="currency-selector"], select')
       await expect(page.locator('body')).toBeVisible()
     })
 

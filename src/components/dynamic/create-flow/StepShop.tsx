@@ -132,8 +132,8 @@ export default function StepShop({ state, update }: StepProps) {
       {/* Opt-in: the Shop is off by default. Ticking it on reveals the first item to fill out. */}
       <ToggleRow
         label="Launch with items in stock"
-        on="Your project launches with items already for sale."
-        off="You can add items to sell anytime after launch."
+        on="The project launches with items already for sale."
+        off={`The ${state.projectType === "revnet" ? "revnet operator" : "project owner"} can add items after launch.`}
         checked={state.shopEnabled}
         onChange={(v) =>
           update((s) => {

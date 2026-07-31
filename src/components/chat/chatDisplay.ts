@@ -22,7 +22,7 @@ export function getChatDisplayTitle(chat: Chat): string {
   return chat.name || 'Untitled'
 }
 
-export function isGenericName(name: string | null | undefined): boolean {
+function isGenericName(name: string | null | undefined): boolean {
   if (!name) return true
   const genericPatterns = [
     /^new chat$/i,

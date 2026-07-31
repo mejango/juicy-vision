@@ -733,7 +733,7 @@ type ChainLoad =
   | { kind: 'none' }
   | { kind: 'ready'; snapshot: LpPositionsSnapshot; floor: number; ceiling: number }
 
-export function MarketSubtab({ project, chainIds, chainProjects }: MarketSubtabProps) {
+function MarketSubtab({ project, chainIds, chainProjects }: MarketSubtabProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
 

@@ -28,7 +28,7 @@ import { getNetworkOption, safeRequest } from './bendystraw/client'
 // ---------------------------------------------------------------------------
 
 /** Denominator for all REVLoans fee percents (25 = 2.5%). */
-export const LOAN_MAX_FEE = 1000n
+const LOAN_MAX_FEE = 1000n
 /** Minimum prepaid fee percent borrowFrom accepts — 0 REVERTS on-chain. */
 export const LOAN_MIN_PREPAID = 25
 /** Maximum prepaid fee percent (fully prepaid — the fee never grows). */
@@ -36,7 +36,7 @@ export const LOAN_MAX_PREPAID = 500
 /** Liquidation horizon: 3650 days. After this the collateral is lost. */
 export const LOAN_LIQUIDATION_SECONDS = 3650 * 86400
 /** Upfront fee routed to the $REV revnet on every borrow: 10/1000 = 1%. */
-export const LOAN_REV_FEE_PERCENT = 10n
+const LOAN_REV_FEE_PERCENT = 10n
 
 // ---------------------------------------------------------------------------
 // Pure fee math
@@ -318,7 +318,7 @@ export interface IndexedLoan {
   token: string
 }
 
-export const LOANS_QUERY = `
+const LOANS_QUERY = `
   query Loans($projectId: Int!, $chainId: Int!, $version: Int!, $limit: Int!, $offset: Int!) {
     loans(
       where: { projectId: $projectId, chainId: $chainId, version: $version }

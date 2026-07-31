@@ -10,7 +10,7 @@
  */
 
 /** One beneficiary-root row: a bare sub-event row plus its chain + project. */
-export interface AccountActivitySubEventRow {
+interface AccountActivitySubEventRow {
   id: string
   chainId: number
   timestamp: number
@@ -32,7 +32,7 @@ export interface AccountActivityRawRow {
   [key: string]: unknown
 }
 
-export interface AccountActivityQueryRoot<T> {
+interface AccountActivityQueryRoot<T> {
   items?: T[]
   totalCount?: number
 }

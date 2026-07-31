@@ -99,11 +99,6 @@ export interface OmnichainExecuteParams {
   }
 }
 
-export interface ChainProjectMapping {
-  chainId: number
-  projectId: number
-}
-
 // ============================================================================
 // Hook Options
 // ============================================================================

@@ -48,7 +48,7 @@ function formatCarouselCutPercent(value: number): string {
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as Address
 
 /** `weightCutPercent` is a fraction out of 1e9 applied once per cycle boundary. */
-export const WEIGHT_CUT_DENOMINATOR = 1_000_000_000n
+const WEIGHT_CUT_DENOMINATOR = 1_000_000_000n
 
 /** JBSplit.percent is a fraction out of 1e9. */
 export const SPLITS_TOTAL_PERCENT = 1_000_000_000
@@ -114,7 +114,7 @@ export interface CycleFundsAccess {
   payoutSplits: CycleSplit[]
 }
 
-export type CycleRelation = 'past' | 'current' | 'upcoming' | 'projected'
+type CycleRelation = 'past' | 'current' | 'upcoming' | 'projected'
 
 export interface CarouselCycle {
   relation: CycleRelation
@@ -216,7 +216,7 @@ export function truncAddr(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`
 }
 
-export function formatTokenAmount(value: bigint, decimals = 18, maximumFractionDigits = 6): string {
+function formatTokenAmount(value: bigint, decimals = 18, maximumFractionDigits = 6): string {
   const [whole, fraction = ''] = formatUnits(value, decimals).split('.')
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
   const compact = fraction.slice(0, maximumFractionDigits).replace(/0+$/, '')
@@ -265,7 +265,7 @@ export function formatDateTime(seconds: number): string {
  * Start time: a future start (upcoming / projected cycles) leads with
  * "In <relative>" plus the absolute date; a past start shows the date only.
  */
-export function formatStartTime(seconds: number, now = Math.floor(Date.now() / 1000)): string {
+function formatStartTime(seconds: number, now = Math.floor(Date.now() / 1000)): string {
   return seconds > now
     ? `In ${relativeFromNow(seconds - now)} (${formatDateTime(seconds)})`
     : formatDateTime(seconds)
@@ -288,7 +288,7 @@ function percentOutOf10000(value: number): string {
 }
 
 /** Label for a JB currency id relative to an accounting context. */
-export function fundsAccessCurrencyLabel(
+function fundsAccessCurrencyLabel(
   currency: number,
   context: Pick<CycleFundsAccess, 'currency' | 'symbol'>,
 ): string {

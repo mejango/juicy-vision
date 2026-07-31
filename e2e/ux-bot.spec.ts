@@ -1,5 +1,5 @@
 import { test as baseTest, expect } from '@playwright/test'
-import { test as authTest, mockAuthEndpoints, seedTestUsers, type TestUser } from './fixtures/auth'
+import { test as authTest, mockAuthEndpoints, seedTestUsers } from './fixtures/auth';
 import { createUXAgent, APITestClient, ALL_SCENARIOS } from './ux-bot'
 
 /**
@@ -114,7 +114,7 @@ test.describe('UX Bot - Store Management Flow', () => {
 })
 
 test.describe('UX Bot - API Testing', () => {
-  test('tests all API endpoints', async ({ request }) => {
+  test('tests all API endpoints', async () => {
     const client = new APITestClient()
 
     // Run all API test suites

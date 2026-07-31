@@ -32,7 +32,7 @@ const RELAYR_APP_ID = import.meta.env.VITE_RELAYR_APP_ID || 'juicy-vision'
 /**
  * Input mapping for setUri - controller will be fetched from JBDirectory
  */
-export interface ChainProjectInput {
+interface ChainProjectInput {
   chainId: number
   projectId: number | bigint
 }

@@ -36,7 +36,7 @@ export type TransactionType =
   | 'contractCall'
   | 'relayr'
 
-export interface TransactionChainState {
+interface TransactionChainState {
   chainId: number
   status: 'pending' | 'submitted' | 'confirmed' | 'failed'
   txHash?: string

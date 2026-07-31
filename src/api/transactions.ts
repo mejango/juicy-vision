@@ -11,7 +11,7 @@ import { apiRequest as sharedApiRequest } from '../services/apiClient'
 // Types
 // =============================================================================
 
-export type TransactionStatus = 'pending' | 'submitted' | 'confirmed' | 'failed' | 'cancelled'
+type TransactionStatus = 'pending' | 'submitted' | 'confirmed' | 'failed' | 'cancelled'
 
 export interface TransactionReceipt {
   blockNumber: number

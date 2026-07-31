@@ -16,33 +16,6 @@ export interface ChatMember {
   canPauseAi?: boolean
 }
 
-/**
- * Chat Permission Levels:
- * 1. view-only: Can only read messages (canSendMessages=false)
- * 2. view-and-write: Can read and send messages (canSendMessages=true, canInvite=false)
- * 3. view-and-write-and-invite: Can read, send, and create invites (canInvite=true)
- * 4. view-and-write-and-invite-and-caninvite: Full permissions, can create invites that grant invite permission
- */
-export type ChatPermissionLevel =
-  | 'view-only'
-  | 'view-and-write'
-  | 'view-and-write-and-invite'
-  | 'view-and-write-and-invite-and-caninvite'
-
-export function getMemberPermissionLevel(member: ChatMember): ChatPermissionLevel {
-  if (member.canSendMessages === false) {
-    return 'view-only'
-  }
-  if (!member.canInvite) {
-    return 'view-and-write'
-  }
-  // Founders and admins always have full permissions
-  if (member.role === 'founder' || member.role === 'admin') {
-    return 'view-and-write-and-invite-and-caninvite'
-  }
-  return 'view-and-write-and-invite'
-}
-
 export interface ChatMessage {
   id: string
   chatId: string
@@ -488,4 +461,3 @@ export interface Conversation {
   createdAt: number
   updatedAt: number
 }
-

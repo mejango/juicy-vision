@@ -784,7 +784,7 @@ export const REV_DEPLOYER_ABI = [
   }
 ] as const
 
-export const REV_OWNER_ABI = [
+const REV_OWNER_ABI = [
   {
     "type": "function",
     "name": "tiered721HookOf",

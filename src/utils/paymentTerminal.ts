@@ -182,13 +182,6 @@ export async function getPaymentTerminal(
 }
 
 /**
- * Checks if a token address is the native token (ETH)
- */
-export function isNativeToken(address: Address): boolean {
-  return address.toLowerCase() === NATIVE_TOKEN.toLowerCase()
-}
-
-/**
  * Gets the token address for a payment token symbol
  */
 export function getPaymentTokenAddress(token: 'ETH' | 'USDC' | 'PAY_CREDITS', chainId: number): Address {

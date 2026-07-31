@@ -123,10 +123,6 @@ test.describe('Passkey Authentication (Managed Wallet)', () => {
       await page.reload()
       await page.waitForLoadState('domcontentloaded')
 
-      // Look for truncated address (0xAddr...0123 format)
-      const truncatedAddress = user.smartAccountAddress.slice(0, 6)
-      const addressDisplay = page.locator(`text=/${truncatedAddress}/i`)
-
       // Page should load successfully with auth
       await expect(page.locator('body')).toBeVisible()
     })

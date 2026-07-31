@@ -108,7 +108,7 @@ export const POSITION_MANAGER_BY_CHAIN =
  * deployments. Chains absent here (e.g. OP Sepolia 11155420 — no V4 Quoter
  * deployed) gate the direct-swap offer OFF rather than guess an address.
  */
-export const V4_QUOTER_BY_CHAIN = UNISWAP_V4_QUOTER_ADDRESSES as AddressByChain;
+const V4_QUOTER_BY_CHAIN = UNISWAP_V4_QUOTER_ADDRESSES as AddressByChain;
 
 /** Canonical Permit2 singleton (same on all chains). */
 export const PERMIT2_ADDRESS = UNISWAP_PERMIT2_ADDRESS;
@@ -217,7 +217,7 @@ const positionViewAbi = [
   },
 ] as const;
 
-export const positionManagerAbi = [
+const positionManagerAbi = [
   {
     type: "function",
     name: "modifyLiquidities",
@@ -230,7 +230,7 @@ export const positionManagerAbi = [
   },
 ] as const;
 
-export const permit2Abi = [
+const permit2Abi = [
   {
     type: "function",
     name: "allowance",
@@ -292,7 +292,7 @@ const omnichainExtraHookAbi = [
  * BannyLPSplitHook reads + permissionless keeper actions, with the hook's
  * custom errors so a reverting simulation decodes to the real reason.
  */
-export const bannyLpSplitHookAbi = [
+const bannyLpSplitHookAbi = [
   {
     type: "function",
     name: "initialWeightOf",
@@ -623,7 +623,7 @@ function lpLogsClient(chainId: number): PublicClient {
  * ALWAYS the project's accounting token (workspace-verified: USDC pools key
  * poolKeyOf by the pair token; never assume native).
  */
-export async function resolvePairToken(
+async function resolvePairToken(
   chainId: number,
   projectId: bigint,
   client: PublicClient = clientFor(chainId),
@@ -665,7 +665,6 @@ interface DataHookInfo {
 }
 
 async function projectDataHook(
-  chainId: number,
   projectId: bigint,
   client: PublicClient,
 ): Promise<DataHookInfo | null> {
@@ -699,7 +698,7 @@ async function projectDataHook(
  *   anything else → null. readPoolState additionally null-gates on an
  *   uninitialized pool, so a mis-recognized hook can't render a phantom pool.
  */
-export async function resolveBuybackHook(
+async function resolveBuybackHook(
   chainId: number,
   projectId: bigint,
   client: PublicClient = clientFor(chainId),
@@ -728,7 +727,7 @@ export async function resolveBuybackHook(
     return null;
   };
 
-  const info = await projectDataHook(chainId, projectId, client);
+  const info = await projectDataHook(projectId, client);
   if (!info || info.hook === zeroAddress) return null;
   if (lc(info.hook) === lc(JB_OMNICHAIN_DEPLOYER)) {
     try {
@@ -824,11 +823,6 @@ export async function readPoolState(
   }
 }
 
-/** Whether the chain has a verified V4 Quoter (direct-swap detection gate). */
-export function v4QuoterAvailable(chainId: number): boolean {
-  return Boolean(V4_QUOTER_BY_CHAIN[chainId]);
-}
-
 export interface DirectBuyQuote {
   /** The pool the swap would route through. */
   poolId: `0x${string}`;
@@ -891,7 +885,7 @@ export async function quoteDirectBuy(
 const LP_INITIALIZE_TOPIC = UNISWAP_V4_INITIALIZE_TOPIC;
 const LP_MODIFY_LIQUIDITY_TOPIC = UNISWAP_V4_MODIFY_LIQUIDITY_TOPIC;
 
-export const LP_LOG_WINDOW = 45_000n;
+const LP_LOG_WINDOW = 45_000n;
 const LP_LOG_BATCH_WINDOWS = 8;
 /** Hard cap on scanned windows per load — bounded work even on fast L2s. */
 const LP_LOG_MAX_WINDOWS = 48;
@@ -976,7 +970,7 @@ async function fetchPoolLogsRange(
   } as never)) as RawLog[];
 }
 
-export interface PoolTokenIdScan {
+interface PoolTokenIdScan {
   tokenIds: bigint[];
   /** False when the scan was range-capped or an RPC window failed — render partial with a note. */
   complete: boolean;
@@ -990,7 +984,7 @@ export interface PoolTokenIdScan {
  * partially-failed scan resolves with `complete: false` so the UI can render
  * what was verified alongside a partial-data note.
  */
-export async function scanPoolPositionTokenIds(
+async function scanPoolPositionTokenIds(
   chainId: number,
   poolManager: Address,
   positionManager: Address,
@@ -1154,7 +1148,7 @@ export async function scanPoolPositionTokenIds(
   return { tokenIds, complete };
 }
 
-export interface PositionDetail {
+interface PositionDetail {
   tokenId: bigint;
   info: bigint;
   owner: Address | null;
@@ -1166,7 +1160,7 @@ export interface PositionDetail {
  * live position actually belongs to the expected pool (a PositionManager
  * token from another pool must never be attributed here).
  */
-export async function readPositionDetails(
+async function readPositionDetails(
   client: PublicClient,
   positionManager: Address,
   tokenIds: bigint[],
@@ -1238,7 +1232,7 @@ export async function readPositionDetails(
   return details;
 }
 
-export interface LpPositionEntry {
+interface LpPositionEntry {
   tickLower: number;
   tickUpper: number;
   liquidity: bigint;
@@ -1248,7 +1242,7 @@ export interface LpPositionEntry {
   tokenAmount: bigint;
 }
 
-export interface LpOwnerRow {
+interface LpOwnerRow {
   address: Address;
   /** Total value in pair-token terms (human) for share sorting. */
   valuePair: number;
@@ -1714,32 +1708,6 @@ export function deriveAddLiquidityPlan(opts: {
   };
 }
 
-/** Read pool state (throwing on failure) and derive the mint plan. */
-export async function prepareAddLiquidity(opts: {
-  chainId: number;
-  projectId: bigint;
-  pairAmount: bigint;
-  tokenAmount: bigint;
-  pa: number;
-  pb: number;
-  recipient: Address;
-}): Promise<AddLiquidityPlan> {
-  if (!POSITION_MANAGER_BY_CHAIN[opts.chainId])
-    throw new Error("No position manager on this chain");
-  const state = await readPoolState(opts.chainId, opts.projectId);
-  if (!state) throw new Error("Pool not initialized on this chain");
-  return deriveAddLiquidityPlan({
-    key: state.key,
-    sqrtP: state.sqrtP,
-    pair: state.pair,
-    pairAmount: opts.pairAmount,
-    tokenAmount: opts.tokenAmount,
-    pa: opts.pa,
-    pb: opts.pb,
-    recipient: opts.recipient,
-  });
-}
-
 /**
  * Corridor guard for the submit-time reverify: recompute what the reviewed
  * liquidity needs at the FRESH pool price; if either side exceeds the maxes
@@ -1991,7 +1959,7 @@ export async function readMarketRulesetFacts(
   chainId: number,
   projectId: bigint,
 ): Promise<MarketRulesetFacts | null> {
-  const info = await projectDataHook(chainId, projectId, clientFor(chainId));
+  const info = await projectDataHook(projectId, clientFor(chainId));
   if (!info) return null;
   const weightNumber = Number(info.weight);
   return {
@@ -2011,7 +1979,7 @@ export async function projectUsesLpSplitHook(
   if (!hookAddress) return false;
   try {
     const client = clientFor(chainId);
-    const info = await projectDataHook(chainId, projectId, client);
+    const info = await projectDataHook(projectId, client);
     if (!info) return false;
     const splits = await client.readContract({
       address: JB_CONTRACTS.JBSplits,

@@ -35,7 +35,7 @@ function cacheSmartAccountAddress(address: string): void {
   localStorage.setItem(SMART_ACCOUNT_CACHE_KEY, address)
 }
 
-export interface ManagedWalletBalance {
+interface ManagedWalletBalance {
   chainId: number
   tokenAddress: string
   tokenSymbol: string

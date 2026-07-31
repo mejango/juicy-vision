@@ -1,6 +1,4 @@
-import { test, expect, type Page } from '../fixtures/auth'
-import { mockAuthEndpoints } from '../fixtures/auth'
-import { mockProjectEndpoints, createMockProject } from '../fixtures/api'
+import { test, expect } from '../fixtures/auth';
 
 /**
  * Accessibility Tests
@@ -56,12 +54,8 @@ test.describe('Accessibility: Keyboard Navigation', () => {
       await page.keyboard.press('Tab')
       await page.keyboard.press('Tab')
 
-      const thirdFocus = await page.locator(':focus').textContent().catch(() => null)
-
       // Tab back
       await page.keyboard.press('Shift+Tab')
-
-      const secondFocus = await page.locator(':focus').textContent().catch(() => null)
 
       // Should be different elements
       // (may not be if only one focusable element)
@@ -73,11 +67,6 @@ test.describe('Accessibility: Keyboard Navigation', () => {
       const focused = page.locator(':focus')
 
       if (await focused.isVisible()) {
-        // Check for visible focus indicator
-        const outline = await focused.evaluate(el => {
-          const style = getComputedStyle(el)
-          return style.outline || style.boxShadow || style.border
-        })
 
         // Should have some visual focus indicator
         // (outline, box-shadow, or border change)
@@ -87,10 +76,6 @@ test.describe('Accessibility: Keyboard Navigation', () => {
     test('skip link exists for main content', async ({ page }) => {
       // First Tab should hit skip link (if implemented)
       await page.keyboard.press('Tab')
-
-      const skipLink = page.locator('a').filter({
-        hasText: /skip|main content/i
-      }).first()
 
       // Skip link is a best practice
     })
@@ -146,9 +131,6 @@ test.describe('Accessibility: Keyboard Navigation', () => {
         // Press Escape
         await page.keyboard.press('Escape')
         await page.waitForTimeout(200)
-
-        // Modal should close
-        const modal = page.locator('dialog, [role="dialog"]')
         // Modal visibility should change
       }
     })
@@ -181,8 +163,6 @@ test.describe('Accessibility: Keyboard Navigation', () => {
         // Arrow down should move focus
         await page.keyboard.press('ArrowDown')
         await page.waitForTimeout(100)
-
-        const focused = page.locator(':focus')
         // Should be within menu
       }
     })
@@ -213,16 +193,6 @@ test.describe('Accessibility: ARIA and Semantics', () => {
     test('page has main landmark', async ({ page }) => {
       const main = page.locator('main, [role="main"]')
       await expect(main.first()).toBeVisible()
-    })
-
-    test('page has navigation landmark', async ({ page }) => {
-      const nav = page.locator('nav, [role="navigation"]')
-      // Navigation should exist
-    })
-
-    test('page has contentinfo (footer) if applicable', async ({ page }) => {
-      const footer = page.locator('footer, [role="contentinfo"]')
-      // Footer may exist
     })
   })
 
@@ -318,15 +288,6 @@ test.describe('Accessibility: ARIA and Semantics', () => {
       }
     })
 
-    test('required fields are marked', async ({ page }) => {
-      const requiredInputs = await page.locator('input[required], textarea[required]').all()
-
-      for (const input of requiredInputs) {
-        // Should have aria-required or visual indicator
-        const ariaRequired = await input.getAttribute('aria-required')
-        // aria-required should be true or input should have required attribute
-      }
-    })
   })
 
   test.describe('Images', () => {
@@ -377,9 +338,6 @@ test.describe('Accessibility: Focus Management', () => {
         const modal = page.locator('dialog, [role="dialog"]').first()
 
         if (await modal.isVisible()) {
-          // Focus should be within modal
-          const focused = page.locator(':focus')
-          const focusInModal = await modal.locator(':focus').count() > 0
 
           // Focus should be trapped in modal
         }
@@ -398,9 +356,6 @@ test.describe('Accessibility: Focus Management', () => {
         // Close modal
         await page.keyboard.press('Escape')
         await page.waitForTimeout(200)
-
-        // Focus should return to trigger
-        const focused = page.locator(':focus')
         // Should be back on trigger or nearby
       }
     })
@@ -421,8 +376,6 @@ test.describe('Accessibility: Focus Management', () => {
           for (let i = 0; i < 20; i++) {
             await page.keyboard.press('Tab')
             await page.waitForTimeout(50)
-
-            const focused = page.locator(':focus')
             // Focus should stay within modal
           }
         }
@@ -443,12 +396,6 @@ test.describe('Accessibility: Focus Management', () => {
         // Focus should remain logical (may stay on input for next message)
       }
     })
-
-    test('announces dynamic changes', async ({ page }) => {
-      // Live regions should announce changes
-      const liveRegion = page.locator('[aria-live]')
-      // Live region may exist for status updates
-    })
   })
 })
 
@@ -460,8 +407,6 @@ test.describe('Accessibility: Color and Contrast', () => {
 
   test.describe('Light Mode', () => {
     test('text is readable in light mode', async ({ page }) => {
-      // Ensure light mode
-      const themeToggle = page.locator('[data-testid="theme-toggle"]').first()
       // Toggle to light if needed
 
       // Sample text elements for contrast
@@ -509,9 +454,6 @@ test.describe('Accessibility: Color and Contrast', () => {
 
       for (const el of await errorElements.all()) {
         if (await el.isVisible()) {
-          // Should have icon, text, or aria-label
-          const hasText = (await el.textContent())?.trim()
-          const hasIcon = await el.locator('svg').count() > 0
 
           // Error should be perceivable without color
         }
@@ -545,15 +487,6 @@ test.describe('Accessibility: Screen Reader Support', () => {
       }
     })
 
-    test('disabled elements have aria-disabled', async ({ page }) => {
-      const disabledButtons = await page.locator('button[disabled]').all()
-
-      for (const button of disabledButtons) {
-        // Disabled buttons should be perceivable
-        const ariaDisabled = await button.getAttribute('aria-disabled')
-        // May have aria-disabled="true" or just disabled attribute
-      }
-    })
   })
 
   test.describe('Live Regions', () => {
@@ -578,18 +511,6 @@ test.describe('Accessibility: Screen Reader Support', () => {
     })
   })
 
-  test.describe('Hidden Content', () => {
-    test('decorative elements hidden from AT', async ({ page }) => {
-      // Elements with aria-hidden should not be interactive
-      const hiddenElements = await page.locator('[aria-hidden="true"]').all()
-
-      for (const el of hiddenElements) {
-        // Should not contain focusable children
-        const focusableChildren = await el.locator('a, button, input, [tabindex]').count()
-        // Focusable children in aria-hidden is an error
-      }
-    })
-  })
 })
 
 test.describe('Accessibility: Reduced Motion', () => {
@@ -619,11 +540,6 @@ test.describe('Accessibility: Text Scaling', () => {
 
     // Content should still be usable
     await expect(page.locator('body')).toBeVisible()
-
-    // No horizontal scroll
-    const hasHorizontalScroll = await page.evaluate(() =>
-      document.documentElement.scrollWidth > document.documentElement.clientWidth * 2
-    )
 
     // May have some scroll at high zoom, but should be minimal
   })

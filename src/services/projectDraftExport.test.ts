@@ -371,6 +371,12 @@ describe('buildDraftFromLive → mergeDraft round trip', () => {
 })
 
 describe('buildDraftFromLive guards', () => {
+  it('refuses to guess an unverified project owner', () => {
+    expect(() => buildDraftFromLive(inputFixture({ owner: '' }))).toThrow(
+      /project owner/,
+    )
+  })
+
   it('refuses owner-must-send-payouts rulesets', () => {
     expect(() => buildDraftFromLive(inputFixture({
       current: { ruleset: rulesetFixture({}, { ownerMustSendPayouts: true }), funds: fundsFixture() },
@@ -383,10 +389,13 @@ describe('buildDraftFromLive guards', () => {
     }))).toThrow(/scopes cash outs/)
   })
 
-  it('refuses custom data hooks (onchain shops) instead of dropping them', () => {
-    expect(() => buildDraftFromLive(inputFixture({
+  it('warns when custom data hooks or onchain shop inventory cannot be copied', () => {
+    const { state, warnings } = buildDraftFromLive(inputFixture({
       current: { ruleset: rulesetFixture({}, { dataHook: HOOK, useDataHookForPay: true }), funds: fundsFixture() },
-    }))).toThrow(/data hook/)
+    }))
+    expect(state.shopEnabled).toBe(false)
+    expect(warnings.some((warning) => warning.includes('data hook'))).toBe(true)
+    expect(warnings.some((warning) => warning.includes('empty shop'))).toBe(true)
   })
 
   it('refuses a revnet whose data hook is not REVOwner', () => {

@@ -1,6 +1,6 @@
-import { test, expect, type Page } from '../fixtures/auth'
+import { test, expect } from '../fixtures/auth';
 import { mockAuthEndpoints } from '../fixtures/auth'
-import { mockChatEndpoints, AI_RESPONSES, createMockChat, createMockMessage } from '../fixtures/api'
+import { mockChatEndpoints, AI_RESPONSES } from '../fixtures/api';
 
 /**
  * User Journey 5.1: Multi-Turn Chat Conversation
@@ -43,9 +43,6 @@ test.describe('Chat Interaction', () => {
         await chatInput.fill('Test message')
         await chatInput.press('Enter')
         await page.waitForTimeout(500)
-
-        // Message should appear in chat or input should clear
-        const inputValue = await chatInput.inputValue()
         // Input may clear after sending
       }
     })
@@ -75,9 +72,6 @@ test.describe('Chat Interaction', () => {
         await chatInput.fill('Test message')
         await chatInput.press('Enter')
         await page.waitForTimeout(1000)
-
-        // Input should be cleared
-        const inputValue = await chatInput.inputValue()
         // May be empty or may have new text
       }
     })
@@ -113,9 +107,6 @@ test.describe('Chat Interaction', () => {
       if (await chatInput.isVisible()) {
         await chatInput.fill('Test question')
         await chatInput.press('Enter')
-
-        // Should show loading indicator
-        const loading = page.locator('[data-testid="ai-loading"], text=/thinking|typing|loading/i, .animate-pulse')
         // Loading indicator may appear
       }
     })
@@ -131,9 +122,6 @@ test.describe('Chat Interaction', () => {
         await chatInput.fill('Test question')
         await chatInput.press('Enter')
         await page.waitForTimeout(2000)
-
-        // AI response should appear
-        const response = page.locator('text=/test AI response/i')
         // Response may be visible
       }
     })
@@ -251,24 +239,6 @@ test.describe('Chat Interaction', () => {
         // Chat should be cleared or new chat created
       }
     })
-
-    test('can copy message content', async ({ page }) => {
-      // If copy button exists on messages
-      const copyBtn = page.locator('button[aria-label*="copy" i], button').filter({
-        has: page.locator('svg')
-      }).first()
-
-      // Copy functionality may exist
-    })
-
-    test('can regenerate AI response', async ({ page }) => {
-      // If regenerate button exists
-      const regenerateBtn = page.locator('button').filter({
-        hasText: /regenerate|retry|try again/i
-      }).first()
-
-      // Regenerate may be available after AI response
-    })
   })
 
   test.describe('Error Handling', () => {
@@ -286,9 +256,6 @@ test.describe('Chat Interaction', () => {
         await chatInput.fill('Test error handling')
         await chatInput.press('Enter')
         await page.waitForTimeout(1000)
-
-        // Error message should appear
-        const error = page.locator('text=/error|failed|try again/i')
         // Error handling should be visible
       }
     })
@@ -307,9 +274,6 @@ test.describe('Chat Interaction', () => {
         await chatInput.fill('Test rate limit')
         await chatInput.press('Enter')
         await page.waitForTimeout(1000)
-
-        // Should show rate limit message
-        const rateLimitMsg = page.locator('text=/rate limit|too many|slow down|wait/i')
         // Rate limit error may be shown
       }
     })
@@ -398,9 +362,6 @@ test.describe('Chat - Transaction Components', () => {
         await chatInput.fill('Create a project called TestProject')
         await chatInput.press('Enter')
         await page.waitForTimeout(2000)
-
-        // Transaction preview component may appear
-        const txPreview = page.locator('[data-testid="transaction-preview"], [data-testid="tx-preview"]')
         // Preview may be rendered
       }
     })
@@ -452,9 +413,6 @@ test.describe('Chat - Sidebar', () => {
       await mockManagedAuth(page)
       await page.reload()
       await page.waitForLoadState('networkidle')
-
-      // Sidebar may show chat history
-      const sidebar = page.locator('[data-testid="chat-sidebar"], [role="navigation"]').first()
       // Sidebar may be visible
     })
 
@@ -477,9 +435,6 @@ test.describe('Chat - Sidebar', () => {
       await mockManagedAuth(page)
       await page.reload()
       await page.waitForLoadState('networkidle')
-
-      // Find delete option on chat
-      const deleteBtn = page.locator('button[aria-label*="delete" i], [data-testid="delete-chat"]').first()
       // Delete functionality may exist
     })
   })

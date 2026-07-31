@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '../fixtures/auth'
+import { test, expect } from '../fixtures/auth';
 import { mockAuthEndpoints } from '../fixtures/auth'
 import { mockProjectEndpoints, mockTransactionEndpoints, createMockProject } from '../fixtures/api'
 
@@ -40,9 +40,6 @@ test.describe('Payment Flow', () => {
       await page.goto(projectUrl)
       await page.waitForLoadState('domcontentloaded')
 
-      // Look for payment input on the page
-      const paymentInput = page.locator('input[type="number"], input[placeholder*="amount" i], input[placeholder*="pay" i], input[placeholder*="ETH" i]').first()
-
       // Payment input may be in a specific tab or section
       await expect(page.locator('body')).toBeVisible()
     })
@@ -56,9 +53,6 @@ test.describe('Payment Flow', () => {
       if (await paymentInput.isVisible()) {
         await paymentInput.fill('1')
         await page.waitForTimeout(500)
-
-        // Should show tokens user will receive
-        const tokenAmount = page.locator('text=/receive|get|tokens|you.+get/i')
         // Token display may vary based on project configuration
       }
     })
@@ -72,8 +66,6 @@ test.describe('Payment Flow', () => {
       }).first()
 
       if (await payBtn.isVisible()) {
-        // Button should be disabled or not present without amount
-        const isDisabled = await payBtn.isDisabled()
         // May also be enabled but validate on click
       }
     })
@@ -89,10 +81,6 @@ test.describe('Payment Flow', () => {
       if (await paymentInput.isVisible()) {
         await paymentInput.fill('-1')
         await page.waitForTimeout(300)
-
-        // Should show error or prevent submission
-        const errorMsg = page.locator('text=/invalid|negative|must be positive/i')
-        const payBtn = page.locator('button').filter({ hasText: /pay/i }).first()
 
         // Either error shown or button disabled
       }
@@ -146,9 +134,6 @@ test.describe('Payment Flow', () => {
         if (await payBtn.isVisible() && await payBtn.isEnabled()) {
           await payBtn.click()
           await page.waitForTimeout(500)
-
-          // Should show confirmation or transaction preview
-          const confirmation = page.locator('dialog, [role="dialog"], [data-testid="tx-preview"]')
           // Confirmation may appear
         }
       }
@@ -219,9 +204,6 @@ test.describe('Payment Flow', () => {
       if (await paymentInput.isVisible()) {
         await paymentInput.fill('10') // More than balance
         await page.waitForTimeout(500)
-
-        // Should show insufficient balance warning
-        const warning = page.locator('text=/insufficient|not enough|low balance/i')
         // Warning may appear
       }
     })
@@ -258,9 +240,6 @@ test.describe('Payment Flow', () => {
       if (await currencySelect.isVisible()) {
         await currencySelect.click()
         await page.waitForTimeout(300)
-
-        // Should show conversion rate
-        const rate = page.locator('text=/≈|~|\\$/i')
         // Rate display may vary
       }
     })
@@ -279,16 +258,6 @@ test.describe('Payment Flow', () => {
 
       // After a successful payment, success state should be shown
       // This would require triggering a full payment flow
-    })
-
-    test('updates balance after payment', async ({ page }) => {
-      // Would need to mock balance change after payment
-      // Verify UI reflects new balance
-    })
-
-    test('shows transaction in activity feed', async ({ page }) => {
-      // After payment, activity should show the contribution
-      // Would need to mock activity endpoint to include new payment
     })
   })
 })
@@ -310,9 +279,6 @@ test.describe('Payment - Unauthenticated', () => {
     if (await payBtn.isVisible()) {
       await payBtn.click()
       await page.waitForTimeout(500)
-
-      // Should prompt to connect or show auth modal
-      const authPrompt = page.locator('dialog, [role="dialog"], text=/connect|sign in/i')
       // Auth prompt should appear
     }
   })

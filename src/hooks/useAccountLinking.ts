@@ -17,7 +17,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 // Types
 // ============================================================================
 
-export interface LinkedAddress {
+interface LinkedAddress {
   id: string
   primaryAddress: string
   linkedAddress: string

@@ -22,7 +22,7 @@ export const arbitrumSepolia = JB_CHAINS[421614].chain
 export const baseSepolia = JB_CHAINS[84532].chain
 
 // Mainnet chain IDs (always available, even in staging mode for cross-network queries)
-export const MAINNET_CHAIN_IDS = {
+const MAINNET_CHAIN_IDS = {
   ethereum: 1,
   optimism: 10,
   base: 8453,

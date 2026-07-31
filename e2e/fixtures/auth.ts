@@ -1,9 +1,4 @@
-import {
-  test as base,
-  expect,
-  type Page,
-  type BrowserContext,
-} from "@playwright/test";
+import { test as base, expect, type Page } from "@playwright/test";
 
 // ============================================================================
 // Type Declarations
@@ -163,7 +158,7 @@ export async function seedTestUsers(): Promise<boolean> {
  * In development mode, the backend returns the OTP code directly.
  * Uses caching to prevent OTP race conditions in parallel tests.
  */
-export async function getRealAuthToken(email: string): Promise<RealTestUser> {
+async function getRealAuthToken(email: string): Promise<RealTestUser> {
   // Check cache first
   const cached = tokenCache.get(email);
   if (cached && Date.now() - cached.timestamp < TOKEN_CACHE_TTL) {
@@ -232,7 +227,7 @@ export async function getRealAuthToken(email: string): Promise<RealTestUser> {
  * Set up real authentication in the browser.
  * Gets a real JWT token and stores it in localStorage.
  */
-export async function setupRealAuth(
+async function setupRealAuth(
   page: Page,
   email?: string,
 ): Promise<RealTestUser> {
@@ -515,21 +510,6 @@ export async function mockAuthEndpoints(
       });
     }
   });
-}
-
-/**
- * Wait for authentication state to be hydrated from localStorage.
- */
-export async function waitForAuthHydration(page: Page, timeout = 5000) {
-  await page.waitForFunction(
-    () => {
-      const stored = localStorage.getItem("juice-auth");
-      if (!stored) return true; // No auth is valid state
-      const parsed = JSON.parse(stored);
-      return parsed?.state?._hasHydrated !== false;
-    },
-    { timeout },
-  );
 }
 
 // ============================================================================

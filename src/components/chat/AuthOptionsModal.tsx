@@ -7,7 +7,7 @@ import type { DeviceHint } from '../../services/passkey'
 import { useAnchoredPopoverStyle } from '../ui/useAnchoredPopoverStyle'
 import ViewAsMenuAction from '../common/ViewAsMenuAction'
 
-export interface AnchorPosition {
+interface AnchorPosition {
   top: number
   left: number
   width: number

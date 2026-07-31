@@ -11,12 +11,7 @@
 import { lazy, Suspense, type ReactNode } from 'react'
 import { useThemeStore } from '../../stores'
 import { ExplainerMessage } from '../ui/ExplainerMessage'
-import {
-  ownersSubtabsFor,
-  projectTabsFor,
-  type OwnersSubtabId,
-  type ProjectTabId,
-} from './flavor'
+import { projectTabsFor, type OwnersSubtabId, type ProjectTabId } from './flavor';
 import type { ConnectedChain, Project, SuckerGroupBalance } from '../../services/bendystraw'
 
 // Tab bodies are heavy (charts, log scans, pool math) — only pay for the open one.
@@ -282,5 +277,3 @@ export default function ProjectTabs(props: ProjectTabsProps) {
     </>
   )
 }
-
-export { ownersSubtabsFor }

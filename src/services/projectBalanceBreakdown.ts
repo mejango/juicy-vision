@@ -118,8 +118,8 @@ async function fetchAccountingTokenUsdPrice(
 }
 
 // Cross-chain balance breakdown across every accounting token, with a USD total only when every non-zero token
-// is actually priced. Reuses the fail-closed on-chain reader (verified terminal/store/context) FundsSection
-// uses; a chain that fails to verify marks the whole aggregate unpriced rather than reporting a partial total.
+// is actually priced. Reuses the fail-closed on-chain reader (verified terminal/store/context); a chain that
+// fails to verify marks the whole aggregate unpriced rather than reporting a partial total.
 export async function fetchProjectBalanceBreakdown(
   chains: Array<{ chainId: number; projectId: number }>,
 ): Promise<ProjectBalanceBreakdown> {

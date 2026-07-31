@@ -1,6 +1,6 @@
-import { test, expect, type Page } from '../fixtures/auth'
+import { test, expect } from '../fixtures/auth';
 import { mockAuthEndpoints } from '../fixtures/auth'
-import { mockProjectEndpoints, mockTransactionEndpoints, createMockProject } from '../fixtures/api'
+import { mockProjectEndpoints, createMockProject } from '../fixtures/api';
 
 /**
  * Error Recovery Tests
@@ -38,9 +38,6 @@ test.describe('Network Error Recovery', () => {
 
       // App should not crash
       await expect(page.locator('body')).toBeVisible()
-
-      // May show error message
-      const errorMsg = page.locator('text=/error|failed|try again/i')
       // Error handling should be graceful
     })
 
@@ -69,9 +66,6 @@ test.describe('Network Error Recovery', () => {
 
       await page.reload()
       await page.waitForLoadState('networkidle')
-
-      // Should show rate limit message
-      const rateLimitMsg = page.locator('text=/rate limit|too many|slow down/i')
       await expect(page.locator('body')).toBeVisible()
     })
 
@@ -99,9 +93,6 @@ test.describe('Network Error Recovery', () => {
         await chatInput.fill('Test message')
         await chatInput.press('Enter')
         await page.waitForTimeout(1000)
-
-        // Should show offline/connection error
-        const offlineMsg = page.locator('text=/offline|connection|network/i')
         // Error should be shown
       }
     })
@@ -203,14 +194,6 @@ test.describe('Transaction Error Recovery', () => {
       // App should handle rejection gracefully
       await expect(page.locator('body')).toBeVisible()
     })
-
-    test('shows clear rejection message', async ({ page }) => {
-      // Message should explain user rejected
-    })
-
-    test('allows retry after rejection', async ({ page }) => {
-      // User should be able to try again
-    })
   })
 
   test.describe('Transaction Reverts', () => {
@@ -230,14 +213,6 @@ test.describe('Transaction Error Recovery', () => {
 
       await expect(page.locator('body')).toBeVisible()
     })
-
-    test('shows revert reason', async ({ page }) => {
-      // Should display why transaction failed
-    })
-
-    test('suggests fix for common reverts', async ({ page }) => {
-      // May suggest adding more ETH for "insufficient funds"
-    })
   })
 
   test.describe('Transaction Stuck', () => {
@@ -254,14 +229,6 @@ test.describe('Transaction Error Recovery', () => {
 
       // Transaction remains pending
       // UI should show pending state
-    })
-
-    test('shows option to speed up stuck transaction', async ({ page }) => {
-      // May offer speed up option
-    })
-
-    test('shows option to cancel stuck transaction', async ({ page }) => {
-      // May offer cancel option
     })
   })
 
@@ -281,10 +248,6 @@ test.describe('Transaction Error Recovery', () => {
       await page.waitForLoadState('networkidle')
 
       await expect(page.locator('body')).toBeVisible()
-    })
-
-    test('suggests increasing gas for retry', async ({ page }) => {
-      // May suggest higher gas limit
     })
   })
 })
@@ -406,30 +369,6 @@ test.describe('Websocket/Streaming Recovery', () => {
         await expect(page.locator('body')).toBeVisible()
       }
     })
-
-    test('shows partial response with error indicator', async ({ page }) => {
-      // Partial content should be visible
-      // Error should be indicated
-    })
-
-    test('allows retry of interrupted request', async ({ page }) => {
-      // Regenerate button should be available
-    })
-  })
-
-  test.describe('Real-time Updates Disconnect', () => {
-    test('handles WebSocket disconnect', async ({ page }) => {
-      // If app uses WebSocket for real-time updates
-      // Should handle disconnect gracefully
-    })
-
-    test('falls back to polling when WS unavailable', async ({ page }) => {
-      // May fall back to periodic refresh
-    })
-
-    test('reconnects automatically', async ({ page }) => {
-      // Should attempt reconnection
-    })
   })
 })
 
@@ -455,11 +394,6 @@ test.describe('Concurrent Operation Errors', () => {
       await page.waitForTimeout(500)
 
       // Page 1 should reflect auth change
-    })
-
-    test('handles concurrent edits', async ({ page, context }) => {
-      // Two tabs editing same resource
-      // Should handle conflict
     })
   })
 
@@ -521,10 +455,6 @@ test.describe('Browser Compatibility Issues', () => {
 
       // Should show appropriate message or fallback
       await expect(page.locator('body')).toBeVisible()
-    })
-
-    test('handles missing crypto API', async ({ page }) => {
-      // For passkey/WebAuthn features
     })
   })
 })

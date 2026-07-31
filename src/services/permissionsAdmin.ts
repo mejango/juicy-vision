@@ -235,7 +235,7 @@ export interface ProjectOperator {
   permissionIds: number[]
 }
 
-export const PERMISSION_HOLDERS_QUERY = `
+const PERMISSION_HOLDERS_QUERY = `
   query PermissionHolders(
     $projectId: Int!
     $version: Int!
@@ -472,7 +472,7 @@ export type OwnerPowerKey =
   | 'addPriceFeed'
   | 'setToken'
 
-export type OwnerPowerFlag =
+type OwnerPowerFlag =
   | 'allowOwnerMinting'
   | 'allowSetController'
   | 'allowSetTerminals'
@@ -482,7 +482,7 @@ export type OwnerPowerFlag =
 
 export type OwnerPowerFlags = Record<OwnerPowerFlag, boolean>
 
-export interface OwnerPowerField {
+interface OwnerPowerField {
   name: string
   label: string
   kind: 'address' | 'addressList' | 'amount' | 'uint' | 'bool'

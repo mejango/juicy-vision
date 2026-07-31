@@ -16,13 +16,6 @@ import {
   rulesetIssuanceRateAt,
 } from "@bananapus/nana-sdk-core/v6";
 
-// ---------------------------------------------------------------------------
-// Stage metadata decode
-// ---------------------------------------------------------------------------
-
-/** reservedPercent / cashOutTaxRate are out of 10_000 (= 100%). */
-export const RULESET_PERCENT_SCALE = 10_000;
-
 /** weightCutPercent is out of 1e9. */
 export const WEIGHT_CUT_SCALE = 1_000_000_000;
 

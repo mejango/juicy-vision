@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 /**
  * Shared post-confirmation refresh for forms that mutate project treasury
  * state outside the transaction executor: invalidates the ruleset queries,
- * notifies listeners (FundsSection) via `juice:project-data-invalidated`, and
+ * notifies project-data listeners via `juice:project-data-invalidated`, and
  * bumps a revision that the form's load effects depend on.
  */
 export function useProjectDataInvalidation(chainId: number | undefined, projectId: number | undefined) {

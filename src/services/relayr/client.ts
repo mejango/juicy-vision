@@ -50,12 +50,7 @@ export type {
   JBCurrencyAmountConfig,
   JBFundAccessLimitGroupConfig,
   JBRulesetConfig,
-  JBQueueRulesetRequest,
-  JBTransactionData,
-  JBTransactionResponse,
   JBTerminalConfig,
-  JBSuckerTokenMapping,
-  JBSuckerDeployerConfig,
   JBSuckerDeploymentConfig,
   REVStageConfig,
 } from './encoder'
@@ -97,7 +92,7 @@ async function fetchApi<T>(
 // Fund a pooled balance to sponsor gas for users across all EVM chains.
 // Organization pays gas from balance instead of users needing native tokens.
 
-export interface BalanceBundleTransaction {
+interface BalanceBundleTransaction {
   chain: number           // Chain ID
   target: string          // Destination address (0x...)
   data?: string           // Calldata (0x...)
@@ -247,7 +242,7 @@ export interface PaymentOption {
 }
 
 // Raw relayr API types (matching relayr-ts)
-export type CallState =
+type CallState =
   | { state: 'Invalid' }
   | { state: 'Pending' }
   | { state: 'Mempool'; data: Record<string, unknown> }
@@ -260,7 +255,7 @@ export type CallState =
   | { state: 'Completed'; data: Record<string, unknown> }
   | { state: 'Reverted'; data: Record<string, unknown> }
 
-export interface RawTransactionStatus {
+interface RawTransactionStatus {
   request: {
     chain: number
     target: string

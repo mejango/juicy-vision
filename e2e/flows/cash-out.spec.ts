@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '../fixtures/auth'
+import { test, expect } from '../fixtures/auth';
 import { mockAuthEndpoints } from '../fixtures/auth'
 import { mockProjectEndpoints, mockTransactionEndpoints, createMockProject } from '../fixtures/api'
 
@@ -41,11 +41,6 @@ test.describe('Cash Out Flow', () => {
       await page.goto(projectUrl)
       await page.waitForLoadState('domcontentloaded')
 
-      // Look for cash out / redeem button or section
-      const cashOutBtn = page.locator('button, [role="button"]').filter({
-        hasText: /cash out|redeem|burn|withdraw/i
-      }).first()
-
       // Cash out may be in a specific tab (Tokens/Members)
       const tokensTab = page.getByRole('button', { name: 'Members', exact: true })
         .or(page.getByRole('button', { name: 'Tokens', exact: true }))
@@ -73,21 +68,12 @@ test.describe('Cash Out Flow', () => {
         await tokensTab.click()
         await page.waitForTimeout(300)
       }
-
-      // Look for balance display
-      const balanceDisplay = page.locator('text=/balance|tokens|holdings/i')
       // Balance section should exist
     })
 
     test('shows redemption rate preview', async ({ page }) => {
       await page.goto(projectUrl)
       await page.waitForLoadState('domcontentloaded')
-
-      // Cash out preview should show how much ETH user would receive
-      // This depends on the bonding curve / redemption rate
-
-      // Look for rate or "you receive" display
-      const rateDisplay = page.locator('text=/redemption|receive|get back|rate/i')
       // Rate info may be shown on page
     })
   })
@@ -105,9 +91,6 @@ test.describe('Cash Out Flow', () => {
       if (await redeemInput.isVisible()) {
         await redeemInput.fill('100')
         await page.waitForTimeout(500)
-
-        // Should show expected ETH output
-        const output = page.locator('text=/ETH|Ξ|receive/i')
         // Output calculation should appear
       }
     })
@@ -115,9 +98,6 @@ test.describe('Cash Out Flow', () => {
     test('shows bonding curve visualization', async ({ page }) => {
       await page.goto(projectUrl)
       await page.waitForLoadState('domcontentloaded')
-
-      // Some projects show a curve visualization
-      const curveViz = page.locator('[data-testid="bonding-curve"], canvas, svg').first()
       // Visualization may or may not be present
     })
 
@@ -130,11 +110,9 @@ test.describe('Cash Out Flow', () => {
       if (await redeemInput.isVisible()) {
         await redeemInput.fill('50')
         await page.waitForTimeout(300)
-        const output1 = await page.locator('text=/\\d+\\.?\\d*\\s*ETH/i').textContent().catch(() => null)
 
         await redeemInput.fill('100')
         await page.waitForTimeout(300)
-        const output2 = await page.locator('text=/\\d+\\.?\\d*\\s*ETH/i').textContent().catch(() => null)
 
         // Output should change when input changes
         // (may be same if rate is 0 or no overflow)
@@ -153,10 +131,6 @@ test.describe('Cash Out Flow', () => {
         await redeemInput.fill('999999999')
         await page.waitForTimeout(300)
 
-        // Should show error or cap input
-        const error = page.locator('text=/exceed|insufficient|not enough|max/i')
-        const cashOutBtn = page.locator('button').filter({ hasText: /cash out|redeem/i }).first()
-
         // Either error shown or button disabled
       }
     })
@@ -165,9 +139,6 @@ test.describe('Cash Out Flow', () => {
       // Mock zero token balance
       await page.goto(projectUrl)
       await page.waitForLoadState('domcontentloaded')
-
-      // Should show empty state or disabled cash out
-      const emptyState = page.locator('text=/no tokens|nothing to redeem|0 tokens/i')
       // Empty state or disabled button expected
     })
 
@@ -175,9 +146,6 @@ test.describe('Cash Out Flow', () => {
       // When project has no overflow, redemption gives 0 ETH
       await page.goto(projectUrl)
       await page.waitForLoadState('domcontentloaded')
-
-      // Should show warning about zero redemption value
-      const zeroWarning = page.locator('text=/no overflow|0 ETH|nothing available/i')
       // Warning may be shown
     })
   })
@@ -200,9 +168,6 @@ test.describe('Cash Out Flow', () => {
         if (await cashOutBtn.isVisible() && await cashOutBtn.isEnabled()) {
           await cashOutBtn.click()
           await page.waitForTimeout(500)
-
-          // Should show confirmation dialog
-          const confirmation = page.locator('dialog, [role="dialog"], [role="alertdialog"]')
           // Confirmation may appear
         }
       }
@@ -237,21 +202,6 @@ test.describe('Cash Out Flow', () => {
 
       // App should show error state without crashing
       await expect(page.locator('body')).toBeVisible()
-    })
-  })
-
-  test.describe('Post Cash Out', () => {
-    test('updates token balance after cash out', async ({ page }) => {
-      // After successful cash out, balance should decrease
-      // Would need to mock balance change
-    })
-
-    test('shows transaction confirmation', async ({ page }) => {
-      // After cash out, should show tx link/confirmation
-    })
-
-    test('records in activity feed', async ({ page }) => {
-      // Cash out should appear in project activity
     })
   })
 })
@@ -305,9 +255,6 @@ test.describe('Cash Out - Special Cases', () => {
       // For omnichain projects, need to cash out on correct chain
       await page.goto('/eth:200')
       await page.waitForLoadState('domcontentloaded')
-
-      // Chain indicator should be visible
-      const chainIndicator = page.locator('text=/ethereum|mainnet|ETH chain/i')
       // Chain info may be shown
       await expect(page.locator('body')).toBeVisible()
     })
@@ -343,9 +290,6 @@ test.describe('Cash Out - Unauthenticated', () => {
     if (await cashOutBtn.isVisible()) {
       await cashOutBtn.click()
       await page.waitForTimeout(500)
-
-      // Should prompt authentication
-      const authPrompt = page.locator('dialog, [role="dialog"], text=/connect|sign in/i')
       // Auth prompt should appear
     }
   })

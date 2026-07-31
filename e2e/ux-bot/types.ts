@@ -6,7 +6,7 @@
 // Driver Types
 // ============================================================================
 
-export type ActionType =
+type ActionType =
   | 'click'
   | 'type'
   | 'scroll'
@@ -18,63 +18,63 @@ export type ActionType =
   | 'select'
   | 'clear'
 
-export interface BaseAction {
+interface BaseAction {
   type: ActionType
   description?: string
 }
 
-export interface ClickAction extends BaseAction {
+interface ClickAction extends BaseAction {
   type: 'click'
   selector?: string
   text?: string
   position?: { x: number; y: number }
 }
 
-export interface TypeAction extends BaseAction {
+interface TypeAction extends BaseAction {
   type: 'type'
   selector?: string
   text: string
 }
 
-export interface ScrollAction extends BaseAction {
+interface ScrollAction extends BaseAction {
   type: 'scroll'
   direction: 'up' | 'down' | 'left' | 'right'
   amount?: number
 }
 
-export interface WaitAction extends BaseAction {
+interface WaitAction extends BaseAction {
   type: 'wait'
   condition?: string
   timeout?: number
   selector?: string
 }
 
-export interface ScreenshotAction extends BaseAction {
+interface ScreenshotAction extends BaseAction {
   type: 'screenshot'
 }
 
-export interface NavigateAction extends BaseAction {
+interface NavigateAction extends BaseAction {
   type: 'navigate'
   url: string
 }
 
-export interface HoverAction extends BaseAction {
+interface HoverAction extends BaseAction {
   type: 'hover'
   selector: string
 }
 
-export interface PressKeyAction extends BaseAction {
+interface PressKeyAction extends BaseAction {
   type: 'press_key'
   key: string
 }
 
-export interface SelectAction extends BaseAction {
+interface SelectAction extends BaseAction {
   type: 'select'
   selector: string
   value: string
 }
 
-export interface ClearAction extends BaseAction {
+interface ClearAction extends BaseAction {
   type: 'clear'
   selector: string
 }
@@ -139,9 +139,9 @@ export interface AnalysisResult {
 // Issue Types
 // ============================================================================
 
-export type IssueSeverity = 'critical' | 'major' | 'minor' | 'suggestion'
+type IssueSeverity = 'critical' | 'major' | 'minor' | 'suggestion'
 
-export type IssueCategory =
+type IssueCategory =
   | 'usability'
   | 'accessibility'
   | 'performance'
@@ -201,7 +201,7 @@ export interface AgentConfig {
   headless: boolean
 }
 
-export interface AgentMessage {
+interface AgentMessage {
   role: 'user' | 'assistant'
   content: string
 }

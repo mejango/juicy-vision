@@ -1,29 +1,6 @@
-import { test, expect, type Page } from '../fixtures/auth'
+import { test, expect } from '../fixtures/auth';
 import { mockAuthEndpoints } from '../fixtures/auth'
 import { mockProjectEndpoints, mockTransactionEndpoints, createMockProject } from '../fixtures/api'
-
-/**
- * Omnichain Project Tests
- *
- * Tests for projects deployed across multiple chains:
- * - Cross-chain navigation
- * - Aggregated data display
- * - Chain-specific operations
- * - Bridge/Relayr integration
- */
-
-// Chain configurations
-const CHAINS = {
-  ethereum: { id: 1, slug: 'eth', name: 'Ethereum' },
-  optimism: { id: 10, slug: 'op', name: 'Optimism' },
-  base: { id: 8453, slug: 'base', name: 'Base' },
-  arbitrum: { id: 42161, slug: 'arb', name: 'Arbitrum' },
-}
-
-function getChainSlug(chainId: number): string {
-  const entry = Object.values(CHAINS).find(c => c.id === chainId)
-  return entry?.slug || 'eth'
-}
 
 test.describe('Omnichain: Multi-Chain Project Display', () => {
   // Project deployed on multiple chains
@@ -71,12 +48,6 @@ test.describe('Omnichain: Multi-Chain Project Display', () => {
       await page.goto('/eth:700')
       await page.waitForLoadState('networkidle')
 
-      // Look for chain selector/switcher
-      const chainSelector = page.locator('[data-testid="chain-selector"], [data-testid="chain-switcher"]').first()
-      const chainDropdown = page.locator('button').filter({
-        hasText: /ethereum|optimism|base|chain/i
-      }).first()
-
       // Chain selection UI may be visible
     })
 
@@ -92,9 +63,6 @@ test.describe('Omnichain: Multi-Chain Project Display', () => {
       if (await chainSelector.isVisible()) {
         await chainSelector.click()
         await page.waitForTimeout(500)
-
-        // URL should change to reflect new chain
-        const url = page.url()
         // May contain /op: or optimism indicator
       }
     })
@@ -104,18 +72,12 @@ test.describe('Omnichain: Multi-Chain Project Display', () => {
     test('shows total balance across all chains', async ({ page }) => {
       await page.goto('/eth:700')
       await page.waitForLoadState('networkidle')
-
-      // Look for aggregate balance display
-      const totalBalance = page.locator('text=/total|combined|all chains/i')
       // Aggregate info may be visible
     })
 
     test('shows breakdown by chain', async ({ page }) => {
       await page.goto('/eth:700')
       await page.waitForLoadState('networkidle')
-
-      // Should show per-chain breakdown
-      const chainBreakdown = page.locator('text=/ethereum.*\\d|optimism.*\\d|base.*\\d/i')
       // Chain-specific amounts may be visible
     })
 
@@ -139,9 +101,6 @@ test.describe('Omnichain: Multi-Chain Project Display', () => {
     test('payment goes to selected chain', async ({ page }) => {
       await page.goto('/op:700') // Optimism
       await page.waitForLoadState('networkidle')
-
-      // Payment should go to Optimism terminal
-      const payInput = page.locator('input[type="number"]').first()
       // Payment would use OP terminal
     })
 
@@ -217,9 +176,6 @@ test.describe('Omnichain: NFT Inventory', () => {
         await shopTab.click()
         await page.waitForTimeout(300)
       }
-
-      // Supply badge should show per-chain breakdown
-      const supplyBadge = page.locator('[data-testid="supply-badge"]').first()
       // Badge may show chain breakdown on hover/click
     })
 
@@ -228,13 +184,9 @@ test.describe('Omnichain: NFT Inventory', () => {
       await page.goto('/eth:701')
       await page.waitForLoadState('networkidle')
 
-      const ethSupply = await page.locator('text=/\\d+.*left|\\d+.*available/i').first().textContent().catch(() => null)
-
       // Base: 5 remaining (50 - 45 sold)
       await page.goto('/base:701')
       await page.waitForLoadState('networkidle')
-
-      const baseSupply = await page.locator('text=/\\d+.*left|\\d+.*available/i').first().textContent().catch(() => null)
 
       // Supplies should differ
     })
@@ -303,27 +255,13 @@ test.describe('Omnichain: Cross-Chain Payments', () => {
       await page.goto('/eth:702')
       await page.waitForLoadState('networkidle')
 
-      // Look for cross-chain payment option
-      const crossChainOption = page.locator('button, text').filter({
-        hasText: /pay from|different chain|relayr/i
-      }).first()
-
       // Cross-chain option may be available
     })
 
     test('calculates bridge fees', async ({ page }) => {
       await page.goto('/eth:702')
       await page.waitForLoadState('networkidle')
-
-      // When paying cross-chain, should show bridge fee
-      const bridgeFee = page.locator('text=/bridge fee|relay fee|additional fee/i')
       // Fee info may be shown
-    })
-
-    test('shows estimated time for cross-chain', async ({ page }) => {
-      // Cross-chain payments take longer
-      const timeEstimate = page.locator('text=/minutes|estimated time/i')
-      // Time estimate may be shown
     })
   })
 
@@ -334,14 +272,6 @@ test.describe('Omnichain: Cross-Chain Payments', () => {
 
       // Advanced option to split payment across chains
       // This would use Relayr bundle
-    })
-
-    test('shows bundle progress across chains', async ({ page }) => {
-      // When bundle executes, show status per chain
-    })
-
-    test('handles partial bundle failure', async ({ page }) => {
-      // If one chain fails but others succeed
     })
   })
 })
@@ -381,19 +311,7 @@ test.describe('Omnichain: Owner Operations', () => {
         await fundsTab.click()
         await page.waitForTimeout(300)
       }
-
-      // Should show limit for each chain
-      const limitInfo = page.locator('text=/limit|allowance/i')
       // Per-chain limits may be shown
-    })
-
-    test('payout uses chain-specific limit', async ({ page }) => {
-      // Each chain has independent payout limit
-      // Cannot aggregate across chains
-    })
-
-    test('shows remaining allowance per chain', async ({ page }) => {
-      // After partial payout, remaining should update
     })
   })
 
@@ -403,10 +321,6 @@ test.describe('Omnichain: Owner Operations', () => {
       await page.waitForLoadState('networkidle')
 
       // Ruleset change should apply everywhere
-    })
-
-    test('shows ruleset sync status across chains', async ({ page }) => {
-      // May show if rulesets are in sync
     })
   })
 })
@@ -449,14 +363,6 @@ test.describe('Omnichain: Different Project IDs', () => {
 })
 
 test.describe('Omnichain: Network Errors', () => {
-  const testProject = createMockProject({
-    id: 704,
-    name: 'Network Error Test Project',
-    chainId: 1,
-    metadata: {
-      deployedChains: [1, 10, 8453],
-    },
-  })
 
   test.beforeEach(async ({ page, mockManagedAuth }) => {
     await page.goto('/')
@@ -481,25 +387,6 @@ test.describe('Omnichain: Network Errors', () => {
       // Should show data from working chains
       // May show error indicator for down chain
       await expect(page.locator('body')).toBeVisible()
-    })
-
-    test('shows partial data when some chains fail', async ({ page }) => {
-      // Should degrade gracefully
-    })
-
-    test('retries failed chain periodically', async ({ page }) => {
-      // Should attempt to reconnect
-    })
-  })
-
-  test.describe('Data Sync Delays', () => {
-    test('handles data lag between chains', async ({ page }) => {
-      // One chain may be behind others
-      // UI should handle inconsistent data
-    })
-
-    test('shows sync status indicator', async ({ page }) => {
-      // May show when data is stale
     })
   })
 })

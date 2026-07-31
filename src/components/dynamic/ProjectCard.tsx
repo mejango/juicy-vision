@@ -2035,45 +2035,31 @@ export default function ProjectCard({
             <span className={muted}>Items</span>
             <span>{fmt(breakdown.subtotal)}</span>
           </div>
-          {!activeWalletAddress ? (
-            <div className="flex justify-between gap-4">
-              <span className={muted}>Shop credit</span>
-              <span className={muted}>Connect wallet to check</span>
-            </div>
-          ) : nftCreditsLoading ? (
-            <div className="flex justify-between gap-4">
-              <span className={muted}>Shop credit</span>
-              <span className={muted}>Checking…</span>
-            </div>
-          ) : breakdown.applied > 0n ? (
+          {!nftCreditsLoading && breakdown.applied > 0n ? (
             <div
               className={`flex justify-between gap-4 ${isDark ? "text-green-400" : "text-green-600"}`}
             >
               <span>Shop credit applied</span>
               <span>−{fmt(breakdown.applied)}</span>
             </div>
-          ) : nftCredits > 0n ? (
+          ) : !nftCreditsLoading && nftCredits > 0n ? (
             <div className="flex justify-between gap-4">
-              <span className={muted}>Shop credit</span>
+              <span className={muted}>Shop credit available</span>
               <span className={muted}>{fmt(nftCredits)}</span>
             </div>
           ) : null}
-          {breakdown.restrictedCost > 0n && (
-            <>
+          {!nftCreditsLoading &&
+            nftCredits > 0n &&
+            breakdown.restrictedCost > 0n && (
               <div className="flex justify-between gap-4">
                 <span className={muted}>
                   {breakdown.restrictedCost === breakdown.subtotal
-                    ? "Shop credit not accepted"
-                    : "Shop credit not accepted by some items"}
+                    ? "These items require fresh payment"
+                    : "Some items require fresh payment"}
                 </span>
                 <span className={muted}>{fmt(breakdown.restrictedCost)}</span>
               </div>
-              <div className="flex justify-between gap-4">
-                <span className={muted}>Fresh payment required</span>
-                <span className={muted}>{fmt(breakdown.restrictedCost)}</span>
-              </div>
-            </>
-          )}
+            )}
           <div
             className={`flex justify-between gap-4 font-medium ${isDark ? "text-white" : "text-gray-900"}`}
           >

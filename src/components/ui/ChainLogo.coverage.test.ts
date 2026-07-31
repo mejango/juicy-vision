@@ -22,7 +22,6 @@ const read = (relativePath: string) => readFileSync(resolve(SRC, relativePath), 
 
 const FILES_NAMING_CHAINS = [
   'components/chat/ChatHistorySidebar.tsx',
-  'components/dynamic/FundsSection.tsx',
   'components/dynamic/ProjectCard.tsx',
   'components/dynamic/ProjectChainPicker.tsx',
   'components/dynamic/ProjectSplitRoute.tsx',

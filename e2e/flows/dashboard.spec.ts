@@ -1,7 +1,6 @@
 import { test, expect } from '../fixtures/auth'
 import { mockAuthEndpoints } from '../fixtures/auth'
 import { mockProjectEndpoints, createMockProject } from '../fixtures/api'
-import { assertOnDashboard, navigateToDashboard } from '../helpers/components'
 
 // Map chainId to URL slug
 function getChainSlug(chainId: number): string {
@@ -85,18 +84,12 @@ test.describe('Dashboard Navigation', () => {
     test('shows project owner address', async ({ page }) => {
       await page.goto(projectUrl)
       await page.waitForLoadState('domcontentloaded')
-
-      // Owner address might be truncated
-      const truncatedAddress = testProject.owner.slice(0, 6)
       // Look for address display
     })
 
     test('shows chain indicator', async ({ page }) => {
       await page.goto(projectUrl)
       await page.waitForLoadState('domcontentloaded')
-
-      // Should indicate which chain (Ethereum mainnet for chainId 1)
-      const chainIndicator = page.locator('text=/ethereum|mainnet/i')
       // Note: Chain display depends on implementation
     })
   })
@@ -158,21 +151,12 @@ test.describe('Dashboard Navigation', () => {
       // Note: Will show "not found" if project doesn't exist in Bendystraw
     })
 
-    test('shows aggregated data across chains', async ({ page }) => {
-      // For omnichain projects, data should be aggregated
-      // This test verifies the UI handles multi-chain data
-    })
-
     test('can switch between chain views', async ({ page }) => {
       // If there's a chain switcher on the dashboard
       const chainSelector = page.locator('[data-testid="chain-selector"], .chain-selector')
       if (await chainSelector.isVisible()) {
         await chainSelector.click()
         await page.waitForTimeout(200)
-
-        // Chain options should appear
-        const chainOptions = page.locator('[data-testid="chain-option"]')
-        const optionCount = await chainOptions.count()
         // Should have multiple chain options for omnichain projects
       }
     })

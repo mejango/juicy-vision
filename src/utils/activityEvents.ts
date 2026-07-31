@@ -11,7 +11,7 @@ export interface EventInfo {
 // Format amount with proper decimals and currency
 // decimals: 6 for USDC, 18 for ETH (default)
 // currency: 1=ETH, 2=USD (USDC)
-export function formatAmount(amount: string, decimals: number = 18, currency: number = 1): string {
+function formatAmount(amount: string, decimals: number = 18, currency: number = 1): string {
   const divisor = Math.pow(10, decimals)
   const num = parseFloat(amount) / divisor
 

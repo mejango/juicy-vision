@@ -7,23 +7,8 @@ import {
   createMockProject,
 } from '../fixtures/api'
 import { mockAuthEndpoints } from '../fixtures/auth'
-import {
-  sendMessage,
-  sendMessageAndWaitForResponse,
-  getChatInput,
-  getLastAssistantMessage,
-  waitForTransactionPreview,
-  confirmTransactionPreview,
-  assertChatReady,
-} from '../helpers/chat'
-import {
-  getTransactionPreview,
-  waitForLoading,
-  waitForSuccess,
-  assertNoError,
-  getDashboardLink,
-} from '../helpers/components'
-import { assertWalletConnected, connectWithPasskey } from '../helpers/wallet'
+import { sendMessage, getChatInput, assertChatReady } from '../helpers/chat';
+import { assertNoError } from '../helpers/components';
 
 test.describe('Project Creation Flow', () => {
   test.describe('With Managed Wallet (Passkey Auth)', () => {
@@ -57,9 +42,6 @@ test.describe('Project Creation Flow', () => {
 
       // Wait for AI response (may take time due to streaming)
       await page.waitForTimeout(1000)
-
-      // Check for transaction preview
-      const preview = getTransactionPreview(page)
       // Note: In mocked tests, the preview may not appear if we're not
       // fully simulating the AI response rendering
     })

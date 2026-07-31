@@ -27,7 +27,7 @@ const USDC_ADDRESSES: Record<number, Address> = {
 }
 
 // Quote tokens to check for pools (in order of preference)
-export type QuoteToken = 'WETH' | 'USDC'
+type QuoteToken = 'WETH' | 'USDC'
 
 // Uniswap V3 Factory addresses per chain
 // Note: Base uses a different factory address than other chains

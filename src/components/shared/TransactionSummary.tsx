@@ -3,17 +3,6 @@
 import { truncateAddress } from '../../utils/ens'
 import ChainLogo from '../ui/ChainLogo'
 
-export type TransactionType =
-  | 'pay'
-  | 'cashOut'
-  | 'sendPayouts'
-  | 'sendReservedTokens'
-  | 'useAllowance'
-  | 'queueRuleset'
-  | 'launchProject'
-  | 'deployRevnet'
-  | 'deployERC20'
-
 interface PayDetails {
   projectId: string | number
   projectName?: string

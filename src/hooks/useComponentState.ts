@@ -8,7 +8,7 @@ import { getSessionId } from '../services/session'
 import { getWalletSession } from '../services/siwe'
 import { useAuthStore } from '../stores'
 
-export interface ComponentState {
+interface ComponentState {
   status: 'pending' | 'in_progress' | 'completed' | 'failed'
   [key: string]: unknown
 }
@@ -54,7 +54,7 @@ async function fetchWithAuth(url: string, options: RequestInit = {}) {
  * Hook to persist component state server-side.
  * State is scoped per-message and visible to all chat participants.
  */
-export function useComponentState<T extends ComponentState = ComponentState>(
+function useComponentState<T extends ComponentState = ComponentState>(
   options: UseComponentStateOptions<T>
 ): UseComponentStateReturn<T> {
   const { messageId, componentKey, initialState } = options

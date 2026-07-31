@@ -6,14 +6,12 @@ import pt from './locales/pt.json'
 import zh from './locales/zh.json'
 import es from './locales/es.json'
 
-export const supportedLanguages = {
+const supportedLanguages = {
   en: { name: 'English', nativeName: 'English' },
   zh: { name: 'Chinese', nativeName: '中文' },
   pt: { name: 'Portuguese', nativeName: 'Português' },
   es: { name: 'Spanish', nativeName: 'Español' },
 } as const
-
-export type SupportedLanguage = keyof typeof supportedLanguages
 
 i18n
   .use(initReactI18next)
@@ -35,5 +33,3 @@ i18n
 export function changeLanguage(lang: string) {
   i18n.changeLanguage(lang)
 }
-
-export default i18n

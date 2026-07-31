@@ -25,7 +25,7 @@ const ACCENTS = {
   },
 } as const
 
-export type ChainRowStatus = 'pending' | 'signing' | 'submitted' | 'confirmed' | 'failed'
+type ChainRowStatus = 'pending' | 'signing' | 'submitted' | 'confirmed' | 'failed'
 
 interface ChainStatusRowProps {
   chainId: number
