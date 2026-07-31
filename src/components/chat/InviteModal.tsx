@@ -6,7 +6,7 @@ import { createInvite, type ChatInvite, type CreateInviteParams } from '../../se
 import { copyToClipboard } from '../../utils/clipboard'
 import { useAnchoredPopoverStyle } from '../ui/useAnchoredPopoverStyle'
 
-export interface AnchorPosition {
+interface AnchorPosition {
   top: number
   left: number
   width: number

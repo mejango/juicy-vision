@@ -389,10 +389,4 @@ test.describe("Project API - Authorization", () => {
       expect(response.status()).toBeGreaterThanOrEqual(400);
     }
   });
-
-  test("only owner can update project", async ({ request }) => {
-    // This would require creating a project with one user
-    // and trying to update with another user's token
-    // Skipping detailed implementation as it requires multi-user setup
-  });
 });

@@ -67,7 +67,7 @@ export interface TierOwner {
 export type ItemNames = Record<number, string>
 
 /** A store item's display media (for a thumbnail), resolved via the shop media resolver. */
-export interface ItemMedia {
+interface ItemMedia {
   name?: string
   /** IPFS/HTTP image URI (rendered through the gateway fallback list). */
   imageUri?: string

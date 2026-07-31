@@ -80,7 +80,7 @@ type RawSwap = {
   projectTokenIsCurrency0: boolean | null
 }
 
-export type IndexedAmmPricePoint = { timestamp: number; price: number }
+type IndexedAmmPricePoint = { timestamp: number; price: number }
 
 export type IndexedAmmPriceHistory = {
   hasPool: boolean

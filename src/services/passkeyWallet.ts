@@ -216,71 +216,6 @@ async function finalizePasskeyWallet(
 }
 
 /**
- * Create a new passkey wallet using Touch ID / Face ID
- * Returns the wallet address
- */
-export async function createPasskeyWallet(): Promise<PasskeyWallet> {
-  // Generate a random user ID for this credential
-  const userId = crypto.getRandomValues(new Uint8Array(16))
-
-  // Create credential with PRF extension
-  const credential = await navigator.credentials.create({
-    publicKey: {
-      challenge: crypto.getRandomValues(new Uint8Array(32)),
-      rp: {
-        name: 'Juicy Vision',
-        id: window.location.hostname,
-      },
-      user: {
-        id: userId,
-        name: `wallet-${Date.now()}`,
-        displayName: 'Juicy Vision Wallet',
-      },
-      pubKeyCredParams: [
-        { type: 'public-key', alg: -7 },   // ES256 (P-256)
-        { type: 'public-key', alg: -257 }, // RS256
-      ],
-      timeout: 60000,
-      attestation: 'none',
-      authenticatorSelection: {
-        authenticatorAttachment: 'platform', // Use Touch ID / Face ID
-        residentKey: 'required',
-        userVerification: 'required',
-      },
-      extensions: {
-        // Request PRF extension
-        prf: {
-          eval: {
-            first: PRF_SALT,
-          },
-        },
-      } as PrfExtensionInput,
-    },
-  }) as PublicKeyCredential | null
-
-  if (!credential) {
-    throw new Error('Passkey creation was cancelled')
-  }
-
-  // Check for PRF output in the response
-  const extensionResults = credential.getClientExtensionResults() as PrfExtensionOutput
-  const prfResult = extensionResults?.prf?.results?.first
-
-  if (!prfResult) {
-    // PRF not supported during creation, need to authenticate to get PRF output
-    // Some platforms only provide PRF during authentication, not creation
-    const wallet = await authenticatePasskeyWallet(credential.id)
-    return wallet
-  }
-
-  // Derive private key from PRF output
-  const privateKey = await derivePrivateKey(prfResult)
-  const account = privateKeyToAccount(privateKey)
-
-  return finalizePasskeyWallet(credential.id, account, privateKey)
-}
-
-/**
  * Authenticate with existing passkey and derive wallet
  */
 export async function authenticatePasskeyWallet(credentialId?: string): Promise<PasskeyWallet> {
@@ -378,32 +313,4 @@ export function forgetPasskeyWallet(): void {
   localStorage.removeItem(PASSKEY_WALLET_KEY)
   localStorage.removeItem('juice-passkey-credential')
   window.dispatchEvent(new CustomEvent('juice:passkey-disconnected'))
-}
-
-/**
- * Check if user has a passkey wallet
- */
-export function hasPasskeyWallet(): boolean {
-  return getPasskeyWallet() !== null
-}
-
-/**
- * Sign in with passkey - either create new or authenticate existing
- */
-export async function signInWithPasskey(): Promise<PasskeyWallet> {
-  const existingCredential = getStoredCredentialId()
-
-  if (existingCredential) {
-    // Try to authenticate with existing passkey
-    try {
-      return await authenticatePasskeyWallet(existingCredential)
-    } catch {
-      // Credential might be deleted, clear it and create new
-      localStorage.removeItem('juice-passkey-credential')
-    }
-  }
-
-  // No stored credential - create a new passkey wallet
-  // (Skip discoverable credentials attempt as it shows confusing QR code dialog)
-  return await createPasskeyWallet()
 }

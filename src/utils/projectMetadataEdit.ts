@@ -6,7 +6,7 @@
  */
 
 /** String fields the metadata editor can set or clear. */
-export const EDITABLE_STRING_KEYS = [
+const EDITABLE_STRING_KEYS = [
   'name',
   'tagline',
   'description',

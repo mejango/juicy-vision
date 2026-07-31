@@ -124,7 +124,7 @@ function addressToBytes32(address: `0x${string}`): `0x${string}` {
 }
 
 // V6 JBTokenMapping: remoteToken is bytes32 (address left-padded); minBridgeAmount was removed.
-export interface JBTokenMapping {
+interface JBTokenMapping {
   localToken: `0x${string}`
   minGas: number
   remoteToken: `0x${string}` // bytes32
@@ -132,7 +132,7 @@ export interface JBTokenMapping {
 
 // V6 JBSuckerDeployerConfig: `peer` is the explicit peer sucker address on the
 // remote chain as bytes32. Leave zero to use the default same-address deterministic peer.
-export interface JBSuckerDeployerConfig {
+interface JBSuckerDeployerConfig {
   deployer: `0x${string}`
   peer: `0x${string}` // bytes32
   mappings: JBTokenMapping[]

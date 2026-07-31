@@ -7,7 +7,7 @@ import { CHAINS, MAINNET_CHAINS } from '../../constants'
 import { JB721TiersHookAbi, JB721TierStoreAbi } from './queries'
 import { getProjectDataHook } from './index'
 
-export interface ChainSupply {
+interface ChainSupply {
   chainId: number
   chainName: string
   remaining: number

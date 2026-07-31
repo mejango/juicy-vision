@@ -440,11 +440,6 @@ test.describe("Tier Management API", () => {
       }
     });
 
-    test("cannot delete tier with sales", async ({ request }) => {
-      // This would test that tiers with existing sales cannot be deleted
-      // Requires setting up a tier with mock sales data
-    });
-
     test("returns 404 for non-existent tier", async ({ request }) => {
       if (!testProjectId) {
         throw new Error(LIVE_API_PRECONDITION);
@@ -537,17 +532,6 @@ test.describe("Tier Management API", () => {
         const data = await response.json();
         expect(data.data.tier.metadata.image).toContain("ipfs://");
       }
-    });
-  });
-
-  test.describe("Permission Flags", () => {
-    test("only owner can manage tiers", async ({ request }) => {
-      // This would test that non-owners cannot create/update/delete tiers
-      // Requires multi-user auth setup
-    });
-
-    test("respects project permission settings", async ({ request }) => {
-      // This would test that tier operations respect project-level permissions
     });
   });
 });

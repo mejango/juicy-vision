@@ -12,7 +12,6 @@ import {
 
 export {
   resolvePayPreviewOutcome,
-  TERMINAL_PREVIEW_ABI,
   TERMINAL_PREVIEW_CASH_OUT_ABI,
   TERMINAL_PREVIEW_PAY_ABI,
   type TerminalHookSpecification,

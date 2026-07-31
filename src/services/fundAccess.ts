@@ -49,7 +49,7 @@ const CURRENCY_AMOUNT_COMPONENTS = [
 
 // These fragments are copied from nana-core-v6/deployments/ethereum/*.json.
 // Runtime dependency reads below bind them to the deployed V6 contract graph.
-export const FUND_ACCESS_DIRECTORY_ABI = [
+const FUND_ACCESS_DIRECTORY_ABI = [
   {
     name: 'controllerOf',
     type: 'function',
@@ -210,7 +210,7 @@ export const FUND_ACCESS_STORE_ABI = [
   },
 ] as const
 
-export const FUND_ACCESS_LIMITS_ABI = [
+const FUND_ACCESS_LIMITS_ABI = [
   {
     name: 'payoutLimitsOf',
     type: 'function',
@@ -237,7 +237,7 @@ export const FUND_ACCESS_LIMITS_ABI = [
   },
 ] as const
 
-export const FUND_ACCESS_RULESETS_ABI = [{
+const FUND_ACCESS_RULESETS_ABI = [{
   name: 'currentOf',
   type: 'function',
   stateMutability: 'view',
@@ -265,7 +265,6 @@ export const FUND_ACCESS_CONTROLLER_ABI = [{
   inputs: [],
   outputs: [{ name: '', type: 'address' }],
 }] as const
-
 
 export type FundAccessKind = 'payout' | 'allowance'
 

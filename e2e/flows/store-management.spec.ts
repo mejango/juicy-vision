@@ -1,8 +1,6 @@
 import { test, expect, type Page } from '../fixtures/auth'
 import { mockAuthEndpoints } from '../fixtures/auth'
 import { mockProjectEndpoints, mockTransactionEndpoints, createMockProject } from '../fixtures/api'
-import { tierHelpers, waitForLoading, assertNoError, waitForSuccess } from '../helpers/components'
-import { navigateToDashboard, assertOnDashboard } from '../helpers/components'
 
 // Map chainId to URL slug
 function getChainSlug(chainId: number): string {
@@ -213,9 +211,6 @@ test.describe('Store Management', () => {
       const deleteBtn = page.locator('button:has-text("Delete"), button[aria-label*="delete" i]').first()
       if (await deleteBtn.isVisible()) {
         await deleteBtn.click()
-
-        // Should show confirmation dialog
-        const confirmDialog = page.locator('[role="alertdialog"], [role="dialog"]:has-text("confirm")')
         // Note: Dialog presence depends on implementation
       }
     })

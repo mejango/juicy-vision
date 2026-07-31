@@ -73,7 +73,7 @@ export interface ManagedUser {
   isAdmin?: boolean
 }
 
-export interface PasskeyInfo {
+interface PasskeyInfo {
   id: string
   displayName: string | null
   deviceType: string | null

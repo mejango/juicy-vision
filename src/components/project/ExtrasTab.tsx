@@ -1,11 +1,8 @@
 /**
  * Extras tab — port of the website's renderExtrasSection (discover.js).
  *
- * "Payer address" — deploy JBProjectPayer forwarding contracts via
- * JBProjectPayerDeployer, plus the list of already-deployed payers.
- *
- * The "Copy this project" (.jb export) card was removed to match the website
- * (commit 160e46e); the create flow's own Import/Export .jb covers that need.
+ * Export the live project as an editable create-flow draft, and deploy/list
+ * JBProjectPayer forwarding contracts.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -25,7 +22,9 @@ import {
   type ProjectPayerDeployCall,
   type ProjectPayerRow,
 } from "../../services/projectPayers";
+import { buildProjectCreateDraft } from "../../services/projectDraftExportLive";
 import { resolveEnsToAddress, truncateAddress } from "../../utils/ens";
+import { exportDraftFile } from "../dynamic/create-flow/state";
 import PerChainAddressControl from "./PerChainAddressControl";
 
 interface ExtrasTabProps {
@@ -137,6 +136,47 @@ export default function ExtrasTab({
     }
     return list;
   }, [connectedChains, pageChainId, projectId]);
+
+  const [exportStatus, setExportStatus] = useState<Status>(IDLE);
+  const [exportBusy, setExportBusy] = useState(false);
+
+  const handleExport = useCallback(async () => {
+    if (exportBusy) return;
+    setExportBusy(true);
+    setExportStatus({
+      kind: "pending",
+      text: "Verifying live rules, funds, splits, and terminals…",
+    });
+    try {
+      const result = await buildProjectCreateDraft(projectId, pageChainId, {
+        tokenSymbol,
+      });
+      if (
+        result.warnings.length &&
+        !window.confirm(
+          `${result.warnings.join("\n\n")}\n\nExport this editable .jb anyway?`,
+        )
+      ) {
+        setExportStatus({ kind: "idle", text: "Cancelled" });
+        return;
+      }
+      exportDraftFile(result.state);
+      setExportStatus({
+        kind: "success",
+        text: "Exported .jb. Import it from New project to review and edit.",
+      });
+    } catch (error) {
+      setExportStatus({
+        kind: "error",
+        text:
+          error instanceof Error
+            ? error.message
+            : "Could not safely reconstruct this project.",
+      });
+    } finally {
+      setExportBusy(false);
+    }
+  }, [exportBusy, pageChainId, projectId, tokenSymbol]);
 
   // -------------------------------------------------------------------------
   // Payer address form
@@ -446,6 +486,19 @@ export default function ExtrasTab({
 
   return (
     <div className="space-y-6">
+      <div className={card}>
+        <h3 className={cardTitle}>Export deployment</h3>
+        <ExplainerMessage>
+          Download this project’s deployed configuration as a .jb file. Import
+          it from New project to review the reconstructed rules and make changes
+          before deploying. No transaction is required.
+        </ExplainerMessage>
+        {renderStatus(exportStatus)}
+        <button className={button} onClick={handleExport} disabled={exportBusy}>
+          {exportBusy ? "Verifying…" : "Export .jb"}
+        </button>
+      </div>
+
       {/* Payer address */}
       <div className={card}>
         <h3 className={cardTitle}>Payer address</h3>

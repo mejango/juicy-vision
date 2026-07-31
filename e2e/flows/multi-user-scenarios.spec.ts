@@ -1,6 +1,5 @@
 import { test, expect, type Page } from '../fixtures/auth'
-import { type BrowserContext } from '@playwright/test'
-import { mockAuthEndpoints, type TestUser } from '../fixtures/auth'
+import { type TestUser } from '../fixtures/auth';
 import { mockProjectEndpoints, mockTransactionEndpoints, createMockProject } from '../fixtures/api'
 
 /**
@@ -108,11 +107,6 @@ test.describe('Multi-User: Owner and Contributors', () => {
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
 
-      // Should NOT see owner-only controls
-      const ownerGear = page.locator('[data-testid="owner-menu"], button[aria-label*="settings" i]').first()
-      const queueRuleset = page.locator('button').filter({ hasText: /queue ruleset/i }).first()
-      const sendPayouts = page.locator('button').filter({ hasText: /send payouts/i }).first()
-
       // These should not be visible to non-owners
       // (May not render at all, or may be hidden)
     })
@@ -123,10 +117,6 @@ test.describe('Multi-User: Owner and Contributors', () => {
 
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
-
-      // Owner should see management options
-      // Look for "You" badge or owner indicator
-      const youBadge = page.locator('text=/you|owner/i').first()
       // Owner indicator may be visible
     })
   })
@@ -170,9 +160,6 @@ test.describe('Multi-User: Owner and Contributors', () => {
 
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
-
-      // Look for balance display
-      const balanceDisplay = page.locator('text=/balance|raised|treasury/i')
       // Balance should reflect contributions
     })
   })
@@ -183,16 +170,7 @@ test.describe('Multi-User: Owner and Contributors', () => {
 
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
-
-      // After paying, contributor should have tokens
-      // Check token balance display
-      const tokenBalance = page.locator('text=/tokens|balance|holdings/i')
       // Token balance may be visible
-    })
-
-    test('contributors have proportional token amounts', async ({ page }) => {
-      // If C1 pays 1 ETH and C2 pays 2 ETH, C2 should have ~2x tokens
-      // Would need to mock specific balances to test
     })
   })
 })
@@ -267,15 +245,7 @@ test.describe('Multi-User: NFT Shop Competition', () => {
 
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
-
-      // Should show sold out state
-      const soldOut = page.locator('text=/sold out|unavailable|0 left/i')
       // Sold out indicator may be visible
-    })
-
-    test('supply updates in real-time during purchase', async ({ page }) => {
-      // When one user buys, others should see supply decrease
-      // Would need WebSocket mocking for real-time updates
     })
   })
 
@@ -319,9 +289,6 @@ test.describe('Multi-User: Owner Distributes to Contributors', () => {
 
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
-
-      // Look for splits/payouts section
-      const splitsSection = page.locator('text=/splits|payouts|recipients/i')
       // Splits info may be visible
     })
 
@@ -330,9 +297,6 @@ test.describe('Multi-User: Owner Distributes to Contributors', () => {
 
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
-
-      // Contributors in splits should see their share
-      const myShare = page.locator('text=/your share|allocation|receive/i')
       // Share info may be visible
     })
 
@@ -343,11 +307,6 @@ test.describe('Multi-User: Owner Distributes to Contributors', () => {
 
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
-
-      // Look for send payouts button
-      const sendPayoutsBtn = page.locator('button').filter({
-        hasText: /send payouts|distribute/i
-      }).first()
 
       // Payout functionality may be available
     })
@@ -382,11 +341,6 @@ test.describe('Multi-User: Reserved Token Distribution', () => {
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
 
-      // Look for reserved token distribution
-      const sendReservedBtn = page.locator('button').filter({
-        hasText: /send reserved|distribute tokens/i
-      }).first()
-
       // Reserved token functionality may be available
     })
 
@@ -395,9 +349,6 @@ test.describe('Multi-User: Reserved Token Distribution', () => {
 
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
-
-      // After distribution, tokens should appear
-      const tokenBalance = page.locator('text=/tokens|balance/i')
       // Balance should reflect reserved tokens
     })
   })
@@ -433,11 +384,6 @@ test.describe('Multi-User: Competitive Cash Out', () => {
       // Overflow should be less now
       // Redemption amount should be proportionally less
     })
-
-    test('bonding curve adjusts for multiple redemptions', async ({ page }) => {
-      // Each redemption changes the curve
-      // Later redeemers may get less per token
-    })
   })
 
   test.describe('Large Cash Out Impact', () => {
@@ -449,11 +395,6 @@ test.describe('Multi-User: Competitive Cash Out', () => {
 
       // If user cashes out large amount, overflow drops significantly
       // Other users should see updated rate
-    })
-
-    test('small holders see reduced value after whale exit', async ({ page }) => {
-      // If one user has most tokens and exits,
-      // remaining users have less overflow to share
     })
   })
 })
@@ -472,20 +413,7 @@ test.describe('Multi-User: Activity Feed', () => {
 
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
-
-      // Activity feed should show all contributions
-      const activitySection = page.locator('text=/activity|history|recent/i')
       // Activity may be visible
-    })
-
-    test('activity shows correct attribution', async ({ page }) => {
-      // Each activity item should show who did it
-      // Addresses should be displayed correctly
-    })
-
-    test('new activity appears for all users', async ({ page }) => {
-      // When one user acts, others should see it
-      // (requires real-time updates or refresh)
     })
   })
 })
@@ -523,10 +451,6 @@ test.describe('Multi-User: Permission Boundaries', () => {
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
 
-      const splitsBtn = page.locator('button').filter({
-        hasText: /edit splits|configure splits/i
-      }).first()
-
       // Should be hidden or disabled for non-owner
     })
 
@@ -542,10 +466,6 @@ test.describe('Multi-User: Permission Boundaries', () => {
         await shopTab.click()
         await page.waitForTimeout(300)
       }
-
-      const addTierBtn = page.locator('button').filter({
-        hasText: /sell something|add tier/i
-      }).first()
 
       // Should not be visible for non-owner
     })
@@ -567,9 +487,6 @@ test.describe('Multi-User: Permission Boundaries', () => {
 
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
-
-      // Payment should be available to all authenticated users
-      const payInput = page.locator('input[type="number"]').first()
       // Payment input may be visible
     })
 
@@ -608,14 +525,6 @@ test.describe('Multi-User: State Synchronization', () => {
 
       // User B should see updated state
       await expect(page.locator('body')).toBeVisible()
-    })
-
-    test('NFT purchase removes from availability for others', async ({ page }) => {
-      // Similar pattern - one buys, others see reduced supply
-    })
-
-    test('ruleset change visible to all after confirmation', async ({ page }) => {
-      // Owner queues ruleset, contributors see it pending
     })
   })
 })

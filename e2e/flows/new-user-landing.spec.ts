@@ -19,9 +19,6 @@ test.describe('New User Landing Experience', () => {
     test('shows app title and branding', async ({ page }) => {
       // App should have identifiable branding
       await expect(page.locator('body')).toBeVisible()
-
-      // Look for logo or title
-      const branding = page.locator('[data-testid="logo"], img[alt*="logo" i], h1').first()
       // Branding element should exist
     })
 

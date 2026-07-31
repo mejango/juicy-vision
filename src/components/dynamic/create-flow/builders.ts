@@ -921,7 +921,7 @@ export async function buildDeployTiersConfigFromState(state: CreateFlowState): P
 // Revnet stages
 // ---------------------------------------------------------------------------
 
-export interface REVAutoIssuanceConfig {
+interface REVAutoIssuanceConfig {
   chainId: number
   count: string
   beneficiary: string

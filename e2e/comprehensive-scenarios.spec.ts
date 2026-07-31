@@ -1,10 +1,6 @@
 import { test as authTest, seedTestUsers } from "./fixtures/auth";
 import { createUXAgent } from "./ux-bot";
-import {
-  ALL_COMPREHENSIVE_SCENARIOS,
-  getAllMainScenarios,
-  getAllEdgeScenarios,
-} from "./ux-bot/scenarios/comprehensive";
+import { ALL_COMPREHENSIVE_SCENARIOS, getAllMainScenarios } from "./ux-bot/scenarios/comprehensive";
 
 /**
  * Comprehensive UX Bot Scenario Suite

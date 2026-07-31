@@ -28,7 +28,7 @@ export function isUnlimitedAccessAmount(amount: bigint): boolean {
 }
 
 /** One accounting-token kind (ETH, USDC, or a custom accounting ERC-20). */
-export interface FundsKind {
+interface FundsKind {
   /** Stable key: 'native' | 'usdc' | lowercased token address. */
   key: string
   symbol: string
@@ -109,7 +109,7 @@ export interface FundsSnapshotDeps {
 // Kinds (ported from the website's nativeFundsKind/usdcFundsKind/customFundsKind)
 // ---------------------------------------------------------------------------
 
-export function nativeFundsKind(decimals?: number | null): FundsKind {
+function nativeFundsKind(decimals?: number | null): FundsKind {
   return {
     key: 'native',
     symbol: 'ETH',
@@ -120,7 +120,7 @@ export function nativeFundsKind(decimals?: number | null): FundsKind {
   }
 }
 
-export function usdcFundsKind(homeChainId: number, decimals?: number | null): FundsKind {
+function usdcFundsKind(homeChainId: number, decimals?: number | null): FundsKind {
   return {
     key: 'usdc',
     symbol: 'USDC',
@@ -131,7 +131,7 @@ export function usdcFundsKind(homeChainId: number, decimals?: number | null): Fu
   }
 }
 
-export function customFundsKind(meta: {
+function customFundsKind(meta: {
   address: Address
   symbol?: string
   name?: string
@@ -153,7 +153,7 @@ export function customFundsKind(meta: {
  * Classify the home chain's live accounting contexts into funds kinds.
  * A project accepting both ETH and USDC yields two kinds.
  */
-export async function resolveFundsKinds(
+async function resolveFundsKinds(
   client: PublicClient,
   project: FundsProjectRef,
 ): Promise<FundsKind[]> {
@@ -268,7 +268,7 @@ function failedRow(chainId: number, projectId: number, decimals: number): FundsC
  * alone are not "available": payout usage is tracked per ruleset CYCLE and
  * surplus-allowance usage per ruleset ID.
  */
-export async function readFundsChainRow(
+async function readFundsChainRow(
   client: PublicClient,
   kind: FundsKind,
   chainId: number,

@@ -75,11 +75,6 @@ export function safeAppHomeLink(chainId: number, safe: Address): string {
   return `https://app.safe.global/home?safe=${prefix}:${safe}`
 }
 
-/** True when a hosted Safe Transaction Service covers this chain. */
-export function hasSafeService(chainId: number): boolean {
-  return !!txServiceBase(chainId)
-}
-
 /** "Requires 2 of 3 signatures" — pure, unit-tested. */
 export function formatSafePolicy(threshold: number, ownerCount: number): string {
   return `Requires ${threshold} of ${ownerCount} signature${ownerCount === 1 ? '' : 's'}`

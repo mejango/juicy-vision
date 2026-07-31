@@ -1,5 +1,5 @@
 import { test, expect, devices } from '@playwright/test'
-import { test as authTest, seedTestUsers, setupRealAuth } from './fixtures/auth'
+import { test as authTest, seedTestUsers } from './fixtures/auth';
 import { createUXAgent } from './ux-bot'
 
 /**
@@ -31,7 +31,7 @@ const VIEWPORTS = {
 // ============================================================================
 
 test.describe('Responsive - Layout Integrity', () => {
-  for (const [key, viewport] of Object.entries(VIEWPORTS)) {
+  for (const viewport of Object.values(VIEWPORTS)) {
     test(`renders correctly at ${viewport.name}`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height })
       await page.goto('/')

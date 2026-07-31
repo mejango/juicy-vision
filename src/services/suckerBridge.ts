@@ -80,7 +80,7 @@ export interface BridgeRoute {
   infra: SuckerInfra
 }
 
-export interface CompositionToken {
+interface CompositionToken {
   token: Address
   balance: bigint | null
   decimals: number
@@ -251,7 +251,7 @@ export function classifyMovementStatus(input: {
 // Gossip staleness (pure)
 // ---------------------------------------------------------------------------
 
-export type StalenessLevel = 'synced' | 'slight' | 'danger' | 'unknown'
+type StalenessLevel = 'synced' | 'slight' | 'danger' | 'unknown'
 
 export interface Staleness {
   level: StalenessLevel
@@ -401,7 +401,7 @@ const erc20BalanceOfAbi = [
 const clientOf = (deps: SuckerBridgeDeps, chainId: number): PublicClient =>
   (deps.clientFor ?? (publicClientFor as (chainId: number) => PublicClient))(chainId)
 
-export function suckerRegistryAddress(chainId: number): Address | null {
+function suckerRegistryAddress(chainId: number): Address | null {
   const byChain = jbContractAddress['6'].JBSuckerRegistry as Record<string, Address> | undefined
   return byChain?.[String(chainId)] ?? null
 }
@@ -428,7 +428,7 @@ export async function readSuckerPairsOf(
  * claimable after a route is replaced, and `suckerPairsOf` intentionally
  * returns active routes only.
  */
-export async function readAllSuckerPairsOf(
+async function readAllSuckerPairsOf(
   projectId: number | string | bigint,
   chainId: number,
   deps: SuckerBridgeDeps = {},

@@ -13,8 +13,6 @@ import {
 import { JB_PROJECT_PAYER_DEPLOYER } from '../services/projectPayers'
 import { useViewAsStore, VIEW_AS_WRITE_REFUSAL } from '../stores/viewAsStore'
 
-export const TRANSACTION_REVIEW_EVENT = 'juice:transaction-review-request'
-
 export interface TransactionReviewCall {
   chainId: number
   to: Address

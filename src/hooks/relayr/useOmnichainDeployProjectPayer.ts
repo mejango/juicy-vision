@@ -51,7 +51,7 @@ export async function preflightProjectPayerTransactions(params: {
   }))
 }
 
-export interface OmnichainDeployProjectPayerParams {
+interface OmnichainDeployProjectPayerParams {
   /** One JBProjectPayerDeployer.deployProjectPayer call per selected chain. */
   calls: ProjectPayerDeployCall[]
   /** chainId -> that chain's own project ID (for bundle chain-state labeling). */

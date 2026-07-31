@@ -40,16 +40,3 @@ export const ALL_SCENARIOS = {
     ],
   },
 }
-
-/**
- * Get a random scenario from a category.
- */
-export function getRandomScenario(category?: keyof typeof ALL_SCENARIOS): string {
-  const categories = category ? [category] : Object.keys(ALL_SCENARIOS) as (keyof typeof ALL_SCENARIOS)[]
-  const randomCategory = categories[Math.floor(Math.random() * categories.length)]
-  const scenarios = [
-    ...ALL_SCENARIOS[randomCategory].main,
-    ...(ALL_SCENARIOS[randomCategory] as Record<string, string[]>).edgeCases || [],
-  ]
-  return scenarios[Math.floor(Math.random() * scenarios.length)]
-}

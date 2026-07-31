@@ -9,7 +9,7 @@ import { forgetPasskeyWallet } from '../../services/passkeyWallet'
 import { useAnchoredPopoverStyle } from '../ui/useAnchoredPopoverStyle'
 import { truncateAddress } from '../../utils/ens'
 
-export interface AnchorPosition {
+interface AnchorPosition {
   top: number
   left: number
   width: number

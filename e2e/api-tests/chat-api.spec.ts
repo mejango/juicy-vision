@@ -18,7 +18,7 @@ test.describe("Chat API", () => {
   // Test auth token for API calls
   let authToken: string;
 
-  test.beforeAll(async ({ request }) => {
+  test.beforeAll(async () => {
     // Get a test auth token
     // In real tests, this would authenticate properly
     authToken = "test-token-" + Date.now();

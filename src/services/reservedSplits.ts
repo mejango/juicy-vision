@@ -208,7 +208,7 @@ async function clientFor(chainId: number): Promise<PublicClient> {
  * given chain. Splits are stored per (projectId, rulesetId, group); the
  * reserved group is 1n.
  */
-export async function fetchReservedSplits(
+async function fetchReservedSplits(
   projectId: number | string,
   chainId: number,
   rulesetId: number | string | bigint,

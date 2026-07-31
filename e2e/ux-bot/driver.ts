@@ -306,7 +306,7 @@ export class PlaywrightDriver {
       const elements: string[] = []
 
       // Buttons
-      document.querySelectorAll('button').forEach((el, i) => {
+      document.querySelectorAll('button').forEach((el) => {
         if (el.offsetParent !== null) { // Visible
           const text = el.textContent?.trim().slice(0, 50) || ''
           const disabled = el.disabled ? ' (disabled)' : ''

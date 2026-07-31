@@ -1,7 +1,1 @@
 export { default as Button } from './Button'
-export { default as ChainLogo } from './ChainLogo'
-export { default as Input } from './Input'
-export { default as Modal } from './Modal'
-export { useAnchoredPopoverStyle } from './useAnchoredPopoverStyle'
-export { IpfsImage, IpfsMedia } from './IpfsMedia'
-export { inferMediaKind } from '../../utils/ipfsMedia'

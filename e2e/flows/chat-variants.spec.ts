@@ -1,6 +1,6 @@
-import { test, expect, type Page } from '../fixtures/auth'
+import { test, expect } from '../fixtures/auth';
 import { mockAuthEndpoints } from '../fixtures/auth'
-import { mockProjectEndpoints, mockTransactionEndpoints, createMockProject } from '../fixtures/api'
+import { mockTransactionEndpoints } from '../fixtures/api';
 
 /**
  * Chat Interaction Variants
@@ -914,13 +914,11 @@ test.describe('Chat Variants: AI Response Types', () => {
 
   test.describe('Streaming Behavior', () => {
     test('handles slow streaming', async ({ page }) => {
-      let streamIndex = 0
       const chunks = ['Hello', ' there,', ' this', ' is', ' streaming', '.']
 
       await page.route('**/chat/*/ai/invoke', async (route) => {
-        // Simulate slow streaming
-        const body = chunks.map((c, i) =>
-          `data: {"type":"chunk","content":"${c}"}\n\n`
+        const body = chunks.map((chunk) =>
+          `data: {"type":"chunk","content":"${chunk}"}\n\n`
         ).join('') + 'data: {"type":"done"}\n\n'
 
         await route.fulfill({

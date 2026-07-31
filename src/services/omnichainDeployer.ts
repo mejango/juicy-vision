@@ -279,13 +279,13 @@ export interface JB721TierConfig {
   }>
 }
 
-export interface JB721TiersConfig {
+interface JB721TiersConfig {
   tiers: JB721TierConfig[]
   currency: number
   decimals: number
 }
 
-export interface JB721HookFlags {
+interface JB721HookFlags {
   noNewTiersWithReserves: boolean
   noNewTiersWithVotes: boolean
   noNewTiersWithOwnerMinting: boolean
@@ -1303,7 +1303,7 @@ const JB_OMNICHAIN_DEPLOYER_721_ABI = [
  * Mirrors encodeLaunchProjectFor exactly, with the JBOmnichain721Config
  * `deploy721Config` argument inserted after projectUri.
  */
-export function encodeLaunch721ProjectFor(params: {
+function encodeLaunch721ProjectFor(params: {
   chainId: number
   owner: `0x${string}`
   projectUri: string
@@ -1365,7 +1365,7 @@ export function encodeLaunch721ProjectFor(params: {
  * V6: launchProjectFor is payable — `creationFeeWei` must equal
  * JBProjects.creationFee() exactly (fetch via fetchProjectCreationFee).
  */
-export function buildLaunch721ProjectTransaction(params: {
+function buildLaunch721ProjectTransaction(params: {
   chainId: number
   owner: `0x${string}`
   projectUri: string

@@ -41,7 +41,7 @@ import {
 import DialogShell from '../../ui/DialogShell'
 import ChainLogo from '../../ui/ChainLogo'
 
-export interface MoveChainsModalProps {
+interface MoveChainsModalProps {
   isOpen: boolean
   onClose: () => void
   project: Project
@@ -96,7 +96,7 @@ function formatBalance(value: bigint, decimals: number, symbol: string): string 
   return `${amount.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${symbol}`
 }
 
-export function MoveChainsModal({ isOpen, onClose, project, chainIds, chainProjects }: MoveChainsModalProps) {
+function MoveChainsModal({ isOpen, onClose, project, chainIds, chainProjects }: MoveChainsModalProps) {
   const { theme } = useThemeStore()
   const isDark = theme === 'dark'
   const { activeAddress, run } = useGuardedTx()

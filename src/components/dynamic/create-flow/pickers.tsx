@@ -235,7 +235,7 @@ export function PerChainAddrControl(props: {
       update={props.update}
       fieldKey={props.fieldKey}
       kind="addr"
-      renderField={(chainId, value, setValue) => (
+      renderField={(_chainId, value, setValue) => (
         <TextInput value={value} onChange={setValue} placeholder="0x…" mono />
       )}
     />
@@ -259,7 +259,7 @@ export function PerChainNumControl(props: {
       // the website's canonical scheme (ef5fbdf), shared via .jb drafts.
       kind="addr"
       linkLabel={props.linkLabel}
-      renderField={(chainId, value, setValue) => (
+      renderField={(_chainId, value, setValue) => (
         <NumberInput value={value} onChange={setValue} placeholder={props.placeholder || ''} min={0} className="w-28" />
       )}
     />

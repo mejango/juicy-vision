@@ -45,7 +45,7 @@ export interface HoldingsPage<T> {
 }
 
 /** One chain's slice of a token-holding group. */
-export interface TokenHoldingChainRow {
+interface TokenHoldingChainRow {
   chainId: number
   /** The project's id ON THIS CHAIN (sucker peers can have divergent ids). */
   projectId: number

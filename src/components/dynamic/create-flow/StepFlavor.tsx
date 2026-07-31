@@ -252,8 +252,8 @@ function ChainBridgeBlock({ state, update }: StepProps) {
         <InfoNote>
           {"Deploys on a single chain. " +
             (state.projectType === "revnet"
-              ? "You can add more chains later if they exactly match the configuration you deploy with now."
-              : "You can add more chains later.")}
+              ? "The revnet operator can add more chains later if they exactly match the configuration deployed now."
+              : "The project owner can add more chains later.")}
         </InfoNote>
       )}
     </FieldBlock>
@@ -604,6 +604,13 @@ function OwnerSection({ state, update }: StepProps) {
       <InfoNote>
         The address that can make changes around the configured rulesets.
       </InfoNote>
+      <InfoNote>
+        Currently set to{" "}
+        {perChainAddrActive(state, "owner")
+          ? "the per-chain addresses above"
+          : state.details.owner || "no project owner yet"}
+        .
+      </InfoNote>
     </FieldBlock>
   );
 }
@@ -633,6 +640,13 @@ function OperatorSection({ state, update }: StepProps) {
       <PerChainAddrControl state={state} update={update} fieldKey="op" />
       <InfoNote>
         The address that operates the few controls available in revnets.
+      </InfoNote>
+      <InfoNote>
+        Currently set to{" "}
+        {perChainAddrActive(state, "op")
+          ? "the per-chain addresses above"
+          : state.revOperator || "no revnet operator yet"}
+        .
       </InfoNote>
     </FieldBlock>
   );

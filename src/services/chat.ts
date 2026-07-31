@@ -69,16 +69,6 @@ export async function createChat(params: CreateChatParams): Promise<Chat> {
   })
 }
 
-export async function updateChat(
-  chatId: string,
-  updates: Partial<Pick<Chat, 'name' | 'description' | 'isPublic'>>
-): Promise<Chat> {
-  return apiRequest<Chat>(`/chat/${chatId}`, {
-    method: 'PATCH',
-    body: JSON.stringify(updates),
-  })
-}
-
 export async function deleteChat(chatId: string): Promise<void> {
   await apiRequest<void>(`/chat/${chatId}`, {
     method: 'DELETE',
@@ -650,13 +640,6 @@ export function disconnectFromChat(): void {
 
 export function onWsMessage(handler: WsMessageHandler): () => void {
   return wsManager.addHandler(handler)
-}
-
-export function sendTypingIndicator(_chatId: string, isTyping: boolean): void {
-  wsManager.send({
-    type: 'typing',
-    data: { isTyping },
-  })
 }
 
 export function sendComponentInteraction(data: ComponentInteractionData): void {

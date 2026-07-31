@@ -83,5 +83,3 @@ export function RemoteCursors({ cursors }: RemoteCursorsProps) {
     </>
   )
 }
-
-export default RemoteCursors

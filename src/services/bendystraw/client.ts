@@ -442,7 +442,7 @@ function getPublicClient(chainId: number) {
  * IMPORTANT: Uses retry logic with fallback RPCs since receipt fetching can time out,
  * especially on Sepolia where public RPCs are often slow/unreliable.
  */
-export async function getProjectIdFromReceipt(
+async function getProjectIdFromReceipt(
   chainId: number,
   txHash: `0x${string}`
 ): Promise<number | null> {
@@ -830,23 +830,7 @@ interface BaseActivityEvent {
   }
 }
 
-// Discriminated union event types
-export type ActivityEventType =
-  | 'pay'
-  | 'projectCreate'
-  | 'cashOut'
-  | 'addToBalance'
-  | 'mintTokens'
-  | 'burn'
-  | 'deployErc20'
-  | 'sendPayouts'
-  | 'sendReservedTokens'
-  | 'useAllowance'
-  | 'mintNft'
-  | 'protocol'
-  | 'unknown'
-
-export interface PayActivityEvent extends BaseActivityEvent {
+interface PayActivityEvent extends BaseActivityEvent {
   type: 'pay'
   amount: string
   amountUsd?: string
@@ -854,27 +838,27 @@ export interface PayActivityEvent extends BaseActivityEvent {
   txHash: string
 }
 
-export interface ProjectCreateActivityEvent extends BaseActivityEvent {
+interface ProjectCreateActivityEvent extends BaseActivityEvent {
   type: 'projectCreate'
   from: string
   txHash: string
 }
 
-export interface CashOutActivityEvent extends BaseActivityEvent {
+interface CashOutActivityEvent extends BaseActivityEvent {
   type: 'cashOut'
   reclaimAmount: string
   from: string
   txHash: string
 }
 
-export interface AddToBalanceActivityEvent extends BaseActivityEvent {
+interface AddToBalanceActivityEvent extends BaseActivityEvent {
   type: 'addToBalance'
   amount: string
   from: string
   txHash: string
 }
 
-export interface MintTokensActivityEvent extends BaseActivityEvent {
+interface MintTokensActivityEvent extends BaseActivityEvent {
   type: 'mintTokens'
   tokenCount: string
   beneficiary: string
@@ -882,47 +866,47 @@ export interface MintTokensActivityEvent extends BaseActivityEvent {
   txHash: string
 }
 
-export interface BurnActivityEvent extends BaseActivityEvent {
+interface BurnActivityEvent extends BaseActivityEvent {
   type: 'burn'
   amount: string
   from: string
   txHash: string
 }
 
-export interface DeployErc20ActivityEvent extends BaseActivityEvent {
+interface DeployErc20ActivityEvent extends BaseActivityEvent {
   type: 'deployErc20'
   symbol: string
   from: string
   txHash: string
 }
 
-export interface SendPayoutsActivityEvent extends BaseActivityEvent {
+interface SendPayoutsActivityEvent extends BaseActivityEvent {
   type: 'sendPayouts'
   amount: string
   from: string
   txHash: string
 }
 
-export interface SendReservedTokensActivityEvent extends BaseActivityEvent {
+interface SendReservedTokensActivityEvent extends BaseActivityEvent {
   type: 'sendReservedTokens'
   from: string
   txHash: string
 }
 
-export interface UseAllowanceActivityEvent extends BaseActivityEvent {
+interface UseAllowanceActivityEvent extends BaseActivityEvent {
   type: 'useAllowance'
   amount: string
   from: string
   txHash: string
 }
 
-export interface MintNftActivityEvent extends BaseActivityEvent {
+interface MintNftActivityEvent extends BaseActivityEvent {
   type: 'mintNft'
   from: string
   txHash: string
 }
 
-export interface ProtocolActivityEvent extends BaseActivityEvent {
+interface ProtocolActivityEvent extends BaseActivityEvent {
   type: 'protocol'
   action: string
   amount?: string
@@ -930,7 +914,7 @@ export interface ProtocolActivityEvent extends BaseActivityEvent {
   txHash: string
 }
 
-export interface UnknownActivityEvent extends BaseActivityEvent {
+interface UnknownActivityEvent extends BaseActivityEvent {
   type: 'unknown'
   from?: string
   txHash?: string
@@ -1305,7 +1289,7 @@ export async function fetchUserTokenBalance(
   return { balance: balance.toString() }
 }
 
-export interface QueuedRuleset {
+interface QueuedRuleset {
   id: string
   cycleNumber: number
   start: number
@@ -2715,7 +2699,7 @@ export async function fetchPendingReservedTokens(
 
 // A live existing project is a Revnet only while its JBProjects NFT is owned by
 // the recognized REVOwner singleton.
-export function isRevnet(owner: string): boolean {
+function isRevnet(owner: string): boolean {
   if (!owner) return false
   return owner.toLowerCase() === REV_OWNER.toLowerCase()
 }
@@ -2947,17 +2931,6 @@ export interface RulesetHistoryEntry {
   useDataHookForCashOut?: boolean
   dataHook?: string
   status: 'past' | 'current' | 'queued' | 'upcoming'
-}
-
-// Complete ruleset data including history and Revnet stages
-export interface AllRulesetsData {
-  owner: string
-  isRevnet: boolean
-  currentStage?: number
-  stages?: RevnetStage[]
-  rulesets: RulesetHistoryEntry[]
-  queuedRuleset?: RulesetHistoryEntry
-  upcomingRuleset?: RulesetHistoryEntry
 }
 
 // Fetch Revnet stages configuration
@@ -3283,59 +3256,6 @@ export async function fetchQueuedRulesets(
     }
   } catch (err) {
     console.error('Failed to fetch queued rulesets:', err)
-    throw new Error(`Upcoming ruleset unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
-  }
-}
-
-// Queued ruleset info with decoded metadata
-export interface QueuedRulesetInfo {
-  cycleNumber: number
-  id: string
-  start: number
-  duration: number
-  weight: string
-  weightCutPercent: number
-  cashOutTaxRate: number // 0-10000 basis points
-  reservedPercent: number
-  baseCurrency: number
-  pausePay: boolean
-}
-
-// Fetch the latest QUEUED ruleset with its fully decoded metadata
-// This only returns a ruleset if one has been explicitly queued (different from current)
-// Use this for showing warnings about upcoming parameter changes
-export async function fetchUpcomingRulesetWithMetadata(
-  projectId: string,
-  chainId: number
-): Promise<QueuedRulesetInfo | null> {
-  try {
-    const { upcoming } = await fetchQueuedRulesets(projectId, chainId)
-
-    // If no queued ruleset, return null
-    if (!upcoming) return null
-
-    // Validate cash out tax rate is within bounds (0-10000)
-    const cashOutTaxRate = upcoming.cashOutTaxRate ?? Number.NaN
-    if (!(cashOutTaxRate >= 0 && cashOutTaxRate <= 10000)) {
-      throw new Error(`Upcoming cash-out tax rate is invalid: ${cashOutTaxRate}`)
-    }
-
-    return {
-      cycleNumber: upcoming.cycleNumber,
-      id: upcoming.id,
-      start: upcoming.start,
-      duration: upcoming.duration,
-      weight: upcoming.weight,
-      weightCutPercent: upcoming.weightCutPercent,
-      cashOutTaxRate,
-      reservedPercent: upcoming.reservedPercent ?? 0,
-      baseCurrency: upcoming.baseCurrency ?? 0,
-      pausePay: upcoming.pausePay ?? false,
-    }
-  } catch (err) {
-    // fetchQueuedRulesets already wraps its failures with this label.
-    if (err instanceof Error && err.message.startsWith('Upcoming ruleset unavailable')) throw err
-    console.error('Failed to fetch queued ruleset with metadata:', err)
     throw new Error(`Upcoming ruleset unavailable: ${err instanceof Error ? err.message : 'Unknown read failure'}`)
   }
 }

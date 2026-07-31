@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '../fixtures/auth'
+import { test, expect } from '../fixtures/auth';
 import { mockAuthEndpoints } from '../fixtures/auth'
 import { mockProjectEndpoints, mockTransactionEndpoints, createMockProject } from '../fixtures/api'
 
@@ -71,9 +71,6 @@ test.describe('Owner: Ruleset Management', () => {
         await rulesTab.click()
         await page.waitForTimeout(300)
       }
-
-      // Look for reserved rate display
-      const reservedRate = page.locator('text=/reserved|reserve/i')
       // Rate info may be visible
     })
 
@@ -86,8 +83,6 @@ test.describe('Owner: Ruleset Management', () => {
         await rulesTab.click()
         await page.waitForTimeout(300)
       }
-
-      const redemptionRate = page.locator('text=/redemption|cash out rate/i')
       // Rate info may be visible
     })
 
@@ -100,8 +95,6 @@ test.describe('Owner: Ruleset Management', () => {
         await rulesTab.click()
         await page.waitForTimeout(300)
       }
-
-      const duration = page.locator('text=/duration|days|until/i')
       // Duration info may be visible
     })
   })
@@ -110,11 +103,6 @@ test.describe('Owner: Ruleset Management', () => {
     test('queue ruleset button available for owner', async ({ page }) => {
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
-
-      // Look for queue ruleset via chat or button
-      const queueBtn = page.locator('button').filter({
-        hasText: /queue|edit|change.*rule/i
-      }).first()
 
       // Queue option should be available to owner
     })
@@ -138,9 +126,6 @@ test.describe('Owner: Ruleset Management', () => {
     test('shows pending ruleset after queuing', async ({ page }) => {
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
-
-      // After queuing, pending ruleset should be visible
-      const pendingIndicator = page.locator('text=/pending|queued|upcoming/i')
       // Pending state may be shown
     })
 
@@ -149,26 +134,7 @@ test.describe('Owner: Ruleset Management', () => {
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
 
-      const cancelBtn = page.locator('button').filter({
-        hasText: /cancel.*ruleset|remove.*queued/i
-      }).first()
-
       // Cancel option may be available
-    })
-  })
-
-  test.describe('Ruleset Restrictions', () => {
-    test('cannot increase reserved rate if locked', async ({ page }) => {
-      // Some projects lock reserved rate
-      // UI should prevent or warn about changes
-    })
-
-    test('cannot decrease redemption rate below minimum', async ({ page }) => {
-      // Redemption rate may have minimum
-    })
-
-    test('shows warning for significant changes', async ({ page }) => {
-      // Major changes should warn user
     })
   })
 })
@@ -206,9 +172,6 @@ test.describe('Owner: Payout Distribution', () => {
         await fundsTab.click()
         await page.waitForTimeout(300)
       }
-
-      // Should show available for payout
-      const availableAmount = page.locator('text=/available|distributable|payout/i')
       // Amount info may be visible
     })
 
@@ -221,8 +184,6 @@ test.describe('Owner: Payout Distribution', () => {
         await fundsTab.click()
         await page.waitForTimeout(300)
       }
-
-      const limit = page.locator('text=/limit|maximum|cap/i')
       // Limit info may be visible
     })
 
@@ -235,9 +196,6 @@ test.describe('Owner: Payout Distribution', () => {
         await fundsTab.click()
         await page.waitForTimeout(300)
       }
-
-      // Should show how payout will be split
-      const splitInfo = page.locator('text=/split|recipient|share/i')
       // Split breakdown may be visible
     })
   })
@@ -246,10 +204,6 @@ test.describe('Owner: Payout Distribution', () => {
     test('send payouts button visible when funds available', async ({ page }) => {
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
-
-      const sendPayoutsBtn = page.locator('button').filter({
-        hasText: /send payouts|distribute/i
-      }).first()
 
       // Button may be in owner menu or funds tab
     })
@@ -265,9 +219,6 @@ test.describe('Owner: Payout Distribution', () => {
       if (await sendPayoutsBtn.isVisible()) {
         await sendPayoutsBtn.click()
         await page.waitForTimeout(300)
-
-        // Confirmation dialog should appear
-        const confirmation = page.locator('dialog, [role="dialog"]')
         // Confirmation may be visible
       }
     })
@@ -306,14 +257,6 @@ test.describe('Owner: Payout Distribution', () => {
 
       // Should show empty/no funds state
     })
-
-    test('respects payout limit', async ({ page }) => {
-      // Cannot distribute more than limit
-    })
-
-    test('handles multi-chain payout limits', async ({ page }) => {
-      // Each chain has independent limit
-    })
   })
 })
 
@@ -343,18 +286,12 @@ test.describe('Owner: Splits Configuration', () => {
     test('shows current split recipients', async ({ page }) => {
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
-
-      // Splits may be visible in funds or dedicated section
-      const splitsSection = page.locator('text=/splits|recipients|payees/i')
       // Splits info may be visible
     })
 
     test('shows percentage allocation', async ({ page }) => {
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
-
-      // Each recipient should show their %
-      const percentage = page.locator('text=/%|percent/i')
       // Percentage info may be visible
     })
   })
@@ -364,10 +301,6 @@ test.describe('Owner: Splits Configuration', () => {
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
 
-      const editSplitsBtn = page.locator('button').filter({
-        hasText: /edit splits|configure splits|set splits/i
-      }).first()
-
       // Edit option may be available to owner
     })
 
@@ -376,18 +309,6 @@ test.describe('Owner: Splits Configuration', () => {
       await page.waitForLoadState('networkidle')
 
       // Would open splits editor and add recipient
-    })
-
-    test('can remove split recipient', async ({ page }) => {
-      // Remove existing recipient
-    })
-
-    test('can modify split percentages', async ({ page }) => {
-      // Change allocation amounts
-    })
-
-    test('validates split percentages sum to 100%', async ({ page }) => {
-      // Splits must total 100%
     })
   })
 })
@@ -442,10 +363,6 @@ test.describe('Owner: NFT Tier Management', () => {
         await page.waitForTimeout(300)
       }
 
-      const sellBtn = page.locator('button').filter({
-        hasText: /sell something|add tier/i
-      }).first()
-
       // Should be visible for owner
     })
 
@@ -475,8 +392,6 @@ test.describe('Owner: NFT Tier Management', () => {
         await shopTab.click()
         await page.waitForTimeout(300)
       }
-
-      const editBtn = page.locator('button:has-text("Edit")').first()
       // Edit button should be visible for owner
     })
 
@@ -545,9 +460,6 @@ test.describe('Owner: NFT Tier Management', () => {
         if (await discountInput.isVisible()) {
           await discountInput.fill('150') // Invalid
           await page.waitForTimeout(300)
-
-          // Should show validation error
-          const error = page.locator('text=/exceed|invalid|100/i')
           // Error may be shown
         }
       }
@@ -564,17 +476,7 @@ test.describe('Owner: NFT Tier Management', () => {
         await shopTab.click()
         await page.waitForTimeout(300)
       }
-
-      const deleteBtn = page.locator('button:has-text("Delete")').first()
       // Delete button may be visible
-    })
-
-    test('shows confirmation before delete', async ({ page }) => {
-      // Should confirm before removing tier
-    })
-
-    test('cannot remove tier with cannotBeRemoved flag', async ({ page }) => {
-      // Some tiers are locked
     })
   })
 })
@@ -606,10 +508,6 @@ test.describe('Owner: ERC20 Token Deployment', () => {
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
 
-      const deployBtn = page.locator('button').filter({
-        hasText: /deploy.*token|deploy.*erc20|create.*token/i
-      }).first()
-
       // Should be visible if project has no token yet
     })
 
@@ -619,14 +517,6 @@ test.describe('Owner: ERC20 Token Deployment', () => {
 
       // Would open token deployment form
       // Fill name and symbol
-    })
-
-    test('validates token symbol format', async ({ page }) => {
-      // Symbol should be uppercase, limited length
-    })
-
-    test('deploy option hidden after token exists', async ({ page }) => {
-      // Once deployed, shouldn't show deploy again
     })
   })
 })
@@ -663,8 +553,6 @@ test.describe('Owner: Surplus Allowance', () => {
         await fundsTab.click()
         await page.waitForTimeout(300)
       }
-
-      const surplus = page.locator('text=/surplus|overflow|available/i')
       // Surplus info may be visible
     })
 
@@ -672,15 +560,7 @@ test.describe('Owner: Surplus Allowance', () => {
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
 
-      const useSurplusBtn = page.locator('button').filter({
-        hasText: /use surplus|withdraw surplus/i
-      }).first()
-
       // Option may be available to owner
-    })
-
-    test('respects surplus allowance limit', async ({ page }) => {
-      // Cannot exceed configured limit
     })
   })
 })
@@ -712,20 +592,7 @@ test.describe('Owner: Metadata Update', () => {
       await page.goto(projectUrl)
       await page.waitForLoadState('networkidle')
 
-      // Look for edit metadata option
-      const editBtn = page.locator('button').filter({
-        hasText: /edit.*info|update.*metadata|edit.*project/i
-      }).first()
-
       // May be in owner menu
-    })
-
-    test('can update project logo', async ({ page }) => {
-      // Logo/image update
-    })
-
-    test('metadata changes require transaction', async ({ page }) => {
-      // On-chain metadata update
     })
   })
 })

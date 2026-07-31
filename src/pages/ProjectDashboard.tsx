@@ -897,7 +897,7 @@ export default function ProjectDashboard({
                 {displayAddress && (
                   <>
                     <span>
-                      {projectIsRevnet ? "Revnet operator" : "Project owner"}:
+                      {projectIsRevnet ? "Operator" : "Owner"}:
                     </span>
                     <a
                       href={

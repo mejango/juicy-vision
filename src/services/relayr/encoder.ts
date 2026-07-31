@@ -3,7 +3,13 @@
  * Replaces non-existent /v1/juicebox/* API endpoints
  */
 
-import { encodeFunctionData, pad, type Address, type Hex } from 'viem'
+import {
+  encodeFunctionData,
+  pad,
+  type Address,
+  type ContractFunctionArgs,
+  type Hex,
+} from 'viem'
 import {
   JB_CONTROLLER_ABI,
   JB_OMNICHAIN_DEPLOYER_ADDRESS,
@@ -110,6 +116,12 @@ export interface JBTransactionResponse {
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as Address
 const ZERO_BYTES32 = '0x0000000000000000000000000000000000000000000000000000000000000000' as Hex
+type QueueRulesetsArgs = ContractFunctionArgs<
+  typeof JB_CONTROLLER_ABI,
+  'nonpayable',
+  'queueRulesetsOf'
+>
+type RulesetConfigTuple = QueueRulesetsArgs[1][number]
 
 /**
  * Convert a token address to the bytes32 form V6 sucker mappings expect.
@@ -120,8 +132,7 @@ function toRemoteTokenBytes32(value: string): Hex {
   return pad(value as Address, { size: 32 })
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function toRulesetConfigTuple(config: JBRulesetConfig): any {
+function toRulesetConfigTuple(config: JBRulesetConfig): RulesetConfigTuple {
   return {
     mustStartAtOrAfter: config.mustStartAtOrAfter,
     duration: config.duration,
@@ -289,13 +300,13 @@ export interface JBTerminalConfig {
 
 // V6 JBTokenMapping: remoteToken is bytes32 on-chain (a left-padded address);
 // callers may pass a plain address and it will be padded at encode time.
-export interface JBSuckerTokenMapping {
+interface JBSuckerTokenMapping {
   localToken: string
   minGas: number
   remoteToken: string
 }
 
-export interface JBSuckerDeployerConfig {
+interface JBSuckerDeployerConfig {
   deployer: string
   /** V6: explicit peer sucker (bytes32). Omit/zero for the default same-address peer. */
   peer?: string
@@ -528,26 +539,26 @@ export function encodeDeployRevnetTransaction(
 
   const suckerConfig = toSuckerConfigTuple(request.suckerDeploymentConfiguration)
 
-  // Base overload args (revnetId, configuration, accountingContexts, suckerConfig).
-  // When the shop has tiers, append the 721 hook config + empty Croptop posts to
-  // hit the 6-arg deployFor overload — viem selects the overload by arity.
-  const args = request.deployTiersHookConfig
-    ? [
-        BigInt(revnetId),
-        configuration,
-        contexts,
-        suckerConfig,
-        toRevTiered721Config(request.deployTiersHookConfig, request.description.salt as Hex),
-        [], // allowedPosts (Croptop) — none from the wizard
-      ]
-    : [BigInt(revnetId), configuration, contexts, suckerConfig]
-
-  const data = encodeFunctionData({
-    abi: REV_DEPLOYER_ABI,
-    functionName: 'deployFor',
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    args: args as any, // Complex struct + overload arity - viem handles conversion
-  })
+  // Keep each overload explicit so ABI drift is caught by TypeScript. The
+  // six-argument form atomically deploys the optional shop tiers hook.
+  const data = request.deployTiersHookConfig
+    ? encodeFunctionData({
+        abi: REV_DEPLOYER_ABI,
+        functionName: 'deployFor',
+        args: [
+          BigInt(revnetId),
+          configuration,
+          contexts,
+          suckerConfig,
+          toRevTiered721Config(request.deployTiersHookConfig, descriptionSalt),
+          [], // allowedPosts (Croptop) — none from the wizard
+        ],
+      })
+    : encodeFunctionData({
+        abi: REV_DEPLOYER_ABI,
+        functionName: 'deployFor',
+        args: [BigInt(revnetId), configuration, contexts, suckerConfig],
+      })
 
   return {
     txData: {

@@ -76,7 +76,7 @@ export interface TransactionBundle {
 let idCounter = 0
 const generateId = () => `test-${++idCounter}-${Date.now()}`
 
-export function createMockChat(overrides: Partial<Chat> = {}): Chat {
+function createMockChat(overrides: Partial<Chat> = {}): Chat {
   const id = generateId()
   return {
     id,
@@ -103,7 +103,7 @@ export function createMockChat(overrides: Partial<Chat> = {}): Chat {
   }
 }
 
-export function createMockMessage(chatId: string, overrides: Partial<ChatMessage> = {}): ChatMessage {
+function createMockMessage(chatId: string, overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {
     id: generateId(),
     chatId,
@@ -127,7 +127,7 @@ export function createMockProject(overrides: Partial<Project> = {}): Project {
   }
 }
 
-export function createMockTransactionBundle(overrides: Partial<TransactionBundle> = {}): TransactionBundle {
+function createMockTransactionBundle(overrides: Partial<TransactionBundle> = {}): TransactionBundle {
   return {
     bundleId: generateId(),
     status: 'pending',
@@ -215,9 +215,8 @@ Review and confirm to add this tier.`,
 export async function mockChatEndpoints(page: Page, options: {
   chats?: Chat[]
   aiResponse?: { content: string }
-  streamingDelay?: number
 } = {}) {
-  const { chats = [], aiResponse = AI_RESPONSES.greeting, streamingDelay = 50 } = options
+  const { chats = [], aiResponse = AI_RESPONSES.greeting } = options
 
   // Mock chat list
   await page.route('**/chat', async (route) => {
@@ -241,16 +240,14 @@ export async function mockChatEndpoints(page: Page, options: {
 
   // Mock AI invocation with streaming simulation
   await page.route('**/chat/*/ai/invoke', async (route) => {
-    // Simulate streaming response
     const content = aiResponse.content
     const chunks = content.match(/.{1,50}/g) || [content]
 
-    // Return streaming response
     await route.fulfill({
       status: 200,
       contentType: 'text/event-stream',
-      body: chunks.map((chunk, i) =>
-        `data: ${JSON.stringify({ type: 'chunk', content: chunk, done: i === chunks.length - 1 })}\n\n`
+      body: chunks.map((chunk, index) =>
+        `data: ${JSON.stringify({ type: 'chunk', content: chunk, done: index === chunks.length - 1 })}\n\n`
       ).join(''),
     })
   })
@@ -367,28 +364,4 @@ export async function mockTransactionEndpoints(page: Page, options: {
       }),
     })
   })
-}
-
-/**
- * Mock all API endpoints for a complete E2E test scenario.
- */
-export async function mockAllEndpoints(page: Page, options: {
-  user?: { id: string; email: string; smartAccountAddress: string }
-  chats?: Chat[]
-  projects?: Project[]
-  aiResponse?: typeof AI_RESPONSES[keyof typeof AI_RESPONSES]
-} = {}) {
-  const {
-    user = { id: 'test-user', email: 'test@example.com', smartAccountAddress: '0x1234567890123456789012345678901234567890' },
-    chats = [],
-    projects = [],
-    aiResponse = AI_RESPONSES.greeting,
-  } = options
-
-  // Import auth mocking
-  const { mockAuthEndpoints } = await import('./auth')
-  await mockAuthEndpoints(page, { user: { ...user, token: 'test-token', mode: 'managed' } })
-  await mockChatEndpoints(page, { chats, aiResponse })
-  await mockProjectEndpoints(page, { projects })
-  await mockTransactionEndpoints(page)
 }
