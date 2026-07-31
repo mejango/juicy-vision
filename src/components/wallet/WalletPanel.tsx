@@ -429,12 +429,60 @@ function MobileWalletHandoff() {
   const isDark = theme === 'dark'
   const { isConnected } = useAccount()
   const { isManagedMode } = useAuthStore()
+  const [providerState, setProviderState] = useState<'checking' | 'injected' | 'handoff'>('checking')
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof navigator === 'undefined') return
+    if (!isMobileDevice(navigator)) return
+    const browserWindow = window as typeof window & { ethereum?: unknown }
+    if (browserWindow.ethereum) {
+      setProviderState('injected')
+      return
+    }
+
+    let settled = false
+    let timer: number | undefined
+    const stopListening = () => {
+      if (timer !== undefined) {
+        window.clearTimeout(timer)
+        timer = undefined
+      }
+      window.removeEventListener('ethereum#initialized', providerReady)
+      window.removeEventListener('eip6963:announceProvider', providerReady)
+    }
+    const providerReady = () => {
+      if (settled) return
+      settled = true
+      stopListening()
+      setProviderState('injected')
+    }
+    window.addEventListener('ethereum#initialized', providerReady)
+    window.addEventListener('eip6963:announceProvider', providerReady)
+    timer = window.setTimeout(() => {
+      settled = true
+      stopListening()
+      setProviderState(browserWindow.ethereum ? 'injected' : 'handoff')
+    }, 3000)
+
+    return () => {
+      settled = true
+      stopListening()
+    }
+  }, [])
 
   if (typeof window === 'undefined' || typeof navigator === 'undefined') return null
   if (!isMobileDevice(navigator)) return null
   if (isManagedMode()) return null
-  if ((window as { ethereum?: unknown }).ethereum) return null
+  if (providerState === 'injected') return null
   if (isConnected) return null
+
+  if (providerState === 'checking') {
+    return (
+      <p className={`mt-3 border-t pt-3 text-xs ${isDark ? 'border-white/10 text-gray-400' : 'border-gray-100 text-gray-500'}`}>
+        Checking this browser for MetaMask…
+      </p>
+    )
+  }
 
   const links = mobileWalletLinks(window.location.href)
   const canShare = typeof navigator.share === 'function'

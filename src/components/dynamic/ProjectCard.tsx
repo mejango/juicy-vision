@@ -3570,7 +3570,9 @@ export default function ProjectCard({
                 </span>
                 <span className={isDark ? "text-gray-400" : "text-gray-500"}>
                   {" "}
-                  owner{ownersCount !== 1 ? "s" : ""}
+                  {projectIsRevnet
+                    ? `owner${ownersCount !== 1 ? "s" : ""}`
+                    : `token holder${ownersCount !== 1 ? "s" : ""}`}
                 </span>
               </div>
               <div

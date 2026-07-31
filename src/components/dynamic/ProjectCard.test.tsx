@@ -196,6 +196,15 @@ describe('ProjectCard', () => {
       })
     })
 
+    it('calls revnet participants owners and custom-project participants token holders', async () => {
+      const { unmount } = render(<ProjectCard projectId="1" isRevnet />)
+      expect(await screen.findByText('owners')).toBeInTheDocument()
+      unmount()
+
+      render(<ProjectCard projectId="1" isRevnet={false} />)
+      expect(await screen.findByText('token holders')).toBeInTheDocument()
+    })
+
     it('calls fetchProject with correct project ID', async () => {
       render(<ProjectCard projectId="123" />)
 
