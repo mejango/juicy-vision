@@ -167,7 +167,9 @@ describe('website-compatible terminal preview outcomes', () => {
     })
     expect(outcome.route).toBe('amm')
     expect(outcome.expectedReturn).toBe(1_200n)
-    expect(outcome.minimumReturn).toBe(1_188n)
+    // Slippage applies to the hook's executable 1,100-token pool quote, not
+    // the optimistic 1,200-token display quote.
+    expect(outcome.minimumReturn).toBe(1_089n)
     expect(outcome.terminalMinimum).toBe(0n)
     expect(outcome.metadata).not.toBe('0x')
     expect(outcome.metadata.slice(66, 74)).toBe('f10fae59')
