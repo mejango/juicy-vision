@@ -14,7 +14,7 @@ import {
 } from '../../services/bendystraw'
 import { formatBalanceNative } from '../../utils/currency'
 import { getEventInfo } from '../../utils/activityEvents'
-import { MAINNET_CHAINS } from '../../constants'
+import { ACTIVITY_POLL_INTERVAL, MAINNET_CHAINS } from '../../constants'
 
 interface ActivityFeedProps {
   projectId: string
@@ -93,6 +93,7 @@ export default function ActivityFeed({
   const [payEvents, setPayEvents] = useState<PayEventHistoryItem[]>([])
   const [cashOutEvents, setCashOutEvents] = useState<CashOutEventHistoryItem[]>([])
   const [protocolEvents, setProtocolEvents] = useState<ProtocolActivityEvent[]>([])
+  const protocolEventsRef = useRef<ProtocolActivityEvent[]>([])
   const [protocolOffset, setProtocolOffset] = useState(0)
   const [protocolTotal, setProtocolTotal] = useState(0)
   const [projectName, setProjectName] = useState<string>('')
@@ -117,6 +118,11 @@ export default function ActivityFeed({
 
   const chainIdNum = parseInt(chainId)
   useEffect(() => {
+    protocolEventsRef.current = protocolEvents
+  }, [protocolEvents])
+
+  useEffect(() => {
+    let cancelled = false
     async function loadActivity() {
       setLoading(true)
       setDisplayCount(PAGE_SIZE)
@@ -192,6 +198,50 @@ export default function ActivityFeed({
     }
 
     loadActivity()
+
+    let polling = false
+    async function refreshActivity() {
+      if (polling || document.visibilityState === 'hidden') return
+      polling = true
+      try {
+        const project = await fetchProject(projectId, chainIdNum)
+        if (!project) return
+        const page = await fetchProjectActivityEvents(project, {
+          limit: PAGE_SIZE * 2,
+          offset: 0,
+        })
+        if (cancelled) return
+        const current = protocolEventsRef.current
+        const known = new Set(current.map(event => event.id))
+        const fresh = page.events.filter(event => !known.has(event.id))
+        if (fresh.length) {
+          const next = [...fresh, ...current]
+          protocolEventsRef.current = next
+          setProtocolEvents(next)
+          setProtocolOffset(offset => offset + fresh.length)
+        }
+        setProtocolTotal(page.totalCount)
+        setActivityError(false)
+      } catch {
+        // Keep the last known-good feed; the next poll retries.
+      } finally {
+        polling = false
+      }
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refreshActivity()
+    }
+    const timer = window.setInterval(
+      () => void refreshActivity(),
+      ACTIVITY_POLL_INTERVAL,
+    )
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [projectId, chainId, chainIdNum])
 
   // Combine and sort events

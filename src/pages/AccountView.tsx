@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore } from '../stores'
@@ -43,7 +43,7 @@ import {
   type OperatedProject,
 } from '../services/permissionsAdmin'
 import { truncateAddress } from '../utils/ens'
-import { CHAINS, MAINNET_CHAINS } from '../constants'
+import { ACTIVITY_POLL_INTERVAL, CHAINS, MAINNET_CHAINS } from '../constants'
 import { projectPathFor } from '../utils/projectLink'
 import type { Address } from 'viem'
 
@@ -286,6 +286,7 @@ export default function AccountView({ address }: AccountViewProps) {
   const isViewingAsThis = !!viewAs && viewAs.toLowerCase() === address.toLowerCase()
 
   const [events, setEvents] = useState<ActivityEvent[]>([])
+  const eventsRef = useRef<ActivityEvent[]>([])
   const [activityLoading, setActivityLoading] = useState(true)
   const [activityError, setActivityError] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(false)
@@ -341,6 +342,7 @@ export default function AccountView({ address }: AccountViewProps) {
   // Load first page of activity on address change
   useEffect(() => {
     let cancelled = false
+    eventsRef.current = []
     setEvents([])
     setActivityLoading(true)
     setActivityError(null)
@@ -348,6 +350,7 @@ export default function AccountView({ address }: AccountViewProps) {
     fetchAccountActivityEvents(address, { limit: ACTIVITY_PAGE_SIZE, offset: 0 })
       .then(page => {
         if (cancelled) return
+        eventsRef.current = page.events
         setEvents(page.events)
         setHasMore(page.events.length < page.totalCount)
       })
@@ -357,8 +360,44 @@ export default function AccountView({ address }: AccountViewProps) {
       .finally(() => {
         if (!cancelled) setActivityLoading(false)
       })
+    let polling = false
+    const refreshActivity = async () => {
+      if (polling || document.visibilityState === 'hidden') return
+      polling = true
+      try {
+        const page = await fetchAccountActivityEvents(address, {
+          limit: ACTIVITY_PAGE_SIZE,
+          offset: 0,
+        })
+        if (cancelled) return
+        const current = eventsRef.current
+        const known = new Set(current.map(event => event.id))
+        const fresh = page.events.filter(event => !known.has(event.id))
+        if (fresh.length) {
+          const next = [...fresh, ...current]
+          eventsRef.current = next
+          setEvents(next)
+          setHasMore(next.length < page.totalCount)
+        }
+        setActivityError(null)
+      } catch {
+        // Keep the last known-good feed; the next poll retries.
+      } finally {
+        polling = false
+      }
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refreshActivity()
+    }
+    const timer = window.setInterval(
+      () => void refreshActivity(),
+      ACTIVITY_POLL_INTERVAL,
+    )
+    document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
       cancelled = true
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [address])
 
@@ -372,7 +411,9 @@ export default function AccountView({ address }: AccountViewProps) {
       })
       setEvents(prev => {
         const known = new Set(prev.map(e => e.id))
-        return [...prev, ...page.events.filter(e => !known.has(e.id))]
+        const next = [...prev, ...page.events.filter(e => !known.has(e.id))]
+        eventsRef.current = next
+        return next
       })
       setHasMore(events.length + page.events.length < page.totalCount)
     } catch {

@@ -56,7 +56,7 @@ export const IPFS_GATEWAY = 'https://gateway.pinata.cloud/ipfs/'
 
 // Activity feed pagination
 export const ACTIVITY_PAGE_SIZE = 15
-export const ACTIVITY_POLL_INTERVAL = 30000 // 30 seconds
+export const ACTIVITY_POLL_INTERVAL = 15000 // 15 seconds
 
 // Chain config type
 export type ChainConfig = {
