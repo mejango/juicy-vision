@@ -576,6 +576,7 @@ export default function ProjectCard({
   const [memo, setMemo] = useState("");
   const [contributionOnly, setContributionOnly] = useState(false);
   const [paying, setPaying] = useState(false);
+  const [showRouteComparison, setShowRouteComparison] = useState(false);
   const [selectedChainId, setSelectedChainId] = useState(initialChainId);
   const [selectedToken, setSelectedToken] = useState<PaymentToken>("ETH");
   const [actionDropdownOpen, setActionDropdownOpen] = useState(false);
@@ -2147,26 +2148,39 @@ export default function ProjectCard({
             >
               {formatExactTokenEstimate(directSwapOffer.minOut)} {tokenSymbol}
             </span>
-            <span
-              className={`shrink-0 border px-2 py-0.5 text-[10px] font-semibold uppercase ${
+            <button
+              type="button"
+              onClick={() => setShowRouteComparison((current) => !current)}
+              aria-expanded={showRouteComparison}
+              className={`shrink-0 border px-2 py-0.5 text-[10px] font-semibold ${
                 isDark
                   ? "border-juice-cyan/50 text-juice-cyan"
                   : "border-cyan-400 text-cyan-700"
               }`}
-              title="Bought straight from the Uniswap pool, bypassing pay — so the reserved % / splits take nothing"
+              title="Compare the selected swap with project issuance"
             >
-              swap
-            </span>
+              Swap
+            </button>
           </div>
-          <div className={`mt-1 break-all text-xs font-medium ${muted}`}>
-            Swapping the pool directly beats paying by{" "}
-            {formatExactTokenEstimate(directSwapOffer.advantage)} {tokenSymbol}{" "}
-            — splits take 0 {tokenSymbol}.
-          </div>
-          <div className={`mt-1 text-[10px] ${muted}`}>
-            This payment will execute as a direct swap, so splits take no
-            project tokens.
-          </div>
+          {showRouteComparison && (
+            <div className={`mt-2 grid grid-cols-2 gap-2 border-t pt-2 text-xs ${isDark ? "border-gray-700" : "border-gray-200"}`}>
+              <div>
+                <div className={muted}>Swap</div>
+                <div className={isDark ? "text-white" : "text-gray-900"}>
+                  {formatExactTokenEstimate(directSwapOffer.minOut)} {tokenSymbol}
+                </div>
+              </div>
+              <div>
+                <div className={muted}>Issuance</div>
+                <div className={isDark ? "text-white" : "text-gray-900"}>
+                  {formatExactTokenEstimate(payPreview.beneficiaryTokenCount)} {tokenSymbol}
+                </div>
+              </div>
+              <div className={`col-span-2 ${muted}`}>
+                The better guaranteed return is selected automatically.
+              </div>
+            </div>
+          )}
         </div>
       );
     }
@@ -2208,8 +2222,11 @@ export default function ProjectCard({
             {formatExactTokenEstimate(payPreview.minReturnedTokens)}{" "}
             {tokenSymbol}
           </button>
-          <span
-            className={`shrink-0 border px-2 py-0.5 text-[10px] font-semibold uppercase ${
+          <button
+            type="button"
+            onClick={() => setShowRouteComparison((current) => !current)}
+            aria-expanded={showRouteComparison}
+            className={`shrink-0 border px-2 py-0.5 text-[10px] font-semibold ${
               payPreview.route === "amm"
                 ? isDark
                   ? "border-purple-400/40 text-purple-300"
@@ -2220,7 +2237,7 @@ export default function ProjectCard({
             }`}
           >
             {formatRoutingTag(payPreview.route)}
-          </span>
+          </button>
         </div>
         {payPreview.reservedTokenCount > 0n && (
           <div className={`mt-1 break-all text-xs font-medium ${muted}`}>
@@ -2228,7 +2245,7 @@ export default function ProjectCard({
             {tokenSymbol}
           </div>
         )}
-        {payPreview.route === "amm" &&
+        {showRouteComparison && payPreview.route === "amm" &&
           payPreview.buybackPoolId &&
           (() => {
             const poolLink = uniswapPoolLink(

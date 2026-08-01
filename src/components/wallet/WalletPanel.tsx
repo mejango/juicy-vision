@@ -22,7 +22,7 @@ import { useAllChainBalances } from './useAllChainBalances'
 import ChainLogo from '../ui/ChainLogo'
 import { walletDappUrl, mobileWalletLinks, isMobileDevice } from '../../utils/walletLinks'
 import ViewAsMenuAction from '../common/ViewAsMenuAction'
-import { fetchProjectTokenSymbol, fetchUserTokenBalance } from '../../services/bendystraw'
+import { fetchConnectedChains, fetchProjectTokenSymbol, fetchUserTokenBalance } from '../../services/bendystraw'
 import { CHAIN_SLUG_TO_ID, PROJECT_SLUG_REGEX } from '../../utils/projectLink'
 
 interface AnchorPosition {
@@ -66,6 +66,7 @@ function useCurrentProjectBalance(address?: string) {
   }, [pathname])
   const [result, setResult] = useState<{
     balance: string
+    chainCount: number
     symbol: string
   } | null>(null)
   const [loading, setLoading] = useState(false)
@@ -82,13 +83,25 @@ function useCurrentProjectBalance(address?: string) {
 
     setLoading(true)
     void Promise.all([
-      fetchUserTokenBalance(project.projectId, project.chainId, address),
+      fetchConnectedChains(project.projectId, project.chainId),
       fetchProjectTokenSymbol(project.projectId, project.chainId),
     ])
-      .then(([balance, symbol]) => {
+      .then(async ([connected, symbol]) => {
+        const chains = connected.length
+          ? connected
+          : [{ chainId: project.chainId, projectId: Number(project.projectId) }]
+        const balances = await Promise.all(
+          chains.map(chain =>
+            fetchUserTokenBalance(String(chain.projectId), chain.chainId, address)
+          )
+        )
         if (cancelled) return
         setResult({
-          balance: formatUnits(BigInt(balance.balance), 18),
+          balance: formatUnits(
+            balances.reduce((sum, balance) => sum + BigInt(balance.balance), 0n),
+            18,
+          ),
+          chainCount: chains.length,
           symbol: symbol || 'project tokens',
         })
       })
@@ -122,7 +135,9 @@ function CurrentProjectBalanceRow({
     : null
   return (
     <div className="px-3 py-2 flex justify-between text-xs">
-      <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Current project</span>
+      <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>
+        {result?.chainCount ? `Project (${result.chainCount} chains)` : 'Current project'}
+      </span>
       <span className={isDark ? 'text-white' : 'text-gray-900'}>
         {loading ? '...' : result ? `${amount} ${result.symbol}` : 'Unavailable'}
       </span>

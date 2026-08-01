@@ -720,13 +720,15 @@ describe("ProjectCard pay panel", () => {
       ).toBeInTheDocument();
       // Full pool output (150) floored 1% — the buy keeps the reserved share too.
       expect(screen.getByText(/148\.50 REV/)).toBeInTheDocument();
-      expect(screen.getByText(/splits take 0 REV/i)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Swap" }));
+      expect(screen.getByText("Issuance")).toBeInTheDocument();
+      expect(screen.getByText(/100 REV/)).toBeInTheDocument();
       // Sepolia has no Uniswap-app pool page, so the link-out is omitted there
       // (uniswapPoolLink's mainnet URL is covered by the service tests above).
       expect(
         screen.queryByRole("link", { name: /Swap via Uniswap/i }),
       ).not.toBeInTheDocument();
-      expect(screen.getByText("swap")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Swap" })).toBeInTheDocument();
     });
   });
 
