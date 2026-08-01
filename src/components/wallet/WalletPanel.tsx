@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
+import { useLocation } from 'react-router-dom'
 import { useAccount, useConnect, useConnectors, useDisconnect, useSignMessage } from 'wagmi'
+import { formatUnits } from 'viem'
 import { useThemeStore, useAuthStore, useSettingsStore } from '../../stores'
 import { useManagedWallet, useEnsNameResolved, useJuiceBalance, useSafeApp, useViewedAccount } from '../../hooks'
 import { hasValidWalletSession, signInWithWalletClient, clearWalletSession } from '../../services/siwe'
@@ -20,6 +22,8 @@ import { useAllChainBalances } from './useAllChainBalances'
 import ChainLogo from '../ui/ChainLogo'
 import { walletDappUrl, mobileWalletLinks, isMobileDevice } from '../../utils/walletLinks'
 import ViewAsMenuAction from '../common/ViewAsMenuAction'
+import { fetchProjectTokenSymbol, fetchUserTokenBalance } from '../../services/bendystraw'
+import { CHAIN_SLUG_TO_ID, PROJECT_SLUG_REGEX } from '../../utils/projectLink'
 
 interface AnchorPosition {
   top: number
@@ -49,6 +53,81 @@ interface WalletPanelProps {
 
 function shortenAddress(address: string, chars = 6): string {
   return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`
+}
+
+function useCurrentProjectBalance(address?: string) {
+  const { pathname } = useLocation()
+  const project = useMemo(() => {
+    const slug = pathname.split('/').filter(Boolean)[0]
+    const match = slug?.match(PROJECT_SLUG_REGEX)
+    const chainId = match ? CHAIN_SLUG_TO_ID[match[1].toLowerCase()] : undefined
+    if (!match || !chainId) return null
+    return { chainId, projectId: match[2] }
+  }, [pathname])
+  const [result, setResult] = useState<{
+    balance: string
+    symbol: string
+  } | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setResult(null)
+    if (!address || !project) {
+      setLoading(false)
+      return () => {
+        cancelled = true
+      }
+    }
+
+    setLoading(true)
+    void Promise.all([
+      fetchUserTokenBalance(project.projectId, project.chainId, address),
+      fetchProjectTokenSymbol(project.projectId, project.chainId),
+    ])
+      .then(([balance, symbol]) => {
+        if (cancelled) return
+        setResult({
+          balance: formatUnits(BigInt(balance.balance), 18),
+          symbol: symbol || 'project tokens',
+        })
+      })
+      .catch(() => {
+        if (!cancelled) setResult(null)
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [address, project])
+
+  return { project, result, loading }
+}
+
+function CurrentProjectBalanceRow({
+  address,
+  isDark,
+}: {
+  address?: string
+  isDark: boolean
+}) {
+  const { project, result, loading } = useCurrentProjectBalance(address)
+  if (!project) return null
+
+  const amount = result
+    ? Number(result.balance).toLocaleString(undefined, { maximumFractionDigits: 4 })
+    : null
+  return (
+    <div className="px-3 py-2 flex justify-between text-xs">
+      <span className={isDark ? 'text-gray-400' : 'text-gray-500'}>Current project</span>
+      <span className={isDark ? 'text-white' : 'text-gray-900'}>
+        {loading ? '...' : result ? `${amount} ${result.symbol}` : 'Unavailable'}
+      </span>
+    </div>
+  )
 }
 
 // Get device name for display
@@ -930,6 +1009,8 @@ function SelfCustodyWalletView({ onTopUp, onDisconnect, paymentContext, onInsuff
           </div>
         </div>
 
+        <CurrentProjectBalanceRow address={viewedAddress ?? address} isDark={isDark} />
+
         {/* Per-chain breakdown */}
         {loading ? (
           <div className={`px-3 py-3 text-xs text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -1177,6 +1258,8 @@ function PasskeyWalletView({ wallet, onTopUp, onDisconnect }: {
           </div>
         </div>
 
+        <CurrentProjectBalanceRow address={wallet.address} isDark={isDark} />
+
         {/* Per-chain breakdown */}
         {loading ? (
           <div className={`px-3 py-3 text-xs text-center ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
@@ -1346,6 +1429,7 @@ function ManagedAccountView({ onDisconnect, onTopUp, onSetJuicyId }: {
                   .toLocaleString(undefined, { maximumFractionDigits: 4 })}
               </span>
             </div>
+            <CurrentProjectBalanceRow address={address ?? undefined} isDark={isDark} />
           </div>
         )}
       </div>

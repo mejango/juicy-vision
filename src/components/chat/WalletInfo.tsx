@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAccount, useChainId, useSignMessage } from 'wagmi'
 import { useTranslation } from 'react-i18next'
 import { useThemeStore, useSettingsStore } from '../../stores'
-import { useWalletBalances, formatEthBalance, formatUsdcBalance, useEnsNameResolved } from '../../hooks'
+import { useEnsNameResolved } from '../../hooks'
 import { hasValidWalletSession, getWalletSession, clearWalletSession, signInWithWalletClient } from '../../services/siwe'
 import { getPseudoAddress, getSessionId } from '../../services/session'
 import { getEmojiFromAddress, FRUIT_EMOJIS } from './ParticipantAvatars'
@@ -519,7 +519,6 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
   const { address, isConnected } = useAccount()
   const navigate = useNavigate()
   const { ensName } = useEnsNameResolved(address)
-  const { totalEth, totalUsdc, loading: balancesLoading, available: balancesAvailable } = useWalletBalances()
   const [identity, setIdentity] = useState<JuicyIdentity | null>(null)
   const [passkeyWallet, setPasskeyWallet] = useState<PasskeyWallet | null>(() => getPasskeyWallet())
   const [isSessionStale, setIsSessionStale] = useState(false)
@@ -730,20 +729,6 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
       {viewAs ? (
         <>
           <ViewAsWalletState hasConnectedWallet={isAccountConnected} />
-          <span>
-            {balancesLoading ? (
-              <span className="ml-2 opacity-50 hidden sm:inline">Loading...</span>
-            ) : !balancesAvailable ? (
-              <span className="ml-2 opacity-50 hidden sm:inline">Balance unavailable</span>
-            ) : (
-              <span className="hidden sm:inline">
-                <span className="mx-1">·</span>
-                {formatUsdcBalance(totalUsdc)} USDC
-                <span className="mx-1">·</span>
-                {formatEthBalance(totalEth)} ETH
-              </span>
-            )}
-          </span>
           <button
             onClick={() => navigate(`/account/${viewAs}`)}
             className={`transition-colors ${
@@ -811,28 +796,6 @@ export default function WalletInfo({ inline }: WalletInfoProps = {}) {
               · {t('wallet.setJuicyId', 'Set your Juicy ID')}
             </button>
           )}
-          {/* Balances */}
-          <button
-            onClick={openWalletPanel}
-            className={`transition-colors ${
-              theme === 'dark'
-                ? 'text-gray-400 hover:text-gray-200'
-                : 'text-gray-600 hover:text-gray-800'
-            }`}
-          >
-            {balancesLoading ? (
-              <span className="ml-2 opacity-50 hidden sm:inline">Loading...</span>
-            ) : !balancesAvailable ? (
-              <span className="ml-2 opacity-50 hidden sm:inline">Balance unavailable</span>
-            ) : (
-              <span className="hidden sm:inline">
-                <span className="mx-1">·</span>
-                {formatUsdcBalance(totalUsdc)} USDC
-                <span className="mx-1">·</span>
-                {formatEthBalance(totalEth)} ETH
-              </span>
-            )}
-          </button>
           {/* Account view - everything this address has done and can do.
               With view-as active it targets the impersonated address. */}
           {(viewAs || address || passkeyWallet?.address) && (
