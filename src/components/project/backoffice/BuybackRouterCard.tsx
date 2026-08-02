@@ -26,6 +26,7 @@ import {
   buildSetBuybackTwapRequest,
   buildSetRouterTerminalRequest,
   readBuybackHookOf,
+  readInitializedPoolToken,
   readPoolInitState,
   readRouterTerminalOf,
 } from '../../../services/permissionsAdmin'
@@ -209,6 +210,29 @@ function BuybackRouterModal({
   const [sqrtPriceX96, setSqrtPriceX96] = useState('')
   const [gateChecked, setGateChecked] = useState(false)
   const [statuses, setStatuses] = useState<Record<number, ChainRunState>>({})
+
+  // A window edit must target a pool that exists — a USDC revnet has no native
+  // pool, so pre-fill the pair token from the first chain that has one.
+  useEffect(() => {
+    if (action.kind !== 'setTwap') return
+    let cancelled = false
+    ;(async () => {
+      for (const chainId of chainIds) {
+        const pid = resolveProjectId(chainId)
+        if (pid == null) continue
+        const token = await readInitializedPoolToken(chainId, pid)
+        if (cancelled) return
+        if (token) {
+          setTerminalToken(token)
+          return
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [action.kind, chainIds.join(','), resolveProjectId])
 
   const snapshotByChain = new Map(current.map(row => [row.chainId, row.value]))
   const anyRunning = Object.values(statuses).some(status => status.kind === 'running')
