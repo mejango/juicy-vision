@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { validateInitPoolParams } from './BuybackRouterCard'
+import { validateInitPoolParams, validateTwapWindowParams } from './BuybackRouterCard'
 
 // A valid, fully-populated param set — each case below perturbs one field.
 const OK = {
@@ -53,5 +53,30 @@ describe('validateInitPoolParams', () => {
   it('rejects non-numeric fee / twap inputs', () => {
     expect(validateInitPoolParams({ ...OK, fee: 'abc' })).toMatch(/fee tier/)
     expect(validateInitPoolParams({ ...OK, twapWindow: 'x' })).toMatch(/TWAP window/)
+  })
+})
+
+describe('validateTwapWindowParams', () => {
+  const TOKEN = '0x0000000000000000000000000000000000000000'
+
+  it('accepts a window inside the hook’s bounds', () => {
+    expect(validateTwapWindowParams({ twapWindow: '1800', terminalToken: TOKEN })).toBeNull()
+  })
+
+  // The hook reverts outside [300, 172800] — catch it before the wallet does.
+  it('rejects windows outside the hook’s bounds', () => {
+    expect(validateTwapWindowParams({ twapWindow: '299', terminalToken: TOKEN })).toMatch(/between 300 and 172800/)
+    expect(validateTwapWindowParams({ twapWindow: '172801', terminalToken: TOKEN })).toMatch(/between 300 and 172800/)
+    expect(validateTwapWindowParams({ twapWindow: '0', terminalToken: TOKEN })).toMatch(/between 300 and 172800/)
+  })
+
+  it('accepts the exact bounds', () => {
+    expect(validateTwapWindowParams({ twapWindow: '300', terminalToken: TOKEN })).toBeNull()
+    expect(validateTwapWindowParams({ twapWindow: '172800', terminalToken: TOKEN })).toBeNull()
+  })
+
+  it('rejects a non-numeric window and a non-address pair token', () => {
+    expect(validateTwapWindowParams({ twapWindow: '30m', terminalToken: TOKEN })).toMatch(/TWAP window/)
+    expect(validateTwapWindowParams({ twapWindow: '1800', terminalToken: '0xnope' })).toMatch(/pair \(terminal\) token/)
   })
 })

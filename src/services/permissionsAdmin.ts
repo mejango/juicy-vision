@@ -827,6 +827,44 @@ export function buildInitializeBuybackPoolRequest(args: {
   }
 }
 
+const SET_TWAP_WINDOW_OF_ABI = [
+  {
+    type: 'function',
+    name: 'setTwapWindowOf',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'projectId', type: 'uint256' },
+      { name: 'terminalToken', type: 'address' },
+      { name: 'newWindow', type: 'uint256' },
+    ],
+    outputs: [],
+  },
+] as const
+
+/**
+ * `setTwapWindowOf` lives on the buyback hook itself — the registry has no
+ * forwarder — so the caller passes the project's resolved hook as the target.
+ */
+export function buildSetBuybackTwapRequest(args: {
+  chainId: number
+  projectId: bigint
+  hook: Address
+  terminalToken: Address
+  twapWindow: bigint
+}): AdminTxRequest {
+  const callArgs = [args.projectId, args.terminalToken, args.twapWindow] as const
+  return {
+    chainId: args.chainId,
+    to: args.hook,
+    data: encodeFunctionData({
+      abi: SET_TWAP_WINDOW_OF_ABI,
+      functionName: 'setTwapWindowOf',
+      args: callArgs,
+    }),
+    review: { abi: SET_TWAP_WINDOW_OF_ABI, functionName: 'setTwapWindowOf', args: callArgs },
+  }
+}
+
 // ─── Buyback pool-init state ─────────────────────────────────────────────────
 
 const TWAP_WINDOW_OF_ABI = [

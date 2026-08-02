@@ -2,12 +2,14 @@
  * "Buyback & swap router" card — ports website/src/discover.js
  * renderBuybackRouterCard (:11421).
  *
- * Three per-project registry writes, each owner/operator-gated on chain and
- * danger-gated here, with the CURRENT registered value read across chains:
+ * Four per-project writes, each owner/operator-gated on chain and danger-gated
+ * here, with the CURRENT registered value read across chains:
  *   - JBBuybackHookRegistry.setHookFor(projectId, hook)
  *   - JBRouterTerminalRegistry.setTerminalFor(projectId, terminal)
  *   - JBBuybackHookRegistry.initializePoolFor(projectId, fee, tickSpacing,
  *     twapWindow, terminalToken, sqrtPriceX96)
+ *   - JBBuybackHook.setTwapWindowOf(projectId, terminalToken, newWindow) — on
+ *     the hook itself; the registry has no forwarder for it
  *
  * Executed per chain through the guarded runner; reverify re-reads the
  * registry value shown at review and aborts if it changed underneath.
@@ -21,6 +23,7 @@ import { useGuardedTx } from '../../../hooks/useGuardedTx'
 import {
   buildInitializeBuybackPoolRequest,
   buildSetBuybackHookRequest,
+  buildSetBuybackTwapRequest,
   buildSetRouterTerminalRequest,
   readBuybackHookOf,
   readPoolInitState,
@@ -34,7 +37,11 @@ export interface BuybackRouterCardProps {
   chainIds: number[]
 }
 
-type ActionKind = 'setHook' | 'setTerminal' | 'initPool'
+type ActionKind = 'setHook' | 'setTerminal' | 'initPool' | 'setTwap'
+
+/** `JBBuybackHook._requireValidTwapWindow`: 5 minutes to 2 days. */
+const MIN_TWAP_WINDOW = 300
+const MAX_TWAP_WINDOW = 172_800
 
 interface ActionDef {
   kind: ActionKind
@@ -68,6 +75,15 @@ const ACTIONS: ActionDef[] = [
     danger:
       'Dangerous and permanent: the pool parameters and starting price cannot be re-initialized. A wrong starting price invites an immediate arbitrage drain.',
     // Pool init requires a registered hook; its address is the reviewed state.
+    read: readBuybackHookOf,
+  },
+  {
+    kind: 'setTwap',
+    title: 'Set TWAP window',
+    note: "Changes how far back the buyback hook averages the pool price to decide swap-vs-issue and to floor the swap. The pool must already be initialized for the pair token.",
+    danger:
+      'Dangerous: a window longer than the pool’s price actually trends floors swaps above what the pool can fill, and every payment routed to a swap reverts. A very short window is cheaper to manipulate.',
+    // The write targets the hook itself, so its address is both the target and the reviewed state.
     read: readBuybackHookOf,
   },
 ]
@@ -117,6 +133,24 @@ export function validateInitPoolParams(params: {
   if (!isAddress(terminalToken.trim())) return 'Enter the terminal token address'
   if (!/^\d+$/.test(sqrtPriceX96.trim()) || BigInt(sqrtPriceX96.trim() || '0') === 0n)
     return 'Enter the starting sqrtPriceX96'
+  return null
+}
+
+/**
+ * Validate `setTwapWindowOf` inputs. The hook rejects anything outside
+ * [300, 172800] seconds, and the pair token keys which pool is being changed.
+ * Returns an error string, or null when both params are safe. Pure — unit tested.
+ */
+export function validateTwapWindowParams(params: {
+  twapWindow: string
+  terminalToken: string
+}): string | null {
+  const { twapWindow, terminalToken } = params
+  if (!/^\d+$/.test(twapWindow.trim())) return 'Enter the TWAP window in seconds (e.g. 1800)'
+  const seconds = Number(twapWindow.trim())
+  if (seconds < MIN_TWAP_WINDOW || seconds > MAX_TWAP_WINDOW)
+    return `TWAP window must be between ${MIN_TWAP_WINDOW} and ${MAX_TWAP_WINDOW} seconds`
+  if (!isAddress(terminalToken.trim())) return 'Enter the pair (terminal) token address'
   return null
 }
 
@@ -182,6 +216,8 @@ function BuybackRouterModal({
   let inputError: string | null = null
   if (action.kind === 'initPool') {
     inputError = validateInitPoolParams({ fee, tickSpacing, twapWindow, terminalToken, sqrtPriceX96 })
+  } else if (action.kind === 'setTwap') {
+    inputError = validateTwapWindowParams({ twapWindow, terminalToken })
   } else if (!isAddress(address.trim())) {
     inputError = 'Enter a valid address'
   }
@@ -195,6 +231,18 @@ function BuybackRouterModal({
     }
     if (action.kind === 'setTerminal') {
       return buildSetRouterTerminalRequest({ chainId, projectId: pid, terminal: address.trim() as Address })
+    }
+    if (action.kind === 'setTwap') {
+      // setTwapWindowOf is on the hook, not the registry — target the hook read at review.
+      const hook = snapshotByChain.get(chainId)
+      if (!hook) throw new Error(`No buyback hook is registered on ${chainName(chainId)}.`)
+      return buildSetBuybackTwapRequest({
+        chainId,
+        projectId: pid,
+        hook,
+        terminalToken: terminalToken.trim() as Address,
+        twapWindow: BigInt(twapWindow.trim()),
+      })
     }
     return buildInitializeBuybackPoolRequest({
       chainId,
@@ -227,7 +275,12 @@ function BuybackRouterModal({
         review: {
           title: `Review ${action.title.toLowerCase()}`,
           label: `${action.title} for project #${pid.toString()}`,
-          contractName: action.kind === 'setTerminal' ? 'JBRouterTerminalRegistry' : 'JBBuybackHookRegistry',
+          contractName:
+            action.kind === 'setTerminal'
+              ? 'JBRouterTerminalRegistry'
+              : action.kind === 'setTwap'
+                ? 'JBBuybackHook'
+                : 'JBBuybackHookRegistry',
           ...request.review,
         },
         // Reviewed-state re-verification: abort when the registry value shown
@@ -235,7 +288,7 @@ function BuybackRouterModal({
         reverify: async () => {
           const fresh = await action.read(chainId, pid)
           const reviewed = snapshotByChain.get(chainId) ?? null
-          if (action.kind === 'initPool' && !fresh) {
+          if ((action.kind === 'initPool' || action.kind === 'setTwap') && !fresh) {
             throw new Error(`No buyback hook is registered on ${chainName(chainId)} — set the hook first.`)
           }
           if ((fresh ?? '').toLowerCase() !== (reviewed ?? '').toLowerCase()) {
@@ -292,7 +345,14 @@ function BuybackRouterModal({
         else's transaction fails in simulation.
       </p>
 
-      {action.kind === 'initPool' ? (
+      {action.kind === 'setTwap' ? (
+        <>
+          {field('Pair (terminal) token', terminalToken, setTerminalToken, '0x… pair token (zero address for a native pool)', true,
+            'The pair token whose pool window you’re changing. Native pools are keyed under the zero address; USDC addresses differ by chain.')}
+          {field('TWAP window (seconds)', twapWindow, setTwapWindow, 'e.g. 1800 (30 min)', false,
+            `Between ${MIN_TWAP_WINDOW} and ${MAX_TWAP_WINDOW} seconds. Longer resists manipulation; too long for a fast-moving pool floors swaps above what the pool can fill and reverts the payment.`)}
+        </>
+      ) : action.kind === 'initPool' ? (
         <>
           {field('Fee tier', fee, setFee, 'e.g. 10000 (= 1%)')}
           {field('Tick spacing', tickSpacing, setTickSpacing, 'e.g. 200')}
@@ -344,6 +404,7 @@ export function BuybackRouterCard({ resolveProjectId, chainIds }: BuybackRouterC
     setHook: null,
     setTerminal: null,
     initPool: null,
+    setTwap: null,
   })
   // Pool-init state for the initPool action's "Current:" line: whether the hook's
   // Uniswap pool is initialized (TWAP window set), rather than the hook address.
@@ -353,7 +414,7 @@ export function BuybackRouterCard({ resolveProjectId, chainIds }: BuybackRouterC
 
   useEffect(() => {
     let cancelled = false
-    setCurrentByKind({ setHook: null, setTerminal: null, initPool: null })
+    setCurrentByKind({ setHook: null, setTerminal: null, initPool: null, setTwap: null })
     setPoolInit(null)
     const load = async (read: ActionDef['read']): Promise<CurrentRow[]> =>
       Promise.all(
@@ -380,7 +441,7 @@ export function BuybackRouterCard({ resolveProjectId, chainIds }: BuybackRouterC
     Promise.all([load(readBuybackHookOf), load(readRouterTerminalOf), loadPoolInit()]).then(
       ([hooks, terminals, pools]) => {
         if (cancelled) return
-        setCurrentByKind({ setHook: hooks, setTerminal: terminals, initPool: hooks })
+        setCurrentByKind({ setHook: hooks, setTerminal: terminals, initPool: hooks, setTwap: hooks })
         setPoolInit(pools)
       },
     )
@@ -400,7 +461,8 @@ export function BuybackRouterCard({ resolveProjectId, chainIds }: BuybackRouterC
       <div className="space-y-3">
         {ACTIONS.map(action => {
           const current = currentByKind[action.kind]
-          const isInitPool = action.kind === 'initPool'
+          // Both pool actions report the pool's TWAP state rather than the hook address.
+          const isInitPool = action.kind === 'initPool' || action.kind === 'setTwap'
           // initPool shows pool-init state (TWAP window set?) rather than the hook address;
           // the hook rows still back the modal's reverify snapshot.
           const ready = isInitPool ? current !== null && poolInit !== null : current !== null
@@ -438,7 +500,11 @@ export function BuybackRouterCard({ resolveProjectId, chainIds }: BuybackRouterC
           resolveProjectId={resolveProjectId}
           chainIds={chainIds}
           current={currentByKind[open.kind]!}
-          stateSummary={open.kind === 'initPool' && poolInit ? summarizePoolInit(poolInit) : undefined}
+          stateSummary={
+            (open.kind === 'initPool' || open.kind === 'setTwap') && poolInit
+              ? summarizePoolInit(poolInit)
+              : undefined
+          }
           onClose={() => setOpen(null)}
           onChanged={() => setRefreshNonce(nonce => nonce + 1)}
         />
