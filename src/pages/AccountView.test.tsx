@@ -274,6 +274,13 @@ describe('AccountView', () => {
     expect(screen.getByText('250.00 USDC')).toBeInTheDocument()
 
     expect(await screen.findByTestId('activity-item')).toHaveTextContent('evt-1')
+    const tabRow = screen.getByRole('button', { name: 'Activity' }).parentElement
+    expect(tabRow).toHaveClass(
+      'touch-pan-x',
+      'overflow-x-auto',
+      'overflow-y-hidden',
+      'overscroll-x-contain',
+    )
 
     // The other panels are not mounted while Activity is active.
     expect(screen.queryByText('Direct Project')).not.toBeInTheDocument()

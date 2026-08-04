@@ -252,7 +252,10 @@ export default function ProjectTabs(props: ProjectTabsProps) {
       <div className={`sticky top-0 z-10 ${isMobile ? 'px-4 pt-2' : 'px-6 pt-4'} pb-0 ${
         isDark ? 'bg-juice-dark' : 'bg-white'
       }`}>
-        <div className={`flex gap-6 overflow-x-auto border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}>
+        <div
+          data-project-tab-scroll
+          className={`flex touch-pan-x gap-6 overflow-x-auto overflow-y-hidden overscroll-x-contain border-b ${isDark ? 'border-white/10' : 'border-gray-200'}`}
+        >
           {tabs.map(tab => (
             <button
               key={tab.id}

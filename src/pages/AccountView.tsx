@@ -683,7 +683,7 @@ export default function AccountView({ address }: AccountViewProps) {
 
         {/* Tab bar — same idiom as the project page's ProjectTabs */}
         <div
-          className={`flex gap-6 overflow-x-auto border-b mb-4 ${
+          className={`flex touch-pan-x gap-6 overflow-x-auto overflow-y-hidden overscroll-x-contain border-b mb-4 ${
             isDark ? 'border-white/10' : 'border-gray-200'
           }`}
         >
