@@ -189,12 +189,46 @@
     animation: component-shimmer 1.5s ease-in-out infinite;
   }
 
+  /* Known content being confirmed by the destination route. */
+  .stale-loading {
+    position: relative;
+    overflow: hidden;
+    opacity: 0.62;
+  }
+
+  .stale-loading::after {
+    position: absolute;
+    inset: 0;
+    content: '';
+    pointer-events: none;
+    background: linear-gradient(
+      100deg,
+      transparent 20%,
+      rgba(255, 255, 255, 0.45) 50%,
+      transparent 80%
+    );
+    transform: translateX(-100%);
+    animation: stale-loading-sweep 1.5s ease-in-out infinite;
+  }
+
+  @keyframes stale-loading-sweep {
+    to {
+      transform: translateX(100%);
+    }
+  }
+
   @keyframes component-shimmer {
     0% {
       background-position: 200% 0;
     }
     100% {
       background-position: -200% 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .stale-loading::after {
+      animation: none;
     }
   }
 }

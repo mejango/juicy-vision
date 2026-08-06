@@ -4,6 +4,7 @@ import { useThemeStore } from '../../stores'
 import { fetchProjects, type Project } from '../../services/bendystraw'
 import { CHAINS } from '../../constants'
 import { projectPathFor } from '../../utils/projectLink'
+import { rememberProjectNavigation } from '../../utils/projectNavigationCache'
 
 interface TrendingProjectsProps {
   onProjectClick?: (query: string) => void
@@ -126,7 +127,31 @@ export default function TrendingProjects({ onProjectClick }: TrendingProjectsPro
               {path ? (
                 <Link
                   to={path}
-                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={() =>
+                    rememberProjectNavigation({
+                      chainId: row.chainIds[0],
+                      projectId: row.projectId,
+                      name: row.name,
+                      logoUri: row.logoUri,
+                    })
+                  }
+                  onFocus={() =>
+                    rememberProjectNavigation({
+                      chainId: row.chainIds[0],
+                      projectId: row.projectId,
+                      name: row.name,
+                      logoUri: row.logoUri,
+                    })
+                  }
+                  onClick={(e) => {
+                    rememberProjectNavigation({
+                      chainId: row.chainIds[0],
+                      projectId: row.projectId,
+                      name: row.name,
+                      logoUri: row.logoUri,
+                    })
+                    e.stopPropagation()
+                  }}
                   className={`block text-xs truncate hover:underline ${isDark ? 'text-white' : 'text-gray-900'}`}
                   title={`Open ${row.name}`}
                 >

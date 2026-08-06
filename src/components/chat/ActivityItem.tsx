@@ -6,6 +6,7 @@ import { getEventInfo, formatTimeAgo } from '../../utils/activityEvents'
 import { MAINNET_CHAINS } from '../../constants'
 import { resolveProjectNameForDisplay, type ActivityEvent } from '../../services/bendystraw/client'
 import { projectPathFor } from '../../utils/projectLink'
+import { rememberProjectNavigation } from '../../utils/projectNavigationCache'
 import { IpfsImage } from '../ui/IpfsMedia'
 import ChainLogo from '../ui/ChainLogo'
 
@@ -81,7 +82,23 @@ export default function ActivityItem({ event, onProjectClick }: ActivityItemProp
             return path ? (
               <Link
                 to={path}
-                onClick={(e) => e.stopPropagation()}
+                onPointerDown={() =>
+                  rememberProjectNavigation({
+                    chainId: event.chainId,
+                    projectId: pid!,
+                    name: projectName,
+                    logoUri: event.project?.logoUri,
+                  })
+                }
+                onClick={(e) => {
+                  rememberProjectNavigation({
+                    chainId: event.chainId,
+                    projectId: pid!,
+                    name: projectName,
+                    logoUri: event.project?.logoUri,
+                  })
+                  e.stopPropagation()
+                }}
                 className={`${nameClass} hover:underline`}
                 title={`Open ${projectName}`}
               >

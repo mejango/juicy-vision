@@ -45,6 +45,7 @@ import {
 import { truncateAddress } from '../utils/ens'
 import { ACTIVITY_POLL_INTERVAL, CHAINS, MAINNET_CHAINS } from '../constants'
 import { projectPathFor } from '../utils/projectLink'
+import { rememberProjectNavigation } from '../utils/projectNavigationCache'
 import type { Address } from 'viem'
 
 const ACTIVITY_PAGE_SIZE = 25
@@ -332,9 +333,21 @@ export default function AccountView({ address }: AccountViewProps) {
   }, [])
 
   const goToProject = useCallback(
-    (chainId: number, projectId: number) => {
+    (
+      chainId: number,
+      projectId: number,
+      identity?: { name?: string | null; logoUri?: string | null },
+    ) => {
       const path = projectPathFor(chainId, projectId)
-      if (path) navigate(path)
+      if (path) {
+        rememberProjectNavigation({
+          chainId,
+          projectId,
+          name: identity?.name || `Project #${projectId}`,
+          logoUri: identity?.logoUri,
+        })
+        navigate(path)
+      }
     },
     [navigate]
   )
@@ -726,7 +739,11 @@ export default function AccountView({ address }: AccountViewProps) {
                       event={event}
                       onProjectClick={
                         projectId != null
-                          ? () => goToProject(event.chainId, projectId)
+                          ? () =>
+                              goToProject(event.chainId, projectId, {
+                                name: event.project?.name,
+                                logoUri: event.project?.logoUri,
+                              })
                           : undefined
                       }
                     />
@@ -771,7 +788,11 @@ export default function AccountView({ address }: AccountViewProps) {
                 <button
                   key={row.suckerGroupId ?? `${row.chains[0].chainId}:${row.chains[0].projectId}`}
                   data-testid="token-holding"
-                  onClick={() => goToProject(row.chains[0].chainId, row.chains[0].projectId)}
+                  onClick={() =>
+                    goToProject(row.chains[0].chainId, row.chains[0].projectId, {
+                      name: row.name,
+                    })
+                  }
                   className={`block w-full p-2 border text-left transition-colors ${
                     isDark
                       ? 'border-white/10 hover:bg-white/5'
@@ -845,7 +866,9 @@ export default function AccountView({ address }: AccountViewProps) {
                   >
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => goToProject(row.chainId, row.projectId)}
+                        onClick={() =>
+                          goToProject(row.chainId, row.projectId, { name: row.name })
+                        }
                         className={`text-xs font-medium hover:underline ${
                           isDark ? 'text-juice-cyan' : 'text-teal-600'
                         }`}
@@ -922,7 +945,12 @@ export default function AccountView({ address }: AccountViewProps) {
                 return (
                   <button
                     key={`${row.chainId}:${row.projectId}`}
-                    onClick={() => goToProject(row.chainId, row.projectId)}
+                    onClick={() =>
+                      goToProject(row.chainId, row.projectId, {
+                        name: row.project.name,
+                        logoUri: row.project.logoUri,
+                      })
+                    }
                     className={`flex items-center gap-3 p-2 border text-left transition-colors ${
                       isDark
                         ? 'border-white/10 hover:bg-white/5'
@@ -996,7 +1024,9 @@ export default function AccountView({ address }: AccountViewProps) {
                   >
                     <div className="flex items-center gap-2">
                       <button
-                        onClick={() => goToProject(row.chainId, row.projectId)}
+                        onClick={() =>
+                          goToProject(row.chainId, row.projectId, { name: row.name })
+                        }
                         className={`text-xs font-medium hover:underline ${
                           isDark ? 'text-juice-cyan' : 'text-teal-600'
                         }`}

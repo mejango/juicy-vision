@@ -8,6 +8,7 @@ import {
   ZERO_ADDRESS,
 } from "../../constants";
 import { projectPathFor } from "../../utils/projectLink";
+import { rememberProjectNavigation } from "../../utils/projectNavigationCache";
 import {
   fetchRevnetOperator,
   type Project,
@@ -317,7 +318,16 @@ export default function OverviewTab({
                 return path ? (
                   <button
                     key={chain.chainId}
-                    onClick={() => navigate(path)}
+                    onClick={() => {
+                      rememberProjectNavigation({
+                        chainId: chain.chainId,
+                        projectId: chain.projectId,
+                        name: project.name || `Project #${chain.projectId}`,
+                        logoUri: project.logoUri,
+                        tagline: project.metadata?.projectTagline,
+                      });
+                      navigate(path);
+                    }}
                     className="block text-left hover:underline"
                     title={`Open #${chain.projectId} on ${chainNameOf(chain.chainId)}`}
                   >

@@ -30,6 +30,8 @@ import { getWalletSession } from "../services/siwe";
 import { formatBalanceUsd, formatBalanceNative } from "../utils/currency";
 import { IpfsImage } from "../components/ui/IpfsMedia";
 import ChainLogo from "../components/ui/ChainLogo";
+import ProjectRouteLoading from "../components/project/ProjectRouteLoading";
+import { rememberProjectNavigation } from "../utils/projectNavigationCache";
 
 // Chat components
 import { ChatInput } from "../components/chat";
@@ -399,23 +401,35 @@ export default function ProjectDashboard({
                 ? error.message
                 : "Reward configuration unavailable",
           }));
-        const [
-          projectResult,
-          chainsResult,
-          balanceResult,
-          nftResult,
-          priceResult,
-        ] = await Promise.allSettled([
-          fetchProject(String(projectId), chainId),
-          fetchConnectedChains(String(projectId), chainId),
-          fetchSuckerGroupBalance(String(projectId), chainId),
+        // Start every read together, but only gate the project shell on the
+        // identity read. Slower balance, mapping, NFT, and price probes fill in
+        // progressively instead of holding the known project behind a spinner.
+        const projectPromise = fetchProject(String(projectId), chainId);
+        const chainsPromise = fetchConnectedChains(String(projectId), chainId);
+        const balancePromise = fetchSuckerGroupBalance(String(projectId), chainId);
+        const pricePromise = fetchEthPrice();
+        const secondaryResults = Promise.allSettled([
+          chainsPromise,
+          balancePromise,
           nftHookResult,
-          fetchEthPrice(),
+          pricePromise,
         ]);
-        if (cancelled) return;
-        if (projectResult.status === "rejected") throw projectResult.reason;
 
-        setProject(projectResult.value);
+        const loadedProject = await projectPromise;
+        if (cancelled) return;
+        setProject(loadedProject);
+        rememberProjectNavigation({
+          chainId,
+          projectId,
+          name: loadedProject.name || `Project #${projectId}`,
+          logoUri: loadedProject.logoUri,
+          tagline: loadedProject.metadata?.projectTagline,
+        });
+        setProjectLoading(false);
+
+        const [chainsResult, balanceResult, nftResult, priceResult] =
+          await secondaryResults;
+        if (cancelled) return;
         if (chainsResult.status === "fulfilled") {
           setConnectedChains(
             chainsResult.value.length > 0
@@ -1146,15 +1160,7 @@ export default function ProjectDashboard({
   };
 
   if (projectLoading) {
-    return (
-      <div
-        className={`min-h-screen flex items-center justify-center ${
-          isDark ? "bg-juice-dark" : "bg-white"
-        }`}
-      >
-        <div className="w-8 h-8 border-2 border-juice-orange border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <ProjectRouteLoading chainId={chainId} projectId={projectId} />;
   }
 
   if (!project) {

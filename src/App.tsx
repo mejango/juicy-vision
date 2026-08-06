@@ -30,6 +30,8 @@ import { resolveEnsToAddress } from './utils/ens'
 import { PaymentReviewModal } from './components/payment'
 import TransactionReviewModal from './components/payment/TransactionReviewModal'
 import TransactionStatusCenter from './components/payment/TransactionStatusCenter'
+import ProjectRouteLoading from './components/project/ProjectRouteLoading'
+import { getProjectNavigationHintForPath } from './utils/projectNavigationCache'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,6 +43,16 @@ const queryClient = new QueryClient({
 })
 
 function RouteFallback() {
+  const hint = getProjectNavigationHintForPath(window.location.pathname)
+  if (hint) {
+    return (
+      <ProjectRouteLoading
+        chainId={hint.chainId}
+        projectId={hint.projectId}
+        hint={hint}
+      />
+    )
+  }
   return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-950">
       <div className="w-8 h-8 border-2 border-juice-orange border-t-transparent rounded-full animate-spin" />

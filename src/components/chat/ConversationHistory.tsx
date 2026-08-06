@@ -24,6 +24,7 @@ import { fetchProjectsByOwner, type Project } from '../../services/bendystraw'
 import { useManagedWallet } from '../../hooks'
 import { CHAINS, MAINNET_CHAINS } from '../../constants'
 import { projectPathFor } from '../../utils/projectLink'
+import { rememberProjectNavigation } from '../../utils/projectNavigationCache'
 import { IpfsImage } from '../ui/IpfsMedia'
 import ChainLogo from '../ui/ChainLogo'
 import {
@@ -1111,7 +1112,15 @@ export default function ConversationHistory() {
                   key={project.id}
                   onClick={() => {
                     const path = projectPathFor(project.chainId, project.projectId)
-                    if (path) navigate(path)
+                    if (path) {
+                      rememberProjectNavigation({
+                        chainId: project.chainId,
+                        projectId: project.projectId,
+                        name: project.name || `Project #${project.projectId}`,
+                        logoUri: project.logoUri,
+                      })
+                      navigate(path)
+                    }
                   }}
                   className={`group p-4 border cursor-pointer transition-colors ${
                     theme === 'dark'

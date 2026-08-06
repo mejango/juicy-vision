@@ -5,6 +5,7 @@ import { useThemeStore } from '../../stores'
 import { fetchProjects, type Project } from '../../services/bendystraw'
 import { resolveEnsToAddress, truncateAddress } from '../../utils/ens'
 import { projectPathFor } from '../../utils/projectLink'
+import { rememberProjectNavigation } from '../../utils/projectNavigationCache'
 
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
 // Loose ENS shape: dot-separated labels (e.g. "jango.eth"). Actual validity is
@@ -134,6 +135,14 @@ export default function ProjectSearch() {
   }, [trimmed])
 
   const select = (row: ResultRow) => {
+    if (row.kind === 'project') {
+      rememberProjectNavigation({
+        chainId: row.project.chainIds[0],
+        projectId: row.project.projectId,
+        name: row.project.name,
+        logoUri: row.project.logoUri,
+      })
+    }
     setQuery('')
     setOpen(false)
     navigate(row.to)
