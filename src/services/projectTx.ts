@@ -25,6 +25,7 @@ import { ALL_VIEM_CHAINS, RPC_ENDPOINTS } from "../constants/chains";
 
 const CHAINS = ALL_VIEM_CHAINS as Record<number, Chain>;
 import {
+  estimateTransactionGasWithHeadroom,
   simulateTransaction,
   waitForSuccessfulTransaction,
 } from "../utils/transactionSafety";
@@ -146,12 +147,20 @@ async function sendRaw(
       "The connected account changed since review. Reopen and try again.",
     );
   }
+  const gas = await estimateTransactionGasWithHeadroom({
+    chainId,
+    account: ctx.activeAddress,
+    to,
+    data,
+    value,
+  });
   return ctx.walletClient!.sendTransaction({
     account,
     chain: CHAINS[chainId],
     to,
     data,
     value,
+    gas,
   });
 }
 

@@ -31,6 +31,31 @@ export function getSafetyPublicClient(chainId: number): PublicClient {
   }) as PublicClient
 }
 
+/**
+ * Use twice the RPC estimate for all client-submitted transactions. Terminal
+ * calls can catch an out-of-gas internal fee payment, making that cheaper
+ * fallback path appear successful to eth_estimateGas. Unused gas is not spent.
+ */
+export function gasWithHeadroom(estimate: bigint): bigint {
+  return estimate * 2n
+}
+
+export async function estimateTransactionGasWithHeadroom(params: {
+  chainId: number
+  account: Address
+  to: Address
+  data: Hex
+  value?: bigint
+}): Promise<bigint> {
+  const estimate = await getSafetyPublicClient(params.chainId).estimateGas({
+    account: params.account,
+    to: params.to,
+    data: params.data,
+    value: params.value ?? 0n,
+  })
+  return gasWithHeadroom(estimate)
+}
+
 export async function simulateTransaction(params: {
   chainId: number
   account: Address

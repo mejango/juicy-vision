@@ -3,6 +3,10 @@ import type { Chain, WalletClient } from 'viem'
 import { useTransactionStore } from '../stores'
 import { submitTrackedTokenApproval } from './trackedTokenApproval'
 
+vi.mock('../utils/transactionSafety', () => ({
+  estimateTransactionGasWithHeadroom: vi.fn().mockResolvedValue(100_000n),
+}))
+
 const ACCOUNT = '0x1111111111111111111111111111111111111111' as const
 const TOKEN = '0x2222222222222222222222222222222222222222' as const
 const SPENDER = '0x3333333333333333333333333333333333333333' as const
@@ -34,6 +38,7 @@ describe('submitTrackedTokenApproval', () => {
       value: 0n,
       chain: CHAIN,
       account: ACCOUNT,
+      gas: 100_000n,
     })
     expect(waitForTransactionReceipt).toHaveBeenCalledWith({ hash: HASH })
     expect(useTransactionStore.getState().transactions[0]).toMatchObject({

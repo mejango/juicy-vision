@@ -52,6 +52,7 @@ import {
 import { txErrorMessage } from "../../utils/txErrors";
 import { useSafeApp } from "../../hooks/useSafeApp";
 import { submitTrackedTokenApproval } from "../../services/trackedTokenApproval";
+import { gasWithHeadroom } from "../../utils/transactionSafety";
 import {
   encodeApprovalTx,
   getActiveSafeInfo,
@@ -794,12 +795,21 @@ export default function PaymentPage() {
         });
         txHash = await waitForSafeExecution(safeTxHash);
       } else {
+        const gas = gasWithHeadroom(
+          await publicClient.estimateGas({
+            account: payerAddress,
+            to: terminal,
+            data: payData,
+            value,
+          }),
+        );
         txHash = await walletClient!.sendTransaction({
           account: payerAddress,
           chain,
           to: terminal,
           data: payData,
           value,
+          gas,
         });
       }
       submittedTxHash = txHash;

@@ -76,6 +76,7 @@ import { useSafeApp } from "./useSafeApp";
 import { submitTrackedTokenApproval } from "../services/trackedTokenApproval";
 import { quoteDirectBuy } from "../services/ammMarket";
 import { chainMatchesEnvironment, IS_TESTNET } from "../config/environment";
+import { gasWithHeadroom } from "../utils/transactionSafety";
 
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
@@ -493,12 +494,21 @@ export function useTransactionExecutor() {
             value.toString(),
           )) as Hex;
         } else {
+          const gas = gasWithHeadroom(
+            await publicClient.estimateGas({
+              account,
+              to: terminalAddress,
+              data: callData,
+              value,
+            }),
+          );
           hash = await walletClient!.sendTransaction({
             to: terminalAddress,
             data: callData,
             value,
             chain,
             account,
+            gas,
           });
         }
         updateTransaction(txId, {
@@ -1402,12 +1412,21 @@ export function useTransactionExecutor() {
                   Math.floor(Date.now() / 1000) + 1_800
               ) {
                 updateTransaction(txId, { stage: "approving" });
+                const permit2Gas = gasWithHeadroom(
+                  await publicClient.estimateGas({
+                    account: currentAddress,
+                    to: permit2ApprovalRequest.address,
+                    data: permit2ApprovalCallData,
+                    value: 0n,
+                  }),
+                );
                 const permit2Hash = await client.sendTransaction({
                   to: permit2ApprovalRequest.address,
                   data: permit2ApprovalCallData,
                   value: 0n,
                   chain,
                   account: currentAddress,
+                  gas: permit2Gas,
                 });
                 const permit2Receipt =
                   await publicClient.waitForTransactionReceipt({
@@ -1567,12 +1586,21 @@ export function useTransactionExecutor() {
             reviewedValue.toString(),
           )) as Hex;
         } else {
+          const gas = gasWithHeadroom(
+            await publicClient.estimateGas({
+              account: currentAddress,
+              to: reviewedTarget,
+              data: reviewedCallData,
+              value: reviewedValue,
+            }),
+          );
           hash = await client!.sendTransaction({
             to: reviewedTarget,
             data: reviewedCallData,
             value: reviewedValue,
             chain,
             account: currentAddress,
+            gas,
           });
         }
 

@@ -79,6 +79,7 @@ vi.mock("wagmi/actions", () => ({
 const mockReadContract = vi.fn();
 const mockWaitForTransactionReceipt = vi.fn();
 const mockPublicCall = vi.fn();
+const mockEstimateGas = vi.fn();
 const mockGetBalance = vi.fn();
 let mockPreviewedTokens = 1000n;
 let mockPreviewError: Error | null = null;
@@ -100,6 +101,7 @@ vi.mock("viem", async (importOriginal) => ({
     getBalance: (args: unknown) => mockGetBalance(args),
     waitForTransactionReceipt: mockWaitForTransactionReceipt,
     call: mockPublicCall,
+    estimateGas: mockEstimateGas,
   })),
   http: vi.fn(),
   parseEther: vi.fn((value: string) =>
@@ -245,6 +247,7 @@ describe("useTransactionExecutor", () => {
       status: "success",
     });
     mockPublicCall.mockResolvedValue({ data: "0x" });
+    mockEstimateGas.mockResolvedValue(100_000n);
     mockFetchNFTTiers.mockResolvedValue([
       {
         tierId: 1,

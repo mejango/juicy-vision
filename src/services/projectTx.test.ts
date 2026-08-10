@@ -15,6 +15,7 @@ const MAIN_HASH = `0x${'bb'.repeat(32)}` as const
 const mocks = vi.hoisted(() => ({
   review: vi.fn(),
   simulate: vi.fn(),
+  estimateGas: vi.fn(),
   waitForReceipt: vi.fn(),
   executeManaged: vi.fn(),
   proposeSafe: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock('../utils/transactionReview', () => ({
 }))
 
 vi.mock('../utils/transactionSafety', () => ({
+  estimateTransactionGasWithHeadroom: mocks.estimateGas,
   simulateTransaction: mocks.simulate,
   waitForSuccessfulTransaction: mocks.waitForReceipt,
 }))
@@ -84,6 +86,7 @@ describe('runGuardedTx', () => {
     localStorage.clear()
     mocks.review.mockResolvedValue(undefined)
     mocks.simulate.mockResolvedValue(undefined)
+    mocks.estimateGas.mockResolvedValue(200_000n)
     mocks.waitForReceipt.mockResolvedValue(undefined)
     mocks.getChainId.mockResolvedValue(CHAIN_ID)
     mocks.switchChain.mockResolvedValue(undefined)
@@ -147,6 +150,7 @@ describe('runGuardedTx', () => {
       to: TARGET,
       data: DATA,
       value: 5n,
+      gas: 200_000n,
     }))
     expect(onSubmitted).toHaveBeenCalledWith(MAIN_HASH)
 

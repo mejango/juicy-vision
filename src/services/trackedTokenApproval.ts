@@ -1,5 +1,6 @@
 import type { Address, Chain, Hex, WalletClient } from 'viem'
 import { useTransactionStore } from '../stores'
+import { estimateTransactionGasWithHeadroom } from '../utils/transactionSafety'
 
 export async function submitTrackedTokenApproval(params: {
   chainId: number
@@ -46,12 +47,20 @@ export async function submitTrackedTokenApproval(params: {
   })
   let hash: Hex | null = null
   try {
+    const gas = await estimateTransactionGasWithHeadroom({
+      chainId,
+      account,
+      to: token,
+      data,
+      value: 0n,
+    })
     hash = await walletClient.sendTransaction({
       to: token,
       data,
       value: 0n,
       chain,
       account,
+      gas,
     })
     useTransactionStore.getState().updateTransaction(approvalId, {
       hash,

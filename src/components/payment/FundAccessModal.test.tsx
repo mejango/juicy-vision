@@ -92,6 +92,7 @@ vi.mock('../../services/bendystraw', () => ({
 }))
 
 vi.mock('../../utils/transactionSafety', () => ({
+  estimateTransactionGasWithHeadroom: vi.fn().mockResolvedValue(200_000n),
   simulateTransaction: mocks.simulate,
   waitForSuccessfulTransaction: mocks.waitForReceipt,
 }))

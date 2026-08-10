@@ -6,11 +6,12 @@ import PaymentPage from './PaymentPage'
 const ACCOUNT = '0x1234567890123456789012345678901234567890'
 const TERMINAL = '0x130f5Dd2bD8805443Cf41755253D778a75a67f53'
 const NATIVE_TOKEN = '0x000000000000000000000000000000000000EEEe'
-const { sendTransaction, readContract, waitForTransactionReceipt, call } = vi.hoisted(() => ({
+const { sendTransaction, readContract, waitForTransactionReceipt, call, estimateGas } = vi.hoisted(() => ({
   sendTransaction: vi.fn(),
   readContract: vi.fn(),
   waitForTransactionReceipt: vi.fn(),
   call: vi.fn(),
+  estimateGas: vi.fn(),
 }))
 
 vi.mock('react-router-dom', () => ({
@@ -37,6 +38,7 @@ vi.mock('viem', () => ({
     readContract,
     getBalance: vi.fn().mockResolvedValue(2_000_000_000_000_000n),
     call,
+    estimateGas,
     waitForTransactionReceipt,
   }),
   encodeFunctionData: vi.fn(({ functionName }) => functionName === 'pay' ? '0x1234' : '0xabcd'),
@@ -78,6 +80,7 @@ describe('PaymentPage wallet review', () => {
     ])
     sendTransaction.mockResolvedValue(`0x${'ab'.repeat(32)}`)
     call.mockResolvedValue({ data: '0x' })
+    estimateGas.mockResolvedValue(100_000n)
     waitForTransactionReceipt.mockResolvedValue({ status: 'success' })
 
     const session = {
@@ -174,6 +177,7 @@ describe('PaymentPage wallet review', () => {
       to: TERMINAL,
       data: '0x1234',
       value: 1_000_000_000_000_000n,
+      gas: 200_000n,
     }))
     expect(waitForTransactionReceipt).toHaveBeenCalledWith({
       hash: `0x${'ab'.repeat(32)}`,
