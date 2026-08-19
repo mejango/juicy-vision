@@ -59,7 +59,7 @@
     "test:all": "npm run typecheck && npm run test:ci && npm run test:e2e"
   },
   "dependencies": {
-    "@bananapus/nana-sdk-core": "1.9.4",
+    "@bananapus/nana-sdk-core": "1.11.1",
     "@safe-global/safe-apps-provider": "0.18.6",
     "@safe-global/safe-apps-sdk": "9.1.0",
     "@stripe/react-stripe-js": "^6.8.0",
@@ -76,12 +76,12 @@
     "react-syntax-highlighter": "^16.1.1",
     "recharts": "3.10.0",
     "remark-gfm": "^4.0.0",
-    "viem": "2.55.8",
-    "wagmi": "3.7.4",
+    "viem": "2.55.13",
+    "wagmi": "3.7.6",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.113.0",
+    "@anthropic-ai/sdk": "^0.115.0",
     "@axe-core/playwright": "^4.12.1",
     "@eslint/compat": "2.1.0",
     "@eslint/js": "^10.0.1",
@@ -90,7 +90,7 @@
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
-    "@types/node": "26.1.1",
+    "@types/node": "26.1.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@types/react-syntax-highlighter": "^15.5.13",
@@ -105,7 +105,7 @@
     "globals": "^17.7.0",
     "graphql": "17.0.2",
     "jsdom": "^29.1.1",
-    "knip": "6.29.0",
+    "knip": "6.31.0",
     "postcss": "^8.5.22",
     "tailwindcss": "^4.3.3",
     "typescript": "5.9.3",
